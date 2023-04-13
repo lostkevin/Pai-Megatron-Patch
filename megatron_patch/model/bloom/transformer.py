@@ -17,6 +17,8 @@ from contextlib import nullcontext
 
 import torch
 import torch.nn.functional as F
+from torch import Tensor
+
 from megatron import core, get_args
 from megatron.core import mpu, tensor_parallel
 from megatron.model import LayerNorm
@@ -27,6 +29,7 @@ from megatron.model.module import MegatronModule
 from megatron.model.utils import attention_mask_func, erf_gelu, openai_gelu
 
 from .glu_activations import GLU_ACTIVATIONS
+
 
 class DropPath(MegatronModule):
     """Drop paths (Stochastic Depth) per sample
@@ -42,8 +45,8 @@ class DropPath(MegatronModule):
         keep_prob = 1 - self.drop_prob
         # work with diff dim tensors, not just 2D ConvNets
         shape = (hidden_state.shape[0], ) + (1, ) * (hidden_state.ndim - 1)
-        random_tensor = keep_prob + \
-            torch.rand(shape, dtype=hidden_state.dtype, device=hidden_state.device)
+        random_tensor = keep_prob + torch.rand(
+            shape, dtype=hidden_state.dtype, device=hidden_state.device)
         random_tensor.floor_()  # binarize
         output = hidden_state.div(keep_prob) * random_tensor
         return output
@@ -110,7 +113,7 @@ class ParallelMLP(MegatronModule):
 
         if self.bias_gelu_fusion:
             intermediate_parallel = \
-                    bias_gelu_impl(intermediate_parallel, bias_parallel)
+                bias_gelu_impl(intermediate_parallel, bias_parallel)
         else:
             intermediate_parallel = \
                 self.activation_func(intermediate_parallel + bias_parallel)
@@ -153,7 +156,8 @@ class SwitchMLP(MegatronModule):
 
         output_total = torch.empty_like(hidden_states)
         output_bias_total = torch.empty_like(hidden_states)
-        #TODO (rprenger) This does each expert in serial, but it could be parallelized
+        # TODO (rprenger) This does each expert in serial,
+        #  but it could be parallelized
 
         for expert_num, expert in enumerate(self.experts):
             local_indices = (max_ind == expert_num).nonzero()
@@ -317,8 +321,8 @@ class CoreAttention(MegatronModule):
         context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
 
         # [sq, b, np, hn] --> [sq, b, hp]
-        new_context_layer_shape = context_layer.size()[:-2] + \
-            (self.hidden_size_per_partition,)
+        new_context_layer_shape = context_layer.size()[:-2] + (
+            self.hidden_size_per_partition, )
         context_layer = context_layer.view(*new_context_layer_shape)
 
         return context_layer
@@ -384,7 +388,8 @@ class ParallelAttention(MegatronModule):
 
         self.core_attention = CoreAttention(self.layer_number,
                                             self.attn_mask_type)
-        self.checkpoint_core_attention = args.recompute_granularity == 'selective'
+        self.checkpoint_core_attention = \
+            args.recompute_granularity == 'selective'
 
         # Output.
         self.dense = tensor_parallel.RowParallelLinear(
@@ -455,7 +460,8 @@ class ParallelAttention(MegatronModule):
             mixed_x_layer, _ = self.query_key_value(hidden_states)
 
             # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
-            new_tensor_shape = mixed_x_layer.size()[:-1] + \
+            new_tensor_shape =\
+                mixed_x_layer.size()[:-1] +\
                 (self.num_attention_heads_per_partition,
                  3 * self.hidden_size_per_attention_head)
             mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
@@ -469,7 +475,8 @@ class ParallelAttention(MegatronModule):
             mixed_kv_layer, _ = self.key_value(encoder_output)
 
             # [sk, b, (np * 2 * hn)] --> [sk, b, np, 2 * hn]
-            new_tensor_shape = mixed_kv_layer.size()[:-1] + \
+            new_tensor_shape =\
+                mixed_kv_layer.size()[:-1] +\
                 (self.num_attention_heads_per_partition,
                  2 * self.hidden_size_per_attention_head)
             mixed_kv_layer = mixed_kv_layer.view(*new_tensor_shape)
@@ -482,7 +489,8 @@ class ParallelAttention(MegatronModule):
             # Attention head [sq, b, h] --> [sq, b, hp]
             query_layer, _ = self.query(hidden_states)
             # [sq, b, hp] --> [sq, b, np, hn]
-            new_tensor_shape = query_layer.size()[:-1] + \
+            new_tensor_shape =\
+                query_layer.size()[:-1] +\
                 (self.num_attention_heads_per_partition,
                  self.hidden_size_per_attention_head)
             query_layer = query_layer.view(*new_tensor_shape)
@@ -631,8 +639,8 @@ class ParallelTransformerLayer(MegatronModule):
         TORCH_MINOR = int(torch.__version__.split('.')[1])
         use_nvfuser = TORCH_MAJOR > 1 or (TORCH_MAJOR == 1
                                           and TORCH_MINOR >= 10)
-        self.bias_dropout_add_exec_handler = \
-                nullcontext if use_nvfuser else torch.enable_grad
+        self.bias_dropout_add_exec_handler = nullcontext \
+            if use_nvfuser else torch.enable_grad
 
         # Alibi
         if args.position_embedding_type == 'alibi':
@@ -815,7 +823,8 @@ class NoopTransformerLayer(MegatronModule):
 
 
 def _get_num_layers(args, is_encoder_and_decoder_model):
-    """Compute the number of transformer layers resident on the current rank."""
+    """Compute the number of transformer
+     layers resident on the current rank."""
     if mpu.get_pipeline_model_parallel_world_size() > 1:
         if is_encoder_and_decoder_model:
             assert args.pipeline_model_parallel_split_rank is not None
@@ -827,11 +836,17 @@ def _get_num_layers(args, is_encoder_and_decoder_model):
             num_ranks_in_encoder = (args.pipeline_model_parallel_split_rank -
                                     1 if args.standalone_embedding_stage else
                                     args.pipeline_model_parallel_split_rank)
-            num_ranks_in_decoder = args.transformer_pipeline_model_parallel_size - num_ranks_in_encoder
+            num_ranks_in_decoder = \
+                args.transformer_pipeline_model_parallel_size \
+                - num_ranks_in_encoder
             assert args.num_layers % num_ranks_in_encoder == 0, \
-                    'num_layers (%d) must be divisible by number of ranks given to encoder (%d)' % (args.num_layers, num_ranks_in_encoder)
+                'num_layers (%d) must be divisible by number' \
+                ' of ranks given to encoder (%d)' \
+                % (args.num_layers, num_ranks_in_encoder)
             assert args.num_layers % num_ranks_in_decoder == 0, \
-                    'num_layers (%d) must be divisible by number of ranks given to decoder (%d)' % (args.num_layers, num_ranks_in_decoder)
+                'num_layers (%d) must be divisible by number ' \
+                'of ranks given to decoder (%d)' \
+                % (args.num_layers, num_ranks_in_decoder)
             if mpu.is_pipeline_stage_before_split():
                 num_layers = (0 if args.standalone_embedding_stage
                               and mpu.get_pipeline_model_parallel_rank() == 0
@@ -839,12 +854,15 @@ def _get_num_layers(args, is_encoder_and_decoder_model):
             else:
                 num_layers = args.num_layers // num_ranks_in_decoder
         else:
-            assert args.num_layers % args.transformer_pipeline_model_parallel_size == 0, \
-                'num_layers must be divisible by transformer_pipeline_model_parallel_size'
+            assert args.num_layers %\
+                   args.transformer_pipeline_model_parallel_size ==\
+                   0, 'num_layers must be divisible by' \
+                      ' transformer_pipeline_model_parallel_size'
 
             # When a standalone embedding stage is used, all transformer layers
             # are divided among pipeline rank >= 1, while on pipeline rank 0,
-            # ranks either contain the input embedding layer (virtual pp rank 0),
+            # ranks either contain the input
+            # embedding layer (virtual pp rank 0),
             # or no layers at all (virtual pp rank >= 1).
             num_layers = (0 if args.standalone_embedding_stage
                           and mpu.get_pipeline_model_parallel_rank() == 0 else
@@ -908,23 +926,30 @@ class ParallelTransformer(MegatronModule):
                 drop_path_rate=self.drop_path_rates[layer_number - 1])
 
         if args.virtual_pipeline_model_parallel_size is not None:
-            assert args.num_layers % args.virtual_pipeline_model_parallel_size == 0, \
-                'num_layers_per_stage must be divisible by ' \
-                'virtual_pipeline_model_parallel_size'
+            assert args.num_layers %\
+                   args.virtual_pipeline_model_parallel_size ==\
+                   0, 'num_layers_per_stage must be divisible' \
+                      ' by virtual_pipeline_model_parallel_size'
             assert args.model_type != ModelType.encoder_and_decoder
-            # Number of layers in each model chunk is the number of layers in the stage,
+            # Number of layers in each model
+            # chunk is the number of layers in the stage,
             # divided by the number of model chunks in a stage.
-            self.num_layers = self.num_layers // args.virtual_pipeline_model_parallel_size
-            # With 8 layers, 2 stages, and 4 model chunks, we want an assignment of
+            self.num_layers =\
+                self.num_layers // args.virtual_pipeline_model_parallel_size
+            # With 8 layers, 2 stages,
+            # and 4 model chunks, we want an assignment of
             # layers to stages like (each list is a model chunk):
             # Stage 0: [0]  [2]  [4]  [6]
             # Stage 1: [1]  [3]  [5]  [7]
-            # With 8 layers, 2 stages, and 2 virtual stages, we want an assignment of
+            # With 8 layers, 2 stages, and 2
+            # virtual stages, we want an assignment of
             # layers to stages like (each list is a model chunk):
             # Stage 0: [0, 1]  [4, 5]
             # Stage 1: [2, 3]  [6, 7]
-            offset = mpu.get_virtual_pipeline_model_parallel_rank() * (
-                args.num_layers // args.virtual_pipeline_model_parallel_size) + \
+            offset =\
+                mpu.get_virtual_pipeline_model_parallel_rank() *\
+                (args.num_layers //
+                 args.virtual_pipeline_model_parallel_size) +\
                 (mpu.get_pipeline_model_parallel_rank() * self.num_layers)
         else:
             # Each stage gets a contiguous set of layers.
@@ -985,32 +1010,35 @@ class ParallelTransformer(MegatronModule):
             return custom_forward
 
         if self.recompute_method == 'uniform':
-            # Uniformly divide the total number of Transformer layers and checkpoint
+            # Uniformly divide the total
+            # number of Transformer layers and checkpoint
             # the input activation of each divided chunk.
             # A method to further reduce memory usage reducing checkpoints.
-            l = 0
-            while l < self.num_layers:
+            layer = 0
+            while layer < self.num_layers:
                 hidden_states = tensor_parallel.checkpoint(
-                    custom(l, l + self.recompute_num_layers),
+                    custom(layer, layer + self.recompute_num_layers),
                     self.distribute_saved_activations, hidden_states,
                     attention_mask, encoder_output, enc_dec_attn_mask)
-                l += self.recompute_num_layers
+                layer += self.recompute_num_layers
 
         elif self.recompute_method == 'block':
-            # Checkpoint the input activation of only a set number of individual
+            # Checkpoint the input activation
+            # of only a set number of individual
             # Transformer layers and skip the rest.
-            # A method fully use the device memory removing redundant re-computation.
-            for l in range(self.num_layers):
-                if l < self.recompute_num_layers:
+            # A method fully use the device
+            # memory removing redundant re-computation.
+            for layer in range(self.num_layers):
+                if layer < self.recompute_num_layers:
                     hidden_states = tensor_parallel.checkpoint(
-                        custom(l, l + 1), self.distribute_saved_activations,
-                        hidden_states, attention_mask, encoder_output,
-                        enc_dec_attn_mask)
+                        custom(layer, layer + 1),
+                        self.distribute_saved_activations, hidden_states,
+                        attention_mask, encoder_output, enc_dec_attn_mask)
                 else:
-                    hidden_states = custom(l, l + 1)(hidden_states,
-                                                     attention_mask,
-                                                     encoder_output,
-                                                     enc_dec_attn_mask)
+                    hidden_states = custom(layer, layer + 1)(hidden_states,
+                                                             attention_mask,
+                                                             encoder_output,
+                                                             enc_dec_attn_mask)
         else:
             raise ValueError('Invalid activation recompute method.')
 

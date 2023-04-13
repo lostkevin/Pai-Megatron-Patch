@@ -14,11 +14,14 @@
 
 import sys
 import time
+
 import torch
+from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
+
 from megatron import (get_args, get_num_microbatches, get_signal_handler,
                       get_timers, print_rank_0, update_num_microbatches)
-from megatron.checkpointing import load_checkpoint, save_checkpoint
-from megatron.core import mpu, tensor_parallel
+from megatron.checkpointing import save_checkpoint
+from megatron.core import mpu
 from megatron.initialize import (initialize_megatron, set_jit_fusion_options,
                                  write_args_to_tensorboard)
 from megatron.model import DistributedDataParallel as LocalDDP
@@ -31,7 +34,6 @@ from megatron.training import (build_train_valid_test_data_iterators,
                                training_log)
 from megatron.utils import (calc_params_l2_norm,
                             check_adlr_autoresume_termination, unwrap_model)
-from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
 from .checkpointing import load_checkpoint
 
@@ -58,7 +60,8 @@ def pretrain(train_valid_test_dataset_provider,
         train_valid_test_dataset_provider: a function that takes the size of
             train/valid/test dataset and returns `train, valid, test` datasets.
         model_provider: a function that returns a vanilla version of the
-            model. By vanilla we mean a simple model on cpu with no fp16 or ddp.
+            model. By vanilla we mean
+             a simple model on cpu with no fp16 or ddp.
         model_type: an enum that specifies the type of model being trained.
         forward_step_func: a function that takes a `data iterator` and `model`,
             and returns a `loss` scalar with a dictionary with key:values being
@@ -191,8 +194,9 @@ def setup_model_and_optimizer(model_provider_func,
         assert args.DDP_impl == 'local'
 
     # get model without FP16 and/or TorchDDP wrappers
-    if args.iteration == 0 and len(unwrapped_model) == 1 \
-        and hasattr(unwrapped_model[0], 'init_state_dict_from_bert'):
+    if args.iteration == 0 and\
+            len(unwrapped_model) == 1 and\
+            hasattr(unwrapped_model[0], 'init_state_dict_from_bert'):
         print_rank_0('Initializing ICT from pretrained BERT model')
         unwrapped_model[0].init_state_dict_from_bert()
         if args.fp16:
@@ -234,9 +238,9 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                        optimizer,
                        opt_param_scheduler)
         iteration += 1
-        args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
-                                       args.micro_batch_size * \
-                                       get_num_microbatches()
+        args.consumed_train_samples +=\
+            mpu.get_data_parallel_world_size() *\
+            args.micro_batch_size * get_num_microbatches()
 
         # Logging.
         loss_scale = optimizer.get_loss_scale().item()

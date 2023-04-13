@@ -15,18 +15,54 @@
 import os
 import random
 import sys
+
 import numpy as np
 import torch
 
 from megatron import update_num_microbatches
-from megatron.checkpointing import (
-    check_checkpoint_args, find_checkpoint_rank_0,
-    fix_query_key_value_ordering, get_checkpoint_names,
-    get_checkpoint_tracker_filename, get_checkpoint_version, read_metadata,
-    set_checkpoint_version)
+from megatron.checkpointing import (find_checkpoint_rank_0,
+                                    fix_query_key_value_ordering,
+                                    get_checkpoint_names,
+                                    get_checkpoint_tracker_filename,
+                                    get_checkpoint_version, read_metadata,
+                                    set_checkpoint_version)
 from megatron.core import mpu, tensor_parallel
 from megatron.global_vars import get_args
 from megatron.utils import print_rank_0, unwrap_model
+
+
+def check_checkpoint_args(checkpoint_args):
+    """Ensure fixed arguments for a model are the same for the input
+    arguments and the one retrieved from checkpoint."""
+    args = get_args()
+
+    def _compare(arg_name, old_arg_name=None):
+        if old_arg_name is not None:
+            checkpoint_value = getattr(checkpoint_args, old_arg_name)
+        else:
+            checkpoint_value = getattr(checkpoint_args, arg_name)
+        args_value = getattr(args, arg_name)
+        error_message = '{} value from checkpoint ({}) is not equal to the ' \
+                        'input argument value ({}).'.format(
+                            arg_name, checkpoint_value, args_value)
+        assert checkpoint_value == args_value, error_message
+
+    _compare('num_layers')
+    _compare('hidden_size')
+    _compare('num_attention_heads')
+    if args.vocab_file:
+        _compare('max_position_embeddings')
+        _compare('make_vocab_size_divisible_by')
+        _compare('padded_vocab_size')
+        _compare('tokenizer_type')
+    if args.data_parallel_random_init:
+        _compare('data_parallel_random_init')
+    if get_checkpoint_version() < 3.0:
+        _compare('tensor_model_parallel_size',
+                 old_arg_name='model_parallel_size')
+    if get_checkpoint_version() >= 3.0:
+        _compare('tensor_model_parallel_size')
+        _compare('pipeline_model_parallel_size')
 
 
 def _load_base_checkpoint(load_dir, use_distributed_optimizer, rank0=False):
@@ -120,11 +156,11 @@ def load_checkpoint(model,
     load_dir = getattr(args, load_arg)
 
     model = unwrap_model(model)
-
     model_state_dict, optim_state_dict, release = \
-        _load_base_checkpoint(load_dir,
-                              use_distributed_optimizer=args.use_distributed_optimizer,
-                              rank0=False)
+        _load_base_checkpoint(
+            load_dir,
+            use_distributed_optimizer=args.use_distributed_optimizer,
+            rank0=False)
 
     if model_state_dict is None:
         return 0
@@ -143,8 +179,7 @@ def load_checkpoint(model,
                 iteration = model_state_dict['total_iters']
             except KeyError:
                 print_rank_0('A metadata file exists but unable to load '
-                             'iteration from checkpoint {}, exiting'.format(
-                                 checkpoint_name))
+                             'iteration from checkpoint {}')
                 sys.exit()
 
     # Check arguments.
@@ -188,10 +223,10 @@ def load_checkpoint(model,
                     opt_param_scheduler.load_state_dict(
                         optim_state_dict['opt_param_scheduler'])
         except KeyError:
-            print_rank_0('Unable to load optimizer from checkpoint {}. '
+            print_rank_0('Unable to load optimizer from checkpoint. '
                          'Specify --no-load-optim or --finetune to prevent '
                          'attempting to load the optimizer state, '
-                         'exiting ...'.format(checkpoint_name))
+                         'exiting ...')
             sys.exit()
 
     # rng states.
@@ -225,13 +260,14 @@ def load_checkpoint(model,
                 tensor_parallel.get_cuda_rng_tracker().set_states(
                     model_state_dict['rng_tracker_states'])
         except KeyError:
-            print_rank_0('Unable to load rng state from checkpoint {}. '
+            print_rank_0('Unable to load rng state from checkpoint. '
                          'Specify --no-load-rng or --finetune to prevent '
                          'attempting to load the rng state, '
-                         'exiting ...'.format(checkpoint_name))
+                         'exiting ...')
             sys.exit()
 
-    # Some utilities want to load a checkpoint without distributed being initialized
+    # Some utilities want to load a checkpoint
+    # without distributed being initialized
     if torch.distributed.is_initialized():
         torch.distributed.barrier()
 

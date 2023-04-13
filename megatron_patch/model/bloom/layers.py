@@ -15,22 +15,16 @@
 import torch
 import torch.nn.functional as F
 import torch.nn.init as init
+from torch.nn.parameter import Parameter
+
 from megatron import get_args
-from megatron.core.parallel_state import (get_global_memory_buffer,
-                                          get_tensor_model_parallel_group,
-                                          get_tensor_model_parallel_rank,
+from megatron.core.parallel_state import (get_tensor_model_parallel_rank,
                                           get_tensor_model_parallel_world_size)
 from megatron.core.tensor_parallel.layers import (
     _initialize_affine_weight_cpu, _initialize_affine_weight_gpu)
-from megatron.core.tensor_parallel.mappings import (
-    copy_to_tensor_model_parallel_region, gather_from_sequence_parallel_region,
-    gather_from_tensor_model_parallel_region,
-    reduce_from_tensor_model_parallel_region,
-    reduce_scatter_to_sequence_parallel_region,
-    scatter_to_tensor_model_parallel_region)
-from megatron.core.tensor_parallel.utils import (VocabUtility, divide,
-                                                 split_tensor_along_last_dim)
-from torch.nn.parameter import Parameter
+from megatron.core.tensor_parallel.mappings import \
+    reduce_from_tensor_model_parallel_region
+from megatron.core.tensor_parallel.utils import VocabUtility
 
 
 class VocabParallelEmbedding(torch.nn.Module):
@@ -80,7 +74,8 @@ class VocabParallelEmbedding(torch.nn.Module):
         args = get_args()
 
         if args.embed_layernorm:
-            from megatron.model.fused_layer_norm import MixedFusedLayerNorm as LayerNorm
+            from megatron.model.fused_layer_norm\
+                import MixedFusedLayerNorm as LayerNorm
             self.norm = LayerNorm(embedding_dim)
 
         # Allocate weights and initialize.

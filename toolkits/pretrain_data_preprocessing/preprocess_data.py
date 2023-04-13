@@ -19,9 +19,11 @@ import os
 import sys
 import time
 from threading import Semaphore
+
+import torch
+
 import ftfy
 import lm_dataformat as lmd
-import torch
 import tqdm
 from megatron.data import indexed_dataset
 from megatron_patch.tokenizer import build_tokenizer

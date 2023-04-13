@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import torch
+
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
 from megatron.model.enums import AttnMaskType, LayerType
@@ -42,13 +43,14 @@ def parallel_lm_logits(input_,
         async_grad_allreduce = False
 
     # Matrix multiply.
-    logits_parallel = tensor_parallel.linear_with_grad_accumulation_and_async_allreduce(
-        input=input_parallel,
-        weight=word_embeddings_weight,
-        bias=bias,
-        gradient_accumulation_fusion=args.gradient_accumulation_fusion,
-        async_grad_allreduce=async_grad_allreduce,
-        sequence_parallel_enabled=args.sequence_parallel)
+    logits_parallel =\
+        tensor_parallel.linear_with_grad_accumulation_and_async_allreduce(
+            input=input_parallel,
+            weight=word_embeddings_weight,
+            bias=bias,
+            gradient_accumulation_fusion=args.gradient_accumulation_fusion,
+            async_grad_allreduce=async_grad_allreduce,
+            sequence_parallel_enabled=args.sequence_parallel)
     # Gather if needed.
 
     if parallel_output:

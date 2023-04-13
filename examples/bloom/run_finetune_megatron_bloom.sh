@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_megatron_bloom.sh 1.7B 4 256 1e-5 1e-6 bf16 1 sel z1 false chat /mnt/ChatGPT/instruct.json /mnt/ChatGPT/instruct.json /mnt/bloom-ckpts/bloomz-1b7-to-megatron/ 6
+#sh run_finetune_megatron_bloom.sh 1.7B 4 256 1e-5 1e-6 bf16 1 1 sel z1 false chat /mnt/ChatGPT/instruct.json /mnt/ChatGPT/instruct.json /mnt/bloom-ckpts/bloomz-1b7-to-megatron/ 6
 MEGATRON_PATH=/workspace/PAI-Megatron-Patch/Megatron-LM
 PATCH_PATH=/workspace/PAI-Megatron-Patch
 
@@ -22,14 +22,15 @@ LR=$4
 MIN_LR=$5
 PR=$6
 TP=$7
-AC=$8
-DO=$9
-SP=${10}
-TASK_NAME=${11}
-TRAIN_DATASET_PATH=${12}
-VALID_DATASET_PATH=${13}
-PRETRAIN_CHECKPOINT_PATH=${14}
-EPOCH=${15}
+PP=$8
+AC=$9
+DO=${10}
+SP=${11}
+TASK_NAME=${12}
+TRAIN_DATASET_PATH=${13}
+VALID_DATASET_PATH=${14}
+PRETRAIN_CHECKPOINT_PATH=${15}
+EPOCH=${16}
 
 if [ $MODEL_SIZE = 1.1B ]; then
 
@@ -94,7 +95,7 @@ elif [ $SP = false ]; then
                     "
 fi
 
-FT_NAME="finetune-${TASK_NAME}-megatron-bloom-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
+FT_NAME="finetune-${TASK_NAME}-megatron-bloom-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-pp-${PP}-ac-${AC}-sp-${SP}"
 OUTPUT_BASEPATH=/mnt/output_megatron_bloom
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
@@ -104,8 +105,6 @@ TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${FT_NAME}_${current_time}"
 mkdir -p ${TENSORBOARD_DIR}
 
 FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${FT_NAME}"
-LOGGING_PATH="${OUTPUT_BASEPATH}/log/${FT_NAME}_${current_time}"
-
 
 megatron_options="  \
         --load ${PRETRAIN_CHECKPOINT_PATH} \
@@ -116,7 +115,7 @@ megatron_options="  \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
         --seq-length ${SEQ_LEN} \
-        --max-position-embeddings 2048 \
+        --max-position-embeddings ${SEQ_LEN} \
         --keep-last \
         --micro-batch-size ${BATCH_SIZE} \
         --epochs ${EPOCH} \
@@ -128,7 +127,7 @@ megatron_options="  \
         --adam-beta1 0.9 \
         --adam-beta2 0.95 \
         --init-method-std 0.01 \
-        --num-workers 0\
+        --num-workers 8\
         --log-interval 1 \
         --eval-interval 100 \
         --eval-iters 10 \
@@ -143,6 +142,7 @@ megatron_options="  \
         --DDP-impl local\
         --task ${TASK_NAME} \
         --tensor-model-parallel-size ${TP} \
+        --pipeline-model-parallel-size ${PP} \
         --patch-tokenizer-type BloomTokenizerFromHF \
         --embed-layernorm \
         --glu-activation geglu \

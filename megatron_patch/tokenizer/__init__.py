@@ -41,7 +41,9 @@ def build_tokenizer(args):
                                   'implemented.'.format(
                                       args.patch_tokenizer_type))
 
-    if args.patch_tokenizer_type != 'BloomTokenizerFromHF' and args.patch_tokenizer_type != 'ChatGLMTokenizerFromHF':
+    if args.patch_tokenizer_type !=\
+            'BloomTokenizerFromHF' and args.patch_tokenizer_type !=\
+            'ChatGLMTokenizerFromHF':
         args.padded_vocab_size = _vocab_size_with_padding(
             tokenizer.vocab_size, args)
     global _GLOBAL_TOKENIZER

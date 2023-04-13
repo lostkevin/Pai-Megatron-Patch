@@ -13,8 +13,11 @@
 # limitations under the License.
 
 import math
+
 import torch
+
 from megatron import get_args
+
 
 def init_method_normal(sigma):
     """Init method based on N(0, sigma)."""
@@ -22,6 +25,7 @@ def init_method_normal(sigma):
         return torch.nn.init.normal_(tensor, mean=0.0, std=sigma)
 
     return init_
+
 
 def scaled_init_method_normal(sigma, num_layers):
     """Init method based on N(0, sigma/sqrt(2*num_layers)."""
@@ -76,4 +80,3 @@ def openai_gelu(x):
 def erf_gelu(x):
     return x * 0.5 * (torch.erf(x / 1.41421).to(dtype=x.dtype) +
                       torch.ones_like(x).to(dtype=x.dtype))
-

@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_continue_pretrain_megatron_gpt.sh debug jiebabpe 1.1B 4 32 256 1e-5 1e-6 bf16 1 sel z1 false 1000000 /mnt/wudao/wudao_jiebabpe_text_document none 100000000 10000
+#sh run_continue_pretrain_megatron_gpt.sh debug jiebabpe 1.1B 4 32 256 1e-5 1e-6 bf16 1 2 sel z1 false 1000000 /mnt/wudao/wudao_jiebabpe_text_document none 100000000 10000
 MEGATRON_PATH=/workspace/PAI-Megatron-Patch/Megatron-LM
 PATCH_PATH=/workspace/PAI-Megatron-Patch
 export CUDA_VISIBLE_DEVICES=0
@@ -22,14 +22,15 @@ LR=$7
 MIN_LR=$8
 PR=$9
 TP=${10}
-AC=${11}
-DO=${12}
-SP=${13}
-SAVE_INTERVAL=${14}
-DATASET_PATH=${15}
-PRETRAIN_CHECKPOINT_PATH=${16}
-TRAIN_TOKENS=${17}
-WARMUP_TOKENS=${18}
+PP=${11}
+AC=${12}
+DO=${13}
+SP=${14}
+SAVE_INTERVAL=${15}
+DATASET_PATH=${16}
+PRETRAIN_CHECKPOINT_PATH=${17}
+TRAIN_TOKENS=${18}
+WARMUP_TOKENS=${19}
 
 if [ ! -f gpt2-vocab.json ]; then
   wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-vocab.json
@@ -183,6 +184,7 @@ megatron_options=" \
         --log-batch-size-to-tensorboard \
         --log-validation-ppl-to-tensorboard \
         --tensor-model-parallel-size ${TP} \
+        --pipeline-model-parallel-size ${PP} \
         --DDP-impl local
         "
 

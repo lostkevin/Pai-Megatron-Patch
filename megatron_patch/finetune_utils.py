@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import sys
 from functools import partial
+
 import torch
+
 from megatron import get_args, get_num_microbatches, get_timers, print_rank_0
 from megatron.checkpointing import save_checkpoint
 from megatron.core import mpu
@@ -176,7 +177,6 @@ def _train(model, optimizer, opt_param_scheduler, forward_step,
 
     # Memory reporting flag.
     report_memory_flag = True
-
     # For each remaining epoch
     timers('interval-time', log_level=0).start(barrier=True)
     for epoch in range(start_epoch, args.epochs):
@@ -260,7 +260,6 @@ def finetune(train_valid_datasets_provider,
     """Main finetune function used across all tasks."""
     args = get_args()
     timers = get_timers()
-
     assert args.rampup_batch_size is None, \
         'batch size scaling is not supported for finetuning'
 

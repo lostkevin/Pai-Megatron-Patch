@@ -15,6 +15,7 @@
 from megatron.tokenizer.tokenizer import AbstractTokenizer
 from tokenizers import Tokenizer
 
+
 class JiebaBPETokenizer(AbstractTokenizer):
     """SentencePiece BPE tokenizer with Jieba integration"""
     def __init__(self, tokenizer_json_file):

@@ -5,7 +5,9 @@ import multiprocessing
 import os.path
 import re
 from glob import glob
+
 from tqdm import tqdm
+
 
 def clean_text(raw):
     httpcom = re.compile(
@@ -21,6 +23,7 @@ def clean_text(raw):
         u'《*》/•、&＆(—)（+）：？!！“”·]+', re.UNICODE)
     raw = fil.sub('', raw)
     return raw.strip()
+
 
 def run_preprocess(input_fp, output_fp):
     with codecs.open(output_fp, 'w', encoding='utf8') as json_file:
@@ -52,12 +55,22 @@ def main():
                         help='folder name of checkpoint files',
                         required=True)
 
+    parser.add_argument('--num-processes',
+                        '-num_processes',
+                        '-p',
+                        type=int,
+                        default=None,
+                        help='Number of processes')
+
     args = parser.parse_args()
-    po = multiprocessing.Pool(64)
+    po = multiprocessing.Pool(args.num_processes)
+
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
 
     for input_file in tqdm(glob(args.input_dir + '/*.json')):
-        fn = input_file.split("/")[-1]
-        output_file = os.path.join(args.input_dir, fn)
+        fn = input_file.split('/')[-1]
+        output_file = os.path.join(args.output_dir, fn)
         po.apply_async(func=run_preprocess, args=(input_file, output_file))
     po.close()
     po.join()

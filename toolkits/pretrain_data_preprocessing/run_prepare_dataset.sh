@@ -1,7 +1,7 @@
 #! /bin/bash
 
 #clean
-python clean_raw_text.py -i WuDaoCorpus2.0_base_200G  -o cleaned_wudao_dataset
+python clean_raw_text.py -i WuDaoCorpus2.0_base_200G  -o cleaned_wudao_dataset -p 32
 
 #merge
 find cleaned_wudao_dataset -name "*.json" -exec cat {} + > /cpfs01/user/paigpt/wudao/merged_wudao_cleaned.json

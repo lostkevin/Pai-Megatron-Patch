@@ -19,10 +19,7 @@ import re
 from abc import ABC, abstractmethod
 
 import numpy as np
-
-from megatron import print_rank_0
 from torch.utils.data import Dataset
-from transformers import BloomTokenizerFast as BloomTokenizer
 
 
 class AbstractDataset(ABC, Dataset):
@@ -177,8 +174,7 @@ class GPTDataset(AbstractDataset):
         for datapath in datapaths:
             self.samples.extend(
                 self.process_samples_from_single_path(datapath))
-        print_rank_0('  >> total number of samples: {}'.format(
-            len(self.samples)))
+        print('  >> total number of samples: {}'.format(len(self.samples)))
 
     def __len__(self):
         return len(self.samples)
@@ -204,7 +200,7 @@ class GPTDataset(AbstractDataset):
 
     def process_samples_from_single_path(self, filename):
         """"Implement abstract method."""
-        print_rank_0(' > Processing {} ...'.format(filename))
+        print(' > Processing {} ...'.format(filename))
         samples = []
         total = 0
         with open(filename, encoding='utf-8-sig') as f:
@@ -216,7 +212,7 @@ class GPTDataset(AbstractDataset):
                 total += 1
                 samples.append(sample)
 
-        print_rank_0(' >> processed {} samples.'.format(len(samples)))
+        print(' >> processed {} samples.'.format(len(samples)))
         random.shuffle(samples)
         return samples
 
@@ -238,8 +234,7 @@ class BloomDataset(GPTDataset):
         for datapath in datapaths:
             self.samples.extend(
                 self.process_samples_from_single_path(datapath))
-        print_rank_0('  >> total number of samples: {}'.format(
-            len(self.samples)))
+        print('  >> total number of samples: {}'.format(len(self.samples)))
 
     def __len__(self):
         return len(self.samples)
@@ -250,7 +245,7 @@ class BloomDataset(GPTDataset):
                                                    self.max_seq_length)
 
     def process_samples_from_single_path(self, filename):
-        print_rank_0(' > Processing {} ...'.format(filename))
+        print(' > Processing {} ...'.format(filename))
         samples = []
         total = 0
         with open(filename, encoding='utf-8-sig') as f:
@@ -266,17 +261,14 @@ class BloomDataset(GPTDataset):
                 total += 1
                 samples.append(sample)
 
-        print_rank_0(' >> processed {} samples.'.format(len(samples)))
+        print(' >> processed {} samples.'.format(len(samples)))
         random.shuffle(samples)
         return samples
 
     def gpt_convert_example_to_feature(self, sample, tokenizer,
                                        max_seq_length):
-        if isinstance(tokenizer, BloomTokenizer):
-            tokens = tokenizer(sample['prompt'])
-            input_ids = tokens['input_ids']
-        else:
-            raise ValueError('tokenizer type should be BloomTokenizer')
+        tokens = tokenizer(sample['prompt'])
+        input_ids = tokens['input_ids']
         input_ids = self.truncate(tokenizer, input_ids, max_seq_length)
         train_sample = {'input_ids': np.array(input_ids)}
         return train_sample
@@ -292,8 +284,7 @@ class ChatGLMDataset(GPTDataset):
         for datapath in datapaths:
             self.samples.extend(
                 self.process_samples_from_single_path(datapath))
-        print_rank_0('  >> total number of samples: {}'.format(
-            len(self.samples)))
+        print('  >> total number of samples: {}'.format(len(self.samples)))
 
     def __len__(self):
         return len(self.samples)
@@ -303,7 +294,7 @@ class ChatGLMDataset(GPTDataset):
         return self.gpt_convert_example_to_feature(raw_sample, self.tokenizer)
 
     def process_samples_from_single_path(self, filename):
-        print_rank_0(' > Processing {} ...'.format(filename))
+        print(' > Processing {} ...'.format(filename))
         samples = []
         total = 0
         with open(filename, encoding='utf-8-sig') as f:
@@ -318,7 +309,7 @@ class ChatGLMDataset(GPTDataset):
                 total += 1
                 samples.append(sample)
 
-        print_rank_0(' >> processed {} samples.'.format(len(samples)))
+        print(' >> processed {} samples.'.format(len(samples)))
         random.shuffle(samples)
         return samples
 
@@ -342,7 +333,8 @@ class ChatGLMDataset(GPTDataset):
         pad_len = max_seq_length - len(input_ids)
         input_ids = input_ids + [tokenizer.pad_token_id] * pad_len
         labels = labels + [tokenizer.pad_token_id] * pad_len
-        labels = [(l if l != tokenizer.pad_token_id else -100) for l in labels]
+        labels = [(label if label != tokenizer.pad_token_id else -100)
+                  for label in labels]
 
         train_sample = {
             'input_ids': np.array(input_ids, dtype=np.int64),
@@ -360,12 +352,12 @@ class GLMDataset(GPTDataset):
         self.samples = []
         self.random = random.Random(1234)
         self.blank_maskratio = 0.1
-        self.max_src_length, self.max_tgt_length = max_seq_length, max_seq_length
+        self.max_src_length, self.max_tgt_length =\
+            max_seq_length, max_seq_length
         for datapath in datapaths:
             self.samples.extend(
                 self.process_samples_from_single_path(datapath))
-        print_rank_0('  >> total number of samples: {}'.format(
-            len(self.samples)))
+        print('  >> total number of samples: {}'.format(len(self.samples)))
 
     def __len__(self):
         return len(self.samples)
@@ -376,7 +368,7 @@ class GLMDataset(GPTDataset):
                                                    self.max_seq_length)
 
     def process_samples_from_single_path(self, filename):
-        print_rank_0(' > Processing {} ...'.format(filename))
+        print(' > Processing {} ...'.format(filename))
         samples = []
         total = 0
         with open(filename, encoding='utf-8-sig') as f:
@@ -393,7 +385,7 @@ class GLMDataset(GPTDataset):
                 total += 1
                 samples.append(sample)
 
-        print_rank_0(' >> processed {} samples.'.format(len(samples)))
+        print(' >> processed {} samples.'.format(len(samples)))
         random.shuffle(samples)
         return samples
 
@@ -416,9 +408,7 @@ class GLMDataset(GPTDataset):
 
     def gpt_convert_example_to_feature(self, sample, tokenizer,
                                        max_seq_length):
-
-        assert isinstance(tokenizer, ChatGLMTokenizer)
-        source_text, target_text = sample['source'], sample['target']
+        source_text, _ = sample['source'], sample['target']
         mask_id = tokenizer.mask_token_id
         sop_id = tokenizer.bos_token_id
         eop_id = tokenizer.eop_token_id

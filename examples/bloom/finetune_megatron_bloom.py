@@ -15,11 +15,11 @@
 from functools import partial
 
 import torch
+
 from megatron import get_args
 from megatron.initialize import initialize_megatron
 from megatron.utils import (average_losses_across_data_parallel_group,
                             get_ltor_masks_and_position_ids)
-
 from megatron_patch.data.finetune_dataset import BloomDataset
 from megatron_patch.finetune_utils import finetune
 from megatron_patch.model.bloom.gpt_model import GPTModel
