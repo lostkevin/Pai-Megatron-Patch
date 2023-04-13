@@ -46,22 +46,19 @@ class Encoder(object):
         ids = {}
         for key in self.args.jsonl_keys:
             doc_ids = []
-            if self.args.tokenizer_type == 'ChineseSubwordsTokenizer':
-                text_ids = Encoder.tokenizer.tokenizer.tokenize(text)
-            elif self.args.tokenizer_type == 'BloomTokenizerFromHF':
+            if self.args.patch_tokenizer_type == 'BloomTokenizerFromHF':
                 text_ids = Encoder.tokenizer(text)['input_ids']
             else:
                 text_ids = Encoder.tokenizer.tokenize(text)
             if len(text_ids) > 0:
                 doc_ids.append(text_ids)
             if self.args.append_eod:
-                if self.args.language == 'zh' and\
-                        self.args.tokenizer_type == 'BertWordPieceLowerCase':
-                    doc_ids[-1].append(21128)
-                elif self.args.tokenizer_type == 'ChineseBPETokenizer' or \
-                    self.args.tokenizer_type == 'GPT2BPETokenizer' or \
-                        self.args.tokenizer_type == 'JiebaBPETokenizer' or \
-                        self.args.tokenizer_type == 'BloomTokenizerFromHF':
+                if self.args.patch_tokenizer_type ==\
+                        'GPT2BPETokenizer' or \
+                        self.args.patch_tokenizer_type ==\
+                        'JiebaBPETokenizer' or \
+                        self.args.patch_tokenizer_type ==\
+                        'BloomTokenizerFromHF':
                     doc_ids[-1].append(Encoder.tokenizer.eod)
                 else:
                     raise ValueError('please setting correct tokenier')
@@ -86,14 +83,12 @@ def get_args():
     )
     group = parser.add_argument_group(title='tokenizer')
     group.add_argument(
-        '--tokenizer-type',
+        '--patch-tokenizer-type',
         type=str,
         required=True,
         choices=[
-            'HFGPT2Tokenizer', 'HFTokenizer', 'GPT2BPETokenizer',
-            'CharLevelTokenizer', 'ChineseBPETokenizer', 'JiebaBPETokenizer',
-            'ChineseSubwordsTokenizer', 'BertWordPieceLowerCase',
-            'BloomTokenizerFromHF'
+            'JiebaBPETokenizer', 'BloomTokenizerFromHF',
+            'ChatGLMTokenizerFromHF', 'GPT2BPETokenizer'
         ],
         help='What type of tokenizer to use.',
     )

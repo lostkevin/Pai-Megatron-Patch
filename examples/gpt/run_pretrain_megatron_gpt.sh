@@ -1,12 +1,12 @@
 #!/bin/bash
-#sh run_continue_pretrain_megatron_gpt.sh debug jiebabpe 1.1B 4 32 256 1e-5 1e-6 bf16 1 2 sel z1 false 1000000 /mnt/wudao/wudao_jiebabpe_text_document none 100000000 10000
+# sh run_pretrain_megatron_gpt.sh debug jiebabpe 1.7B 1 16 256 1e-5 1e-6 bf16 2 2 sel z1 false 100 /mnt/wudao/wudao_jiebabpe_text_document none 1000000 10000
 MEGATRON_PATH=/workspace/PAI-Megatron-Patch/Megatron-LM
 PATCH_PATH=/workspace/PAI-Megatron-Patch
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 export PYTHONPATH=${PATCH_PATH}:${MEGATRON_PATH}:$PYTHONPATH
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
-GPUS_PER_NODE=1
+GPUS_PER_NODE=8
 NNODES=1
 NODE_RANK=0
 
@@ -188,7 +188,7 @@ megatron_options=" \
         --DDP-impl local
         "
 
-run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_gpt.py ${tokenizer_options}
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_gpt.py ${tokenizer_options}
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
 
 echo ${run_cmd}

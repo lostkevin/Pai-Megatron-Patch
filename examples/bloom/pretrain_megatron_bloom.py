@@ -19,10 +19,10 @@ import torch
 from megatron import get_args, get_timers, print_rank_0
 from megatron.core import tensor_parallel
 from megatron.data.gpt_dataset import build_train_valid_test_datasets
-from megatron.model import GPTModel
-from megatron.model.enums import ModelType
+from megatron.model import ModelType
 from megatron.utils import (average_losses_across_data_parallel_group,
                             get_ltor_masks_and_position_ids)
+from megatron_patch.model.bloom.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import pretrain
 
@@ -35,18 +35,29 @@ def get_tasks_args(parser):
                        default=None,
                        help='Pretrained checkpoint used for finetunning.')
 
+    group.add_argument('--embed-layernorm',
+                       action='store_true',
+                       help='use layernorm for embedding')
+
+    group.add_argument('--position-embedding-type',
+                       type=str,
+                       default='absolute',
+                       help='Define position embedding type '
+                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
+
+    group.add_argument('--glu-activation',
+                       type=str,
+                       help='GLU activations to use.')
+
     group.add_argument('--patch-tokenizer-type',
                        type=str,
                        help='patch-tokenizer-type')
-
-    group.add_argument('--patch-vocab-file', type=str, help='patch-vocab-file')
 
     return parser
 
 
 def model_provider(pre_process=True, post_process=True):
     """Build the model."""
-    print_rank_0('building GPT model ...')
     args = get_args()
     build_tokenizer(args)
     model = GPTModel(num_tokentypes=0,
@@ -58,11 +69,13 @@ def model_provider(pre_process=True, post_process=True):
 
 def get_batch(data_iterator):
     """Generate a batch"""
+    args = get_args()
+    tokenizer = get_tokenizer()
+
     # Items and their type.
     keys = ['text']
     datatype = torch.int64
-    args = get_args()
-    tokenizer = get_tokenizer()
+
     # Broadcast data.
     if data_iterator is not None:
         data = next(data_iterator)
@@ -95,6 +108,7 @@ def loss_func(loss_mask, output_tensor):
 
 
 def forward_step(data_iterator, model):
+    """Forward step."""
     timers = get_timers()
 
     # Get the batch.
@@ -102,6 +116,7 @@ def forward_step(data_iterator, model):
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
         data_iterator)
     timers('batch-generator').stop()
+
     output_tensor = model(tokens, position_ids, attention_mask, labels=labels)
 
     return output_tensor, partial(loss_func, loss_mask)
@@ -127,6 +142,7 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
 
 if __name__ == '__main__':
+
     pretrain(train_valid_test_datasets_provider,
              model_provider,
              ModelType.encoder_or_decoder,
