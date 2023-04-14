@@ -38,7 +38,3 @@ zstd -z /cpfs01/user/paigpt/wudao/09.jsonl -o /cpfs01/user/paigpt/wudao/cleaned_
 ```bash
 bash run_make_pretraining_dataset.sh /cpfs01/user/paigpt/wudao/cleaned_zst bloombpe /cpfs01/user/paigpt/wudao
 ```
-
-
-
-
