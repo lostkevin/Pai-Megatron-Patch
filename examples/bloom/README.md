@@ -59,18 +59,18 @@ export NCCL_IB_SL=5
 export NCCL_IB_GID_INDEX=3
 export WORK_DIR=/cpfs01/user/paigpt
 cd /cpfs01/user/paigpt/PAI-Megatron-Patch/examples/bloom
-bash run_pretrain_megatron_bloom.sh    
+bash run_pretrain_megatron_bloom.sh
 dlc
 ${WORK_DIR}/Megatron-LM
 ${WORK_DIR}/PAI-Megatron-Patch/
-1.7B                                     
-4                                        
+1.7B
+4
 32
 256
 1e-5
 1e-6
 bf16
-1 
+1
 1
 sel
 true
@@ -131,17 +131,17 @@ export NCCL_IB_SL=5
 export NCCL_IB_GID_INDEX=3
 export WORK_DIR=/cpfs01/user/paigpt
 cd /cpfs01/user/paigpt/PAI-Megatron-Patch/examples/bloom
-bash run_finetune_megatron_bloom.sh    
+bash run_finetune_megatron_bloom.sh
 dlc
 ${WORK_DIR}/Megatron-LM
 ${WORK_DIR}/PAI-Megatron-Patch/
-1.7B                                     
-4                                        
+1.7B
+4
 256
 1e-5
 1e-6
 bf16
-1 
+1
 1
 sel
 true
@@ -152,7 +152,3 @@ ${WORK_DIR}/bloom-ckpts/bloomz-1b7-to-megatron
 16
 ${WORK_DIR}/output_megatron_bloom/
 ```
-
-
-
-
