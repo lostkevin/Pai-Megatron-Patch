@@ -34,8 +34,6 @@ def get_tasks_args(parser):
                        default=None,
                        help='Pretrained checkpoint used for finetunning.')
 
-    group.add_argument('--task', type=str, required=True, help='Task name.')
-
     group.add_argument('--epochs',
                        type=int,
                        default=None,

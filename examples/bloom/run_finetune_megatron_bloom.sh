@@ -1,33 +1,44 @@
 #!/bin/bash
-# sh run_finetune_megatron_bloom.sh 1.7B 4 256 1e-5 1e-6 bf16 1 1 sel z1 false chat /mnt/ChatGPT/instruct.json /mnt/ChatGPT/instruct.json /mnt/bloom-ckpts/bloomz-1b7-to-megatron/ 6
-MEGATRON_PATH=/workspace/PAI-Megatron-Patch/Megatron-LM
-PATCH_PATH=/workspace/PAI-Megatron-Patch
+set -e
+ENV=$1
+MEGATRON_PATH=$2
+MEGATRON_PATCH_PATH=$3
+export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
+
+if [ $ENV = dsw ]; then
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-export PYTHONPATH=${PATCH_PATH}:${MEGATRON_PATH}:$PYTHONPATH
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
-GPUS_PER_NODE=8
 NNODES=1
 NODE_RANK=0
+GPUS_PER_NODE=8
+
+elif [ $ENV = dlc ]; then
+
+NNODES=${WORLD_SIZE}
+NODE_RANK=${RANK}
+GPUS_PER_NODE=${KUBERNETES_CONTAINER_RESOURCE_GPU}
+
+fi
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-MODEL_SIZE=$1
-BATCH_SIZE=$2
-SEQ_LEN=$3
-LR=$4
-MIN_LR=$5
-PR=$6
-TP=$7
-PP=$8
-AC=$9
-DO=${10}
-SP=${11}
-TASK_NAME=${12}
-TRAIN_DATASET_PATH=${13}
-VALID_DATASET_PATH=${14}
-PRETRAIN_CHECKPOINT_PATH=${15}
-EPOCH=${16}
+MODEL_SIZE=$4
+BATCH_SIZE=$5
+SEQ_LEN=$6
+LR=$7
+MIN_LR=$8
+PR=$9
+TP=${10}
+PP=${11}
+AC=${12}
+DO=${13}
+SP=${14}
+TRAIN_DATASET_PATH=${15}
+VALID_DATASET_PATH=${16}
+PRETRAIN_CHECKPOINT_PATH=${17}
+EPOCH=${18}
+OUTPUT_BASEPATH=${19}
 
 if [ $MODEL_SIZE = 1.1B ]; then
 
@@ -69,16 +80,11 @@ elif [ $PR = bf16 ]; then
         --bf16"
 fi
 
-if [ $DO = z1 ]; then
+if [ $DO = true ]; then
     do_options=" \
 		    --use-distributed-optimizer"
 
-elif [ $DO = z2 ]; then
-    do_options=" \
-    --no-contiguous-buffers-in-local-ddp \
-    --zero-2-memory-optimization
-                    "
-elif [ $DO = none ]; then
+elif [ $DO = false ]; then
     do_options=" \
                     "
 fi
@@ -92,16 +98,15 @@ elif [ $SP = false ]; then
                     "
 fi
 
-FT_NAME="finetune-${TASK_NAME}-megatron-bloom-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-pp-${PP}-ac-${AC}-sp-${SP}"
-OUTPUT_BASEPATH=/mnt/output_megatron_bloom
+NAME="${ENV}-finetune-megatron-bloom-${MODEL_SIZE}-ep-${EPOCH}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
 current_time=$(date "+%Y.%m.%d-%H.%M.%S")
-TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${FT_NAME}_${current_time}"
+TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${NAME}_${current_time}"
 mkdir -p ${TENSORBOARD_DIR}
 
-FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${FT_NAME}"
+FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 
 megatron_options="  \
         --load ${PRETRAIN_CHECKPOINT_PATH} \
@@ -137,7 +142,6 @@ megatron_options="  \
         --finetune \
         --no-load-optim \
         --DDP-impl local\
-        --task ${TASK_NAME} \
         --tensor-model-parallel-size ${TP} \
         --pipeline-model-parallel-size ${PP} \
         --patch-tokenizer-type BloomTokenizerFromHF \

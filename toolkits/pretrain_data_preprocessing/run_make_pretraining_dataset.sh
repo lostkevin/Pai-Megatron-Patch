@@ -8,7 +8,16 @@ input_data_dir=$1
 tokenizer=$2
 output_data_dir=$3
 
-INPUT="${input_data_dir}/00.jsonl.zst"
+INPUT="${input_data_dir}/00.jsonl.zst,"`
+       `"${input_data_dir}/01.jsonl.zst,"`
+       `"${input_data_dir}/02.jsonl.zst,"`
+       `"${input_data_dir}/03.jsonl.zst,"`
+       `"${input_data_dir}/04.jsonl.zst,"`
+       `"${input_data_dir}/05.jsonl.zst,"`
+       `"${input_data_dir}/06.jsonl.zst,"`
+       `"${input_data_dir}/07.jsonl.zst,"`
+       `"${input_data_dir}/08.jsonl.zst,"`
+       `"${input_data_dir}/09.jsonl.zst"
 
 
 if [ $tokenizer = "jiebabpe" ]; then

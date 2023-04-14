@@ -1,34 +1,46 @@
 #!/bin/bash
-# sh run_pretrain_megatron_bloom.sh 1.7B 1 16 256 1e-5 1e-6 bf16 2 2 sel z1 false 100 /mnt/wudao/wudao_jiebabpe_text_document none 1000000 10000
-MEGATRON_PATH=/workspace/PAI-Megatron-Patch/Megatron-LM
-PATCH_PATH=/workspace/PAI-Megatron-Patch
+set -e
+ENV=$1
+MEGATRON_PATH=$2
+MEGATRON_PATCH_PATH=$3
+export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
+
+if [ $ENV = dsw ]; then
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-export PYTHONPATH=${PATCH_PATH}:${MEGATRON_PATH}:$PYTHONPATH
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
-GPUS_PER_NODE=8
 NNODES=1
 NODE_RANK=0
+GPUS_PER_NODE=8
+
+elif [ $ENV = dlc ]; then
+
+NNODES=${WORLD_SIZE}
+NODE_RANK=${RANK}
+GPUS_PER_NODE=${KUBERNETES_CONTAINER_RESOURCE_GPU}
+
+fi
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-MODEL_SIZE=$1
-BATCH_SIZE=$2
-GLOBAL_BATCH_SIZE=$3
-SEQ_LEN=$4
-LR=$5
-MIN_LR=$6
-PR=$7
-TP=$8
-PP=$9
-AC=${10}
-DO=${11}
-SP=${12}
-SAVE_INTERVAL=${13}
-DATASET_PATH=${14}
-PRETRAIN_CHECKPOINT_PATH=${15}
-TRAIN_TOKENS=${16}
-WARMUP_TOKENS=${17}
+MODEL_SIZE=$4
+BATCH_SIZE=$5
+GLOBAL_BATCH_SIZE=$6
+SEQ_LEN=$7
+LR=$8
+MIN_LR=$9
+PR=${10}
+TP=${11}
+PP=${12}
+AC=${13}
+DO=${14}
+SP=${15}
+SAVE_INTERVAL=${16}
+DATASET_PATH=${17}
+PRETRAIN_CHECKPOINT_PATH=${18}
+TRAIN_TOKENS=${19}
+WARMUP_TOKENS=${20}
+OUTPUT_BASEPATH=${21}
 
 if [ $MODEL_SIZE = 1.1B ]; then
 
@@ -70,16 +82,11 @@ elif [ $PR = bf16 ]; then
         --bf16"
 fi
 
-if [ $DO = z1 ]; then
+if [ $DO = true ]; then
     do_options=" \
 		    --use-distributed-optimizer"
 
-elif [ $DO = z2 ]; then
-    do_options=" \
-    --no-contiguous-buffers-in-local-ddp \
-    --zero-2-memory-optimization
-                    "
-elif [ $DO = none ]; then
+elif [ $DO = false ]; then
     do_options=" \
                     "
 fi
@@ -97,20 +104,19 @@ TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
 LR_WARMUP_ITERS=$(( ${WARMUP_TOKENS}  / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
 LR_DECAY_ITERS=$(( ${TRAIN_TOKENS} /  ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
 
-CP_NAME="pretrain-megatron-bloom-${MODEL_SIZE}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-pp-${PP}-ac-${AC}-sp-${SP}-tt-${TRAIN_TOKENS}-wt-${WARMUP_TOKENS}"
-OUTPUT_BASEPATH=/mnt/output_megatron_bloom
+NAME="${ENV}-pretrain-megatron-bloom-${MODEL_SIZE}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}-tt-${TRAIN_TOKENS}-wt-${WARMUP_TOKENS}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
 current_time=$(date "+%Y.%m.%d-%H.%M.%S")
-TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${CP_NAME}_${current_time}"
+TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${NAME}_${current_time}"
 mkdir -p ${TENSORBOARD_DIR}
 
-CONTINUE_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${CP_NAME}"
+SAVED_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 
 megatron_options=" \
         --load ${PRETRAIN_CHECKPOINT_PATH} \
-        --save ${CONTINUE_PRETRAIN_CHECKPOINT_PATH} \
+        --save ${SAVED_PRETRAIN_CHECKPOINT_PATH} \
         --data-path ${DATASET_PATH} \
         --split 98,2,0 \
         --data-impl mmap \
