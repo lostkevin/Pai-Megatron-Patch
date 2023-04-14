@@ -1,3 +1,15 @@
+Metadata-Version: 2.1
+Name: trlx
+Version: 0.5.0
+Summary: A repo for distributed training of language models with Reinforcement Learning via Human Feedback (RLHF)
+Home-page: https://github.com/CarperAI/trlx
+Author: Alex Havrilla
+License: MIT
+Description-Content-Type: text/markdown
+Provides-Extra: bnb
+Provides-Extra: dev
+License-File: LICENSE
+
 
 [![DOI](https://zenodo.org/badge/545104023.svg)](https://zenodo.org/badge/latestdoi/545104023)
 
