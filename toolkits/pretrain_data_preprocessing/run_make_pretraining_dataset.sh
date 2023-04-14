@@ -1,12 +1,11 @@
 #! /bin/bash
-MEGATRON_PATH=/workspace/PAI-Megatron-Patch/Megatron-LM
-PATCH_PATH=/workspace/PAI-Megatron-Patch
-export PYTHONPATH=${PATCH_PATH}:${MEGATRON_PATH}:$PYTHONPATH
-
 START_TIME=$SECONDS
-input_data_dir=$1
-tokenizer=$2
-output_data_dir=$3
+MEGATRON_PATH=$1
+MEGATRON_PATCH_PATH=$2
+export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
+input_data_dir=$3
+tokenizer=$4
+output_data_dir=$5
 
 INPUT="${input_data_dir}/00.jsonl.zst,"`
        `"${input_data_dir}/01.jsonl.zst,"`
