@@ -18,6 +18,7 @@ import torch.nn.init as init
 from torch.nn.parameter import Parameter
 
 from megatron import get_args
+from megatron.core import mpu
 from megatron.core.parallel_state import (get_tensor_model_parallel_rank,
                                           get_tensor_model_parallel_world_size)
 from megatron.core.tensor_parallel.layers import (
@@ -70,10 +71,8 @@ class VocabParallelEmbedding(torch.nn.Module):
                 self.tensor_model_parallel_size)
         self.num_embeddings_per_partition = self.vocab_end_index - \
             self.vocab_start_index
-
         args = get_args()
-
-        if args.embed_layernorm:
+        if mpu.is_pipeline_first_stage() and args.embed_layernorm:
             from megatron.model.fused_layer_norm\
                 import MixedFusedLayerNorm as LayerNorm
             self.norm = LayerNorm(embedding_dim)
