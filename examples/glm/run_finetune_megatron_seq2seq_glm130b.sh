@@ -1,4 +1,5 @@
 #!/bin/bash
+# sh run_finetune_megatron_seq2seq_glm130b.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 2B 4 608 160 5e-6 5e-7 bf16 1 1 sel true false false cnn_dm_original /mnt/GLM-datasets/cnn_dm/  /mnt/glm-ckpts/blocklm-2b-512-to-megatron/ 10 /mnt/output_megatron_glm
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -6,12 +7,12 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=0
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=8
+GPUS_PER_NODE=1
 
 elif [ $ENV = dlc ]; then
 
@@ -25,38 +26,53 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 
 MODEL_SIZE=$4
 BATCH_SIZE=$5
-SEQ_LEN=$6
-LR=$7
-MIN_LR=$8
-PR=$9
-TP=${10}
-PP=${11}
-AC=${12}
-DO=${13}
-SP=${14}
-TRAIN_DATASET_PATH=${15}
-VALID_DATASET_PATH=${16}
-PRETRAIN_CHECKPOINT_PATH=${17}
-EPOCH=${18}
-OUTPUT_BASEPATH=${19}
+SOURCE_SEQ_LEN=$6
+TARGET_SEQ_LEN=$7
+LR=$8
+MIN_LR=$9
+PR=${10}
+TP=${11}
+PP=${12}
+AC=${13}
+DO=${14}
+FL=${15}
+SP=${16}
+TASK=${17}
+DATASET_DIR=${18}
+PRETRAIN_CHECKPOINT_PATH=${19}
+EPOCH=${20}
+OUTPUT_BASEPATH=${21}
 
-if [ $MODEL_SIZE = 1.1B ]; then
 
-NUM_LAYERS=24
-HIDDEN_SIZE=1536
-NUM_ATTN_HEADS=16
+if [ ! -f gpt2-vocab.json ]; then
+  wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-vocab.json
+fi
 
-elif [ $MODEL_SIZE = 1.7B ]; then
+if [ ! -f gpt2-merges.txt ]; then
+  wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-merges.txt
+fi
 
-NUM_LAYERS=24
+
+if [ $MODEL_SIZE = 2B ]; then
+
+NUM_LAYERS=36
 HIDDEN_SIZE=2048
-NUM_ATTN_HEADS=16
-
-elif [ $MODEL_SIZE = 7.1B ]; then
-
-NUM_LAYERS=30
-HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
+SEQ_LEN=1024
+
+elif [ $MODEL_SIZE = 10B ]; then
+
+NUM_LAYERS=48
+HIDDEN_SIZE=4096
+NUM_ATTN_HEADS=64
+SEQ_LEN=1024
+
+elif [ $MODEL_SIZE = 130B ]; then
+
+NUM_LAYERS=70
+HIDDEN_SIZE=12288
+NUM_ATTN_HEADS=96
+SEQ_LEN=2048
 
 fi
 
@@ -89,6 +105,15 @@ elif [ $DO = false ]; then
                     "
 fi
 
+if [ $FL = true ]; then
+    flash_options=" \
+		    --use-flash-attn"
+
+elif [ $FL = false ]; then
+    flash_options=" \
+                    "
+fi
+
 if [ $SP = true ] && [ $TP -gt 1 ]; then
     sp_options=" \
 		    --sequence-parallel"
@@ -98,7 +123,7 @@ elif [ $SP = false ]; then
                     "
 fi
 
-NAME="${ENV}-finetune-megatron-bloom-${MODEL_SIZE}-ep-${EPOCH}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}"
+NAME="${ENV}-finetune-megatron-bloom-${MODEL_SIZE}-ep-${EPOCH}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-fl-${FL}-sp-${SP}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
@@ -111,8 +136,6 @@ FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 megatron_options="  \
         --load ${PRETRAIN_CHECKPOINT_PATH} \
         --save ${FINETUNE_CHECKPOINT_PATH} \
-        --train-data ${TRAIN_DATASET_PATH} \
-        --valid-data ${VALID_DATASET_PATH} \
         --num-layers ${NUM_LAYERS} \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
@@ -123,13 +146,14 @@ megatron_options="  \
         --epochs ${EPOCH} \
         --lr ${LR} \
         --min-lr ${MIN_LR} \
-        --lr-decay-style cosine \
+        --lr-decay-style linear \
+        --lr-warmup-fraction 0.06 \
         --weight-decay 0.1 \
         --clip-grad 1.0 \
         --adam-beta1 0.9 \
         --adam-beta2 0.95 \
         --init-method-std 0.01 \
-        --num-workers 8\
+        --num-workers 0\
         --log-interval 1 \
         --eval-interval 100 \
         --eval-iters 10 \
@@ -144,15 +168,17 @@ megatron_options="  \
         --DDP-impl local\
         --tensor-model-parallel-size ${TP} \
         --pipeline-model-parallel-size ${PP} \
-        --patch-tokenizer-type BloomTokenizerFromHF \
-        --embed-layernorm \
-        --glu-activation geglu \
-        --position-embedding-type alibi
+        --source-seq-len ${SOURCE_SEQ_LEN} \
+        --target-seq-len ${TARGET_SEQ_LEN} \
+        --task ${TASK} \
+        --data-dir ${DATASET_DIR} \
+        --patch-tokenizer-type IcetkGLM130BTokenizer \
+        --position-embedding-type block \
+        --openai-gelu
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_bloom.py
-${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options}"
-
+run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_seq2seq_glm.py
+${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
 
 echo ${run_cmd}
 eval ${run_cmd}

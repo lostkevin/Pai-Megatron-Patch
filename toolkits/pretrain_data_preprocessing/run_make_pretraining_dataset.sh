@@ -46,6 +46,17 @@ elif [ $tokenizer = "bloombpe" ]; then
   --workers 16 \
   --append-eod
 
+elif [ $tokenizer = "glmchinesebpe" ]; then
+
+  python preprocess_data.py \
+  --input ${INPUT} \
+  --language zh \
+  --output-prefix ${output_data_dir}/wudao_glmchinesebpe \
+  --dataset-impl mmap \
+  --patch-tokenizer-type GLM10BZHTokenizerFromHF \
+  --workers 16 \
+  --append-eod
+
 fi
 
 ELAPSED_TIME=$(($SECONDS - $START_TIME))

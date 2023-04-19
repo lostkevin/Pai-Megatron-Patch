@@ -8,7 +8,6 @@ PAI-Megatron-Patch是一款对开源Megatron框架进行非代码侵入设计的
 ```bash
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout 07916bf24553f0d635c4083a8dd5b31755caa82b
 ```
 
 3. 联系阿里云产品经理获取PAI-Megatron-Patch源代码并拷贝到工作目录/cpfs01/user/paigpt/下

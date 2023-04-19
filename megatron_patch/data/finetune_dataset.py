@@ -21,6 +21,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 from torch.utils.data import Dataset
 
+from .processor import SummmaryProcessor
+
 
 class AbstractDataset(ABC, Dataset):
     """GLUE base dataset class."""
@@ -345,15 +347,15 @@ class ChatGLMDataset(GPTDataset):
 
 
 class GLMDataset(GPTDataset):
-    def __init__(self, datapaths, tokenizer, max_seq_length):
+    def __init__(self, datapaths, tokenizer, max_source_seq_length,
+                 max_target_seq_length):
         self.tokenizer = tokenizer
-        self.max_seq_length = max_seq_length
         self.prompt = ''
         self.samples = []
         self.random = random.Random(1234)
         self.blank_maskratio = 0.1
         self.max_src_length, self.max_tgt_length =\
-            max_seq_length, max_seq_length
+            max_source_seq_length, max_target_seq_length
         for datapath in datapaths:
             self.samples.extend(
                 self.process_samples_from_single_path(datapath))
@@ -364,8 +366,7 @@ class GLMDataset(GPTDataset):
 
     def __getitem__(self, idx):
         raw_sample = self.samples[idx]
-        return self.gpt_convert_example_to_feature(raw_sample, self.tokenizer,
-                                                   self.max_seq_length)
+        return self.gpt_convert_example_to_feature(raw_sample, self.tokenizer)
 
     def process_samples_from_single_path(self, filename):
         print(' > Processing {} ...'.format(filename))
@@ -373,9 +374,9 @@ class GLMDataset(GPTDataset):
         total = 0
         with open(filename, encoding='utf-8-sig') as f:
             for example in f:
-                text = json.loads(example)['text']
-                prompt = text.split('\n')[0]
-                answer = text.replace(prompt, '').strip()
+                json_obj = json.loads(example)
+                prompt = json_obj['question']
+                answer = json_obj['answer']
                 source_tokenized_text = self.tokenizer._tokenize(prompt)
                 target_tokenized_text = self.tokenizer._tokenize(answer)
                 sample = {
@@ -406,14 +407,13 @@ class GLMDataset(GPTDataset):
             masked_src += ' ' + token
         return masked_src, masked_tgt
 
-    def gpt_convert_example_to_feature(self, sample, tokenizer,
-                                       max_seq_length):
-        source_text, _ = sample['source'], sample['target']
+    def gpt_convert_example_to_feature(self, sample, tokenizer):
+        # GLM BlankLMDataset
+        source_text = sample['target']
         mask_id = tokenizer.mask_token_id
-        sop_id = tokenizer.bos_token_id
+        sop_id = tokenizer.cls_token_id
         eop_id = tokenizer.eop_token_id
         pad_id = tokenizer.pad_token_id
-
         masked_src, masked_tgt = self.mask_text(source_text)
         source_text = masked_src
 
@@ -424,7 +424,7 @@ class GLMDataset(GPTDataset):
                 text = text + [pad_id] * (max_len - len(text))
             return text
 
-        source_tokens = tokenizer(source_text)['input_ids']
+        source_tokens = tokenizer.convert_tokens_to_ids(source_text.split())
         source_tokens = pad_to(source_tokens, self.max_src_length, pad_id)
         sep = len(source_tokens)
         position_ids = list(range(len(source_tokens)))
@@ -438,14 +438,16 @@ class GLMDataset(GPTDataset):
         loss_mask = [0] * len(source_tokens)
         for i, mask_pos in enumerate(mask_positions):
             tgt_text = masked_tgt[i]
-            tgt_tokens = tokenizer(tgt_text)['input_ids']
+            tgt_tokens = tokenizer.convert_tokens_to_ids(tgt_text.split())
             tokens += [sop_id] + tgt_tokens
             target_ids += tgt_tokens + [eop_id]
             loss_mask += [1] * (len(tgt_tokens) + 1)
             position_ids += [mask_pos] * (len(tgt_tokens) + 1)
             block_position_ids += [i + 1 for i in range(len(tgt_tokens) + 1)]
+
         max_length = self.max_src_length + int(
             self.max_src_length * self.blank_maskratio)
+
         tokens = pad_to(tokens, max_length, pad_id)
         target_ids = pad_to(target_ids, max_length, pad_id)
         loss_mask = pad_to(loss_mask, max_length, 0)
@@ -461,3 +463,245 @@ class GLMDataset(GPTDataset):
         }
 
         return train_sample
+
+
+class GLMSeq2SeqDataset(GPTDataset):
+    def __init__(self, data_dir, task, tokenizer, max_source_seq_length,
+                 max_target_seq_length):
+        self.tokenizer = tokenizer
+        self.data_dir = data_dir
+        self.task = task
+        self.max_src_length, self.max_tgt_length =\
+            max_source_seq_length, max_target_seq_length
+        from megatron import get_args
+        args = get_args()
+        if args.patch_tokenizer_type == 'GLMGPT2BPETokenizer':
+            self.cls_id = self.tokenizer.get_command('ENC').Id
+            self.mask_token = 'sMASK'
+            self.mask_id = self.tokenizer.get_command(self.mask_token).Id
+            self.pad_id = self.tokenizer.get_command('pad').Id
+            self.sop_id = self.tokenizer.get_command('sop').Id
+            self.eop_id = self.tokenizer.get_command('eop').Id
+
+        elif args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
+            self.mask_token = '[sMASK]'
+            self.cls_id = self.tokenizer.get_command('ENC')
+            self.mask_id = self.tokenizer.get_command(self.mask_token)
+            self.pad_id = 0
+            self.sop_id = self.tokenizer.get_command('sop')
+            self.eop_id = self.tokenizer.get_command('eop')
+
+        self.split = 'train'
+        if self.task in ['gigaword', 'cnn_dm', 'cnn_dm_original']:
+            self.processor = SummmaryProcessor(self.task, self.data_dir,
+                                               tokenizer)
+        self.samples = self.processor.create_examples('train')
+        print('  >> total number of samples: {}'.format(len(self.samples)))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        raw_sample = self.samples[idx]
+        return self.gpt_convert_example_to_feature(raw_sample, self.tokenizer)
+
+    def gpt_convert_example_to_feature(self, sample, tokenizer):
+        source_text, target_text = sample['text_a'], sample['text_b']
+        source_tokens = self.tokenizer.EncodeAsIds(' ' +
+                                                   source_text).tokenization
+        prompt = [self.cls_id, self.mask_id
+                  ] + self.tokenizer.EncodeAsIds(' Content:').tokenization
+        if len(source_tokens) > self.max_src_length - len(prompt):
+            source_tokens = source_tokens[:self.max_src_length - len(prompt)]
+        source_tokens = prompt + source_tokens
+
+        if len(source_tokens) < self.max_src_length:
+            source_tokens = source_tokens + [self.pad_id] * (
+                self.max_src_length - len(source_tokens))
+        sep = len(source_tokens)
+        position_ids = list(range(len(source_tokens)))
+        block_position_ids = [0] * len(source_tokens)
+        mask_pos = source_tokens.index(self.mask_id)
+        if self.split == 'train':
+            target_tokens = self.tokenizer.EncodeAsIds(
+                ' ' + target_text).tokenization
+            target_tokens = target_tokens + [self.eop_id]
+            if len(target_tokens) > self.max_tgt_length:
+                target_tokens = target_tokens[:self.max_tgt_length]
+                target_truncated = True
+            loss_mask = [1] * len(target_tokens)
+            if len(target_tokens) < self.max_tgt_length:
+                loss_mask += [0] * (self.max_tgt_length - len(target_tokens))
+                target_tokens += [self.pad_id] * (self.max_tgt_length -
+                                                  len(target_tokens))
+            tokens = source_tokens + [self.sop_id] + target_tokens[:-1]
+            loss_mask = [0] * len(source_tokens) + loss_mask
+            target_ids = [0] * len(source_tokens) + target_tokens
+            position_ids += [mask_pos] * len(target_tokens)
+            block_position_ids += list(range(1, len(target_tokens) + 1))
+            position_ids = [position_ids, block_position_ids]
+            train_sample = {
+                'text': np.array(tokens, dtype=np.int64),
+                'target': np.array(target_ids, dtype=np.int64),
+                'attention_mask': np.array(sep, dtype=np.int64),
+                'loss_mask': np.array(loss_mask, dtype=np.int64),
+                'position_id': np.array(position_ids, dtype=np.int64)
+            }
+
+            return train_sample
+
+
+class Seq2SeqDataset_old(GPTDataset):
+    def __init__(self, args, split, tokenizer):
+        self.args = args
+        self.task, self.data_dir = args.task.lower(), args.data_dir
+        self.max_src_length, self.max_tgt_length = args.source_seq_len, args.target_seq_len
+        self.split = split
+        self.tokenizer = tokenizer
+        self.dataset_name = split
+        if self.task in ['gigaword', 'cnn_dm', 'cnn_dm_original']:
+            self.processor = SummmaryProcessor(self.task, self.data_dir,
+                                               tokenizer)
+
+        example_list = self.processor.create_examples(split)
+        self.example_list = example_list
+        self.examples = {example['guid']: example for example in example_list}
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        example = self.example_list[idx]
+        cls_id = self.tokenizer.get_command('ENC').Id
+        mask_token = 'sMASK' if self.args.task_mask else 'MASK'
+        mask_id = self.tokenizer.get_command(mask_token).Id
+        pad_id = self.tokenizer.get_command('pad').Id
+        sop_id = self.tokenizer.get_command('sop').Id
+        eop_id = self.tokenizer.get_command('eop').Id
+        if self.task in ['gigaword', 'cnn_dm', 'cnn_dm_original', 'xsum']:
+            source_text, target_text = example.text_a, example.text_b
+            source_tokens = self.tokenizer.EncodeAsIds(
+                ' ' + source_text).tokenization
+            prompt = [cls_id, mask_id
+                      ] + self.tokenizer.EncodeAsIds(' Content:').tokenization
+            if len(source_tokens) > self.max_src_length - len(prompt):
+                source_tokens = source_tokens[:self.max_src_length -
+                                              len(prompt)]
+            source_tokens = prompt + source_tokens
+        elif self.task == 'squad_generation':
+            source_text = example.text_a
+            target_text, answer = example.meta['question'], example.meta[
+                'answer']
+            source_tokens = self.tokenizer.EncodeAsIds(
+                source_text.rstrip() + ' Question:').tokenization
+            answer_tokens = self.tokenizer.EncodeAsIds(' Answer: ' +
+                                                       answer).tokenization
+            if len(source_tokens
+                   ) > self.max_src_length - len(answer_tokens) - 2:
+                max_src_length = self.max_src_length - len(answer_tokens) - 2
+                answer_pattern = self.tokenizer.EncodeAsIds(
+                    ' ' + answer).tokenization
+
+                def sub_finder(mylist, pattern):
+                    matches = []
+                    for i in range(len(mylist)):
+                        if mylist[i] == pattern[0] and mylist[
+                                i:i + len(pattern)] == pattern:
+                            matches.append(i)
+                    return matches
+
+                answer_indices = sub_finder(source_tokens, answer_pattern)
+                if len(answer_indices) == 0:
+                    print(f'Answer {answer} not exists in the source text')
+                    source_tokens = source_tokens[:max_src_length]
+                else:
+                    start_index = max(answer_indices[0] - max_src_length // 2,
+                                      0)
+                    source_tokens = source_tokens[start_index:start_index +
+                                                  max_src_length]
+            source_tokens = [cls_id] + source_tokens + [mask_id
+                                                        ] + answer_tokens
+        elif self.task in ['squad', 'squad_v1']:
+            source_text = example.text_a
+            target_text = example.meta['answer'].strip()
+            question = example.meta['question'].strip()
+            source_tokens = self.tokenizer.EncodeAsIds(
+                ' ' + source_text.rstrip()).tokenization
+            question_tokens = self.tokenizer.EncodeAsIds(' ' +
+                                                         question).tokenization
+            period_id = self.tokenizer.TokenToId('.')
+            max_src_length = self.max_src_length - len(question_tokens) - 3
+            if max_src_length <= 0:
+                print(question)
+            assert max_src_length > 0
+            source_tokens = [cls_id] + question_tokens + [
+                mask_id, period_id
+            ] + source_tokens[:max_src_length]
+        elif self.task in ['cmrc']:
+            mask_id = self.tokenizer.get_command('MASK').Id
+            source_text = example.text_a
+            target_text = example.meta['answer'].strip()
+            question = example.meta['question'].strip()
+            source_tokens = self.tokenizer.EncodeAsIds(
+                source_text.rstrip()).tokenization
+            question_tokens = self.tokenizer.EncodeAsIds('问题：' + question +
+                                                         '答案：').tokenization
+            max_src_length = self.max_src_length - len(question_tokens) - 2
+            if max_src_length <= 0:
+                print(question)
+                question_tokens = question_tokens[self.max_src_length // 4]
+            source_tokens = [cls_id] + question_tokens + [
+                mask_id
+            ] + source_tokens[:max_src_length]
+        else:
+            raise NotImplementedError
+        if len(source_tokens) < self.max_src_length:
+            source_tokens = source_tokens + [pad_id] * (self.max_src_length -
+                                                        len(source_tokens))
+        sep = len(source_tokens)
+        position_ids = list(range(len(source_tokens)))
+        block_position_ids = [0] * len(source_tokens)
+        mask_pos = source_tokens.index(mask_id)
+        if self.split == 'train':
+            target_tokens = self.tokenizer.EncodeAsIds(
+                ' ' + target_text).tokenization
+            target_tokens = target_tokens + [eop_id]
+            if len(target_tokens) > self.max_tgt_length:
+                target_tokens = target_tokens[:self.max_tgt_length]
+                target_truncated = True
+            loss_mask = [1] * len(target_tokens)
+            if len(target_tokens) < self.max_tgt_length:
+                loss_mask += [0] * (self.max_tgt_length - len(target_tokens))
+                target_tokens += [pad_id] * (self.max_tgt_length -
+                                             len(target_tokens))
+            tokens = source_tokens + [sop_id] + target_tokens[:-1]
+            loss_mask = [0] * len(source_tokens) + loss_mask
+            target_ids = [0] * len(source_tokens) + target_tokens
+            position_ids += [mask_pos] * len(target_tokens)
+            if self.args.no_block_position:
+                block_position_ids += [1] * len(target_tokens)
+            else:
+                block_position_ids += list(range(1, len(target_tokens) + 1))
+            position_ids = [position_ids, block_position_ids]
+            import pdb
+            pdb.set_trace()
+            sample = {
+                'text': np.array(tokens, dtype=np.int64),
+                'target': np.array(target_ids, dtype=np.int64),
+                'attention_mask': np.array(sep, dtype=np.int64),
+                'loss_mask': np.array(loss_mask, dtype=np.int64),
+                'position_id': np.array(position_ids, dtype=np.int64),
+                'uid': example.guid
+            }
+        else:
+            tokens = source_tokens + [sop_id]
+            position_ids = position_ids + [mask_pos]
+            block_position_ids = block_position_ids + [1]
+            position_ids = [position_ids, block_position_ids]
+            sample = {
+                'text': np.array(tokens, dtype=np.int64),
+                'attention_mask': np.array(sep, dtype=np.int64),
+                'position_id': np.array(position_ids, dtype=np.int64),
+                'uid': example.guid
+            }
+        return sample

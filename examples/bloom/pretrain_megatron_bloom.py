@@ -19,12 +19,16 @@ import torch
 from megatron import get_args, get_timers, print_rank_0
 from megatron.core import tensor_parallel
 from megatron.data.gpt_dataset import build_train_valid_test_datasets
-from megatron.model import ModelType
 from megatron.utils import (average_losses_across_data_parallel_group,
                             get_ltor_masks_and_position_ids)
 from megatron_patch.model.bloom.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import pretrain
+
+try:
+    from megatron.model import ModelType
+except:
+    from megatron.core.enums import ModelType
 
 
 def get_tasks_args(parser):
