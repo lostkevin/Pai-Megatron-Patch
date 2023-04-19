@@ -474,8 +474,8 @@ class GLMSeq2SeqDataset(GPTDataset):
         self.max_src_length, self.max_tgt_length =\
             max_source_seq_length, max_target_seq_length
         from megatron import get_args
-        args = get_args()
-        if args.patch_tokenizer_type == 'GLMGPT2BPETokenizer':
+        self.args = get_args()
+        if self.args.patch_tokenizer_type == 'GLMGPT2BPETokenizer':
             self.cls_id = self.tokenizer.get_command('ENC').Id
             self.mask_token = 'sMASK'
             self.mask_id = self.tokenizer.get_command(self.mask_token).Id
@@ -483,7 +483,7 @@ class GLMSeq2SeqDataset(GPTDataset):
             self.sop_id = self.tokenizer.get_command('sop').Id
             self.eop_id = self.tokenizer.get_command('eop').Id
 
-        elif args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
+        elif self.args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
             self.mask_token = '[sMASK]'
             self.cls_id = self.tokenizer.get_command('ENC')
             self.mask_id = self.tokenizer.get_command(self.mask_token)
@@ -507,10 +507,17 @@ class GLMSeq2SeqDataset(GPTDataset):
 
     def gpt_convert_example_to_feature(self, sample, tokenizer):
         source_text, target_text = sample['text_a'], sample['text_b']
-        source_tokens = self.tokenizer.EncodeAsIds(' ' +
-                                                   source_text).tokenization
-        prompt = [self.cls_id, self.mask_id
-                  ] + self.tokenizer.EncodeAsIds(' Content:').tokenization
+
+        if self.args.patch_tokenizer_type == 'GLMGPT2BPETokenizer':
+            source_tokens = self.tokenizer.EncodeAsIds(' ' +
+                                                       source_text).tokenization
+            prompt = [self.cls_id, self.mask_id
+                      ] + self.tokenizer.EncodeAsIds(' Content:').tokenization
+        elif self.args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
+            source_tokens = self.tokenizer.tokenizer.encode(' ' +source_text)
+            prompt = [self.cls_id, self.mask_id
+                      ] + self.tokenizer.tokenizer.encode(' Content:')
+
         if len(source_tokens) > self.max_src_length - len(prompt):
             source_tokens = source_tokens[:self.max_src_length - len(prompt)]
         source_tokens = prompt + source_tokens
@@ -523,8 +530,13 @@ class GLMSeq2SeqDataset(GPTDataset):
         block_position_ids = [0] * len(source_tokens)
         mask_pos = source_tokens.index(self.mask_id)
         if self.split == 'train':
-            target_tokens = self.tokenizer.EncodeAsIds(
-                ' ' + target_text).tokenization
+            if self.args.patch_tokenizer_type == 'GLMGPT2BPETokenizer':
+                target_tokens = self.tokenizer.EncodeAsIds(
+                    ' ' + target_text).tokenization
+            elif self.args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
+                target_tokens = self.tokenizer.tokenizer.encode(
+                    ' ' + target_text)
+
             target_tokens = target_tokens + [self.eop_id]
             if len(target_tokens) > self.max_tgt_length:
                 target_tokens = target_tokens[:self.max_tgt_length]
