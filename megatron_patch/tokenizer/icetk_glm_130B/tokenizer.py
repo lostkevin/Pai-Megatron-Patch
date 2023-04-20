@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,17 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Megatron tokenizers."""
 
-from abc import ABC
-from abc import abstractmethod
+from abc import ABC, abstractmethod
+
 from transformers import AutoTokenizer
 
 
 class AbstractTokenizer(ABC):
     """Abstract class for tokenizer."""
-
     def __init__(self, name):
         self.name = name
         super().__init__()
@@ -76,4 +73,3 @@ class AbstractTokenizer(ABC):
     def mask(self):
         raise NotImplementedError('MASK is not provided for {} '
                                   'tokenizer'.format(self.name))
-

@@ -545,6 +545,7 @@ class TransformerLanguageModel(MegatronModule):
             enc_attn_mask = build_mask_matrix(query_length,
                                               sep,
                                               memory_length=0)
+            enc_attn_mask = enc_attn_mask.to(torch.bool)
 
         # Run encoder.
         if enc_hidden_states is None:

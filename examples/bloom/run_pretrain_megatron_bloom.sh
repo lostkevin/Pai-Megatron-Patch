@@ -117,7 +117,6 @@ SAVED_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 megatron_options=" \
         --load ${PRETRAIN_CHECKPOINT_PATH} \
         --save ${SAVED_PRETRAIN_CHECKPOINT_PATH} \
-        --data-path ${DATASET_PATH} \
         --split 98,2,0 \
         --data-impl mmap \
         --data-path ${DATASET_PATH}

@@ -64,6 +64,9 @@ class Encoder(object):
                 elif self.args.patch_tokenizer_type == \
                         'GLM10BZHTokenizerFromHF':
                     doc_ids[-1].append(Encoder.tokenizer.eos_token_id)
+                elif self.args.patch_tokenizer_type == \
+                        'IcetkGLM130BTokenizer':
+                    doc_ids[-1].append(Encoder.tokenizer.get_command('eod'))
                 else:
                     raise ValueError('please setting correct tokenier')
             ids[key] = doc_ids
@@ -93,7 +96,7 @@ def get_args():
         choices=[
             'JiebaBPETokenizer', 'BloomTokenizerFromHF',
             'ChatGLMTokenizerFromHF', 'GPT2BPETokenizer',
-            'GLM10BZHTokenizerFromHF'
+            'GLM10BZHTokenizerFromHF', 'IcetkGLM130BTokenizer'
         ],
         help='What type of tokenizer to use.',
     )

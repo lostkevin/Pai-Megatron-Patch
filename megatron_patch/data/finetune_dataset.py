@@ -21,8 +21,6 @@ from abc import ABC, abstractmethod
 import numpy as np
 from torch.utils.data import Dataset
 
-from .processor import SummmaryProcessor
-
 
 class AbstractDataset(ABC, Dataset):
     """GLUE base dataset class."""
@@ -271,7 +269,7 @@ class BloomDataset(GPTDataset):
                                        max_seq_length):
         tokens = tokenizer(sample['prompt'])
         input_ids = tokens['input_ids']
-        input_ids = self.truncate(tokenizer, input_ids, max_seq_length)
+        input_ids = self.truncate(tokenizer, input_ids, max_seq_length + 1)
         train_sample = {'input_ids': np.array(input_ids)}
         return train_sample
 
@@ -468,6 +466,7 @@ class GLMDataset(GPTDataset):
 class GLMSeq2SeqDataset(GPTDataset):
     def __init__(self, data_dir, task, tokenizer, max_source_seq_length,
                  max_target_seq_length):
+        from .processor import SummmaryProcessor
         self.tokenizer = tokenizer
         self.data_dir = data_dir
         self.task = task
@@ -509,12 +508,12 @@ class GLMSeq2SeqDataset(GPTDataset):
         source_text, target_text = sample['text_a'], sample['text_b']
 
         if self.args.patch_tokenizer_type == 'GLMGPT2BPETokenizer':
-            source_tokens = self.tokenizer.EncodeAsIds(' ' +
-                                                       source_text).tokenization
+            source_tokens = self.tokenizer.EncodeAsIds(
+                ' ' + source_text).tokenization
             prompt = [self.cls_id, self.mask_id
                       ] + self.tokenizer.EncodeAsIds(' Content:').tokenization
         elif self.args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
-            source_tokens = self.tokenizer.tokenizer.encode(' ' +source_text)
+            source_tokens = self.tokenizer.tokenizer.encode(' ' + source_text)
             prompt = [self.cls_id, self.mask_id
                       ] + self.tokenizer.tokenizer.encode(' Content:')
 
@@ -534,8 +533,8 @@ class GLMSeq2SeqDataset(GPTDataset):
                 target_tokens = self.tokenizer.EncodeAsIds(
                     ' ' + target_text).tokenization
             elif self.args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
-                target_tokens = self.tokenizer.tokenizer.encode(
-                    ' ' + target_text)
+                target_tokens = self.tokenizer.tokenizer.encode(' ' +
+                                                                target_text)
 
             target_tokens = target_tokens + [self.eop_id]
             if len(target_tokens) > self.max_tgt_length:
@@ -565,6 +564,7 @@ class GLMSeq2SeqDataset(GPTDataset):
 
 class Seq2SeqDataset_old(GPTDataset):
     def __init__(self, args, split, tokenizer):
+        from .processor import SummmaryProcessor
         self.args = args
         self.task, self.data_dir = args.task.lower(), args.data_dir
         self.max_src_length, self.max_tgt_length = args.source_seq_len, args.target_seq_len

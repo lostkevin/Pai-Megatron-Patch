@@ -17,12 +17,17 @@ from functools import partial
 import torch
 
 from megatron import get_args
-from megatron.initialize import initialize_megatron
+from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
-from megatron_patch.data.finetune_dataset import GLMSeq2SeqDataset
-from megatron_patch.finetune_utils import finetune
+from megatron_patch.data.pretrain_dataset import build_pretrain_glm_datasets
 from megatron_patch.model.glm.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.training import pretrain
+
+try:
+    from megatron.model import ModelType
+except:
+    from megatron.core.enums import ModelType
 
 
 def get_tasks_args(parser):
@@ -81,6 +86,8 @@ def get_tasks_args(parser):
 
 
 def model_provider(pre_process=True, post_process=True):
+    args = get_args()
+    build_tokenizer(args)
     model = GPTModel(num_tokentypes=0,
                      parallel_output=True,
                      pre_process=pre_process,
@@ -88,37 +95,40 @@ def model_provider(pre_process=True, post_process=True):
     return model
 
 
-def train_valid_datasets_provider():
+def train_valid_test_datasets_provider(train_val_test_num_samples):
     args = get_args()
-    tokenizer = build_tokenizer(args)
-    train_dataset = GLMSeq2SeqDataset(
-        data_dir=args.data_dir,
-        task=args.task,
-        tokenizer=tokenizer,
-        max_source_seq_length=args.source_seq_len,
-        max_target_seq_length=args.target_seq_len)
+    train_ds, valid_ds, test_ds = \
+        build_pretrain_glm_datasets(
+            data_prefix=args.data_path,
+            data_impl=args.data_impl,
+            splits_string=args.split,
+            train_valid_test_num_samples=train_val_test_num_samples,
+            max_seq_length=args.seq_length,
+            source_seq_length=args.source_seq_len,
+            target_seq_length=args.target_seq_len,
+            short_seq_prob=args.short_seq_prob,
+            seed=args.seed,
+            skip_warmup=(not args.mmap_warmup))
 
-    valid_dataset = GLMSeq2SeqDataset(
-        data_dir=args.data_dir,
-        task=args.task,
-        tokenizer=tokenizer,
-        max_source_seq_length=args.source_seq_len,
-        max_target_seq_length=args.target_seq_len)
-    return train_dataset, valid_dataset
+    return train_ds, valid_ds, test_ds
 
 
 def forward_step(data_iterator, model):
-    try:
-        data_iterator = next(data_iterator)
-    except BaseException:
-        data_iterator = data_iterator
 
-    tokens = data_iterator['text'].long().cuda()
-    labels = data_iterator['target'].long().cuda()
-    attention_mask = data_iterator['attention_mask'].long().cuda()
-    loss_mask = data_iterator['loss_mask'].float().cuda()
-    position_ids = data_iterator['position_id'].long().cuda()
+    keys = ['text', 'target', 'attention_mask', 'loss_mask', 'position_id']
+    datatype = torch.int64
+    # Broadcast data.
+    if data_iterator is not None:
+        data = next(data_iterator)
+    else:
+        data = None
 
+    data_b = tensor_parallel.broadcast_data(keys, data, datatype)
+    tokens = data_b['text'].long().cuda()
+    labels = data_b['target'].long().cuda()
+    attention_mask = data_b['attention_mask'].long().cuda()
+    loss_mask = data_b['loss_mask'].float().cuda()
+    position_ids = data_b['position_id'].long().cuda()
     output_tensor = model(tokens, position_ids, attention_mask, labels=labels)
 
     def loss_func(loss_mask, output_tensor):
@@ -132,10 +142,9 @@ def forward_step(data_iterator, model):
 
 
 if __name__ == '__main__':
-
-    initialize_megatron(extra_args_provider=get_tasks_args,
-                        args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
-
-    finetune(train_valid_datasets_provider=train_valid_datasets_provider,
-             model_provider=model_provider,
-             forward_step=forward_step)
+    pretrain(train_valid_test_datasets_provider,
+             model_provider,
+             ModelType.encoder_or_decoder,
+             forward_step,
+             extra_args_provider=get_tasks_args,
+             args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})

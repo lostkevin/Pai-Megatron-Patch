@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_finetune_megatron_seq2seq_glm.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 2B 4 608 160 5e-6 5e-7 bf16 1 1 sel true false cnn_dm_original /mnt/GLM-datasets/cnn_dm/  /mnt/glm-ckpts/blocklm-2b-512-to-megatron/ 10 /mnt/output_megatron_glm
+# sh run_finetune_megatron_seq2seq_glm.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 2B 4 512 512 5e-6 5e-7 bf16 1 1 sel true false false cnn_dm_original /mnt/GLM-datasets/cnn_dm/  /mnt/glm-ckpts/blocklm-2b-512-to-megatron/ 10 /mnt/output_megatron_glm
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -7,12 +7,12 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=0
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=8
+GPUS_PER_NODE=1
 
 elif [ $ENV = dlc ]; then
 
@@ -153,7 +153,7 @@ megatron_options="  \
         --adam-beta1 0.9 \
         --adam-beta2 0.95 \
         --init-method-std 0.01 \
-        --num-workers 0\
+        --num-workers 8 \
         --log-interval 1 \
         --eval-interval 100 \
         --eval-iters 10 \
@@ -172,14 +172,14 @@ megatron_options="  \
         --target-seq-len ${TARGET_SEQ_LEN} \
         --task ${TASK} \
         --data-dir ${DATASET_DIR} \
-        --patch-tokenizer-type GLMGPT2BPETokenizer \
+        --patch-tokenizer-type IcetkGLM130BTokenizer \
         --position-embedding-type block \
-        --openai-gelu \
-        --vocab-file gpt2-vocab.json \
-		    --merge-file gpt2-merges.txt \
+        --openai-gelu
         "
-
-run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_seq2seq_glm.py
+# -vocab-file gpt2-vocab.json \
+# --merge-file gpt2-merges.txt \
+# --patch-tokenizer-type GLMGPT2BPETokenizer \
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_seq2seq_glm.py
 ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
 
 echo ${run_cmd}
