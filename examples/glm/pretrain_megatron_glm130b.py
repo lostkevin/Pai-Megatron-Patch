@@ -21,12 +21,12 @@ from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.pretrain_dataset import build_pretrain_glm_datasets
 from megatron_patch.model.glm130b.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer
 from megatron_patch.training import pretrain
 
 try:
     from megatron.model import ModelType
-except:
+except Exception:
     from megatron.core.enums import ModelType
 
 

@@ -22,7 +22,7 @@ from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.finetune_dataset import GLMSeq2SeqDataset
 from megatron_patch.finetune_utils import finetune
 from megatron_patch.model.glm.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer
 
 
 def get_tasks_args(parser):

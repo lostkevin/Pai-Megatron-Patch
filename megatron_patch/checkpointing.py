@@ -226,7 +226,7 @@ def load_checkpoint(model,
     assert args.consumed_valid_samples == 0
     if 'args' in model_state_dict:
         checkpoint_args = model_state_dict['args']
-        #check_checkpoint_args(checkpoint_args)
+        # check_checkpoint_args(checkpoint_args)
         args.consumed_train_samples = getattr(checkpoint_args,
                                               'consumed_train_samples', 0)
         update_num_microbatches(consumed_samples=args.consumed_train_samples)
