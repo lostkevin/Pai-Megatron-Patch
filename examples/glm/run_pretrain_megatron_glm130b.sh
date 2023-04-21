@@ -6,12 +6,12 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=0
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=8
+GPUS_PER_NODE=1
 
 elif [ $ENV = dlc ]; then
 
@@ -178,12 +178,13 @@ megatron_options=" \
         --finetune \
         --source-seq-len ${SOURCE_SEQ_LEN} \
         --target-seq-len ${TARGET_SEQ_LEN} \
-        --openai-gelu \
-        --position-embedding-type block \
+        --no-position-embedding \
+        --swiglu \
+        --use-rotary-position-embeddings \
         --patch-tokenizer-type IcetkGLM130BTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_glm.py
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_glm130b.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options}"
 
 echo ${run_cmd}

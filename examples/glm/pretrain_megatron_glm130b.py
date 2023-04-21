@@ -20,7 +20,7 @@ from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.pretrain_dataset import build_pretrain_glm_datasets
-from megatron_patch.model.glm.gpt_model import GPTModel
+from megatron_patch.model.glm130b.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import pretrain
 
@@ -62,6 +62,10 @@ def get_tasks_args(parser):
                        'the data loader')
 
     group.add_argument('--data-dir', default=None, help='data-dir')
+
+    group.add_argument('--glu-activation',
+                       type=str,
+                       help='GLU activations to use.')
 
     group.add_argument('--train-data',
                        default=None,
