@@ -47,7 +47,8 @@ class Encoder(object):
         for key in self.args.jsonl_keys:
             doc_ids = []
             if self.args.patch_tokenizer_type == 'BloomTokenizerFromHF' or \
-                    self.args.patch_tokenizer_type == 'GLM10BZHTokenizerFromHF':
+                    self.args.patch_tokenizer_type ==\
+                    'GLM10BZHTokenizerFromHF':
                 text_ids = Encoder.tokenizer(text)['input_ids']
             else:
                 text_ids = Encoder.tokenizer.tokenize(text)

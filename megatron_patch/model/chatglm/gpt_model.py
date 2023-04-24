@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""GPT-2 model."""
 
 import torch
 
@@ -61,6 +62,7 @@ class GPTModel(MegatronModule):
         self.pre_process = pre_process
         self.post_process = post_process
         self.fp16_lm_cross_entropy = args.fp16_lm_cross_entropy
+        self.position_encoding_2d = args.position_encoding_2d
 
         self.language_model, self._language_model_key = get_language_model(
             num_tokentypes=num_tokentypes,
@@ -70,7 +72,8 @@ class GPTModel(MegatronModule):
             scaled_init_method=scaled_init_method_normal(
                 args.init_method_std, args.num_layers),
             pre_process=self.pre_process,
-            post_process=self.post_process)
+            post_process=self.post_process,
+            position_encoding_2d=self.position_encoding_2d)
 
         self.initialize_word_embeddings(init_method_normal)
 
@@ -80,10 +83,9 @@ class GPTModel(MegatronModule):
 
     def forward(self,
                 input_ids,
-                position_ids,
-                attention_mask,
+                position_ids=None,
+                attention_mask=None,
                 labels=None,
-                tokentype_ids=None,
                 inference_params=None):
 
         lm_output = self.language_model(input_ids,

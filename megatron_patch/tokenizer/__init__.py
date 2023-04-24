@@ -26,11 +26,6 @@ def build_tokenizer(args):
     if args.patch_tokenizer_type == 'JiebaBPETokenizer':
         from .jiebabpe_tokenizer import JiebaBPETokenizer
         tokenizer = JiebaBPETokenizer(args.patch_vocab_file)
-    elif args.patch_tokenizer_type == 'GLMGPT2BPETokenizer':
-        from .glm_gpt2bpe_tokenizer import GLMGPT2BPETokenizer
-        tokenizer = GLMGPT2BPETokenizer(vocab_file=args.vocab_file,
-                                        merge_file=args.merge_file)
-        args.padded_vocab_size = 50304
     elif args.patch_tokenizer_type == 'BloomTokenizerFromHF':
         from transformers import BloomTokenizerFast as BloomTokenizer
         tokenizer = BloomTokenizer.from_pretrained('bigscience/bloom-560m')
@@ -47,7 +42,7 @@ def build_tokenizer(args):
                                                   trust_remote_code=True)
         args.padded_vocab_size = 50048
     elif args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
-        from .icetk_glm_130B import _IceTokenizer
+        from .icetk_glm130b_tokenizer import _IceTokenizer
         tokenizer = _IceTokenizer()
         """
         from .icetk_glm_130B.ice_tokenizer import GLM130BTokenizer
@@ -61,8 +56,8 @@ def build_tokenizer(args):
 
     if args.patch_tokenizer_type !=\
             'BloomTokenizerFromHF' and args.patch_tokenizer_type !=\
-            'ChatGLMTokenizerFromHF' and args.patch_tokenizer_type != 'GLM10BZHTokenizerFromHF'\
-            and args.patch_tokenizer_type != 'GLMGPT2BPETokenizer'\
+            'ChatGLMTokenizerFromHF' and\
+            args.patch_tokenizer_type != 'GLM10BZHTokenizerFromHF'\
             and args.patch_tokenizer_type != 'IcetkGLM130BTokenizer':
         args.padded_vocab_size = _vocab_size_with_padding(
             tokenizer.vocab_size, args)

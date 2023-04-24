@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import os
-import random
 import time
 
 import numpy as np
@@ -126,8 +125,8 @@ class GLMDataset(Dataset):
         for i, mask_pos in enumerate(mask_positions):
             tgt_token = target_tokens[i]
             tokens.extend([self.sop_id, tgt_token])
-            #tokens += [self.sop_id] + [tgt_tokens]
-            #target_ids += [tgt_tokens] + [self.eop_id]
+            # tokens += [self.sop_id] + [tgt_tokens]
+            # target_ids += [tgt_tokens] + [self.eop_id]
             target_ids.extend([tgt_token, self.eop_id])
             loss_mask += [1] * (1 + 1)
             position_ids += [mask_pos] * (1 + 1)

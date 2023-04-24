@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_finetune_megatron_seq2seq_glm.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 2B 4 512 512 5e-6 5e-7 bf16 1 1 sel true false false cnn_dm_original /mnt/GLM-datasets/cnn_dm/  /mnt/glm-ckpts/blocklm-2b-512-to-megatron/ 10 /mnt/output_megatron_glm
+#sh run_finetune_megatron_chatglm.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 6B 4 64 64 1e-4 1e-5 fp16 1 1 sel true false false /mnt/glm-datasets/AdvertiseGen/train.json /mnt/glm-datasets/AdvertiseGen/dev.json /mnt/glm-ckpts/chatglm-6b-to-megatron/ 2 /mnt/output_megatron_chatglm/
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -7,12 +7,12 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=1
+GPUS_PER_NODE=8
 
 elif [ $ENV = dlc ]; then
 
@@ -37,41 +37,18 @@ AC=${13}
 DO=${14}
 FL=${15}
 SP=${16}
-TASK=${17}
-DATASET_DIR=${18}
+TRAIN_DATASET_PATH=${17}
+VALID_DATASET_PATH=${18}
 PRETRAIN_CHECKPOINT_PATH=${19}
 EPOCH=${20}
 OUTPUT_BASEPATH=${21}
 
 
-if [ ! -f gpt2-vocab.json ]; then
-  wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-vocab.json
-fi
+if [ $MODEL_SIZE = 6B ]; then
 
-if [ ! -f gpt2-merges.txt ]; then
-  wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-merges.txt
-fi
-
-
-if [ $MODEL_SIZE = 2B ]; then
-
-NUM_LAYERS=36
-HIDDEN_SIZE=2048
-NUM_ATTN_HEADS=32
-SEQ_LEN=1024
-
-elif [ $MODEL_SIZE = 10B ]; then
-
-NUM_LAYERS=48
+NUM_LAYERS=28
 HIDDEN_SIZE=4096
-NUM_ATTN_HEADS=64
-SEQ_LEN=1024
-
-elif [ $MODEL_SIZE = 130B ]; then
-
-NUM_LAYERS=70
-HIDDEN_SIZE=12288
-NUM_ATTN_HEADS=96
+NUM_ATTN_HEADS=32
 SEQ_LEN=2048
 
 fi
@@ -123,64 +100,69 @@ elif [ $SP = false ]; then
                     "
 fi
 
-NAME="${ENV}-finetune-megatron-bloom-${MODEL_SIZE}-ep-${EPOCH}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-fl-${FL}-sp-${SP}"
+FT_NAME="${ENV}-finetune-megatron-chatglm-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
+OUTPUT_BASEPATH=/mnt/output_megatron_chatglm
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
 current_time=$(date "+%Y.%m.%d-%H.%M.%S")
-TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${NAME}_${current_time}"
+TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${FT_NAME}_${current_time}"
 mkdir -p ${TENSORBOARD_DIR}
 
-FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
+FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${FT_NAME}"
+LOGGING_PATH="${OUTPUT_BASEPATH}/log/${FT_NAME}_${current_time}"
 
 megatron_options="  \
         --load ${PRETRAIN_CHECKPOINT_PATH} \
         --save ${FINETUNE_CHECKPOINT_PATH} \
+        --train-data ${TRAIN_DATASET_PATH} \
+        --valid-data ${VALID_DATASET_PATH} \
         --num-layers ${NUM_LAYERS} \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
+        --source-seq-len ${SOURCE_SEQ_LEN} \
+        --target-seq-len ${TARGET_SEQ_LEN} \
         --seq-length ${SEQ_LEN} \
-        --max-position-embeddings ${SEQ_LEN} \
+        --max-position-embeddings ${SEQ_LEN}  \
         --keep-last \
         --micro-batch-size ${BATCH_SIZE} \
         --epochs ${EPOCH} \
         --lr ${LR} \
         --min-lr ${MIN_LR} \
-        --lr-decay-style linear \
-        --lr-warmup-fraction 0.06 \
+        --lr-decay-style cosine \
         --weight-decay 0.1 \
         --clip-grad 1.0 \
         --adam-beta1 0.9 \
         --adam-beta2 0.95 \
         --init-method-std 0.01 \
-        --num-workers 8 \
+        --num-workers 0\
         --log-interval 1 \
-        --eval-interval 100 \
+        --eval-interval 1000 \
         --eval-iters 10 \
-        --save-interval 100000000 \
+        --save-interval 1000000 \
         --tensorboard-queue-size 1 \
         --tensorboard-dir ${TENSORBOARD_DIR} \
         --log-timers-to-tensorboard \
         --log-batch-size-to-tensorboard \
         --log-validation-ppl-to-tensorboard \
-        --finetune \
-        --no-load-optim \
-        --DDP-impl local\
         --tensor-model-parallel-size ${TP} \
         --pipeline-model-parallel-size ${PP} \
-        --source-seq-len ${SOURCE_SEQ_LEN} \
-        --target-seq-len ${TARGET_SEQ_LEN} \
-        --task ${TASK} \
-        --data-dir ${DATASET_DIR} \
-        --patch-tokenizer-type IcetkGLM130BTokenizer \
-        --position-embedding-type block \
-        --openai-gelu
+        --finetune \
+        --DDP-impl local \
+        --no-load-optim \
+        --no-load-rng \
+        --seed 1234 \
+        --position-embedding-type rotary \
+        --apply-residual-connection-post-layernorm \
+        --openai-gelu \
+        --no-bias-gelu-fusion \
+        --position-encoding-2d \
+        --patch-tokenizer-type ChatGLMTokenizerFromHF
         "
-# -vocab-file gpt2-vocab.json \
-# --merge-file gpt2-merges.txt \
-# --patch-tokenizer-type GLMGPT2BPETokenizer \
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_seq2seq_glm.py
-${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
+
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_chatglm.py
+ ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
+
 
 echo ${run_cmd}
 eval ${run_cmd}

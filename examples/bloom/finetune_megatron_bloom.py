@@ -29,6 +29,11 @@ from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 def get_tasks_args(parser):
     group = parser.add_argument_group(title='bloom')
 
+    group.add_argument('--transformer-type',
+                       type=str,
+                       default='megatron',
+                       help='transformer-type')
+
     group.add_argument('--pretrained-checkpoint',
                        type=str,
                        default=None,

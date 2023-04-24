@@ -174,7 +174,7 @@ megatron_options=" \
         --DDP-impl local \
         --no-load-optim \
         --no-load-rng \
-        --num-workers 0 \
+        --num-workers 8 \
         --finetune \
         --source-seq-len ${SOURCE_SEQ_LEN} \
         --target-seq-len ${TARGET_SEQ_LEN} \
@@ -185,7 +185,7 @@ megatron_options=" \
         "
 
 run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_glm130b.py
- ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options}"
+ ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
 
 echo ${run_cmd}
 eval ${run_cmd}

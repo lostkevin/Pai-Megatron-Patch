@@ -9,8 +9,7 @@ from megatron.model.enums import AttnMaskType, LayerType
 from megatron.model.module import MegatronModule
 from megatron.model.retro_transformer import (ParallelRetroEncoder,
                                               ParallelRetroTransformer)
-from megatron.model.rotary_pos_embedding import (RotaryEmbedding,
-                                                 apply_rotary_pos_emb)
+from megatron.model.rotary_pos_embedding import RotaryEmbedding
 from megatron.model.utils import (get_linear_layer, init_method_normal,
                                   scaled_init_method_normal)
 
@@ -36,13 +35,14 @@ def parallel_lm_logits(input_,
         async_grad_allreduce = False
 
     # Matrix multiply.
-    logits_parallel = tensor_parallel.linear_with_grad_accumulation_and_async_allreduce(
-        input=input_parallel,
-        weight=word_embeddings_weight,
-        bias=bias,
-        gradient_accumulation_fusion=args.gradient_accumulation_fusion,
-        async_grad_allreduce=async_grad_allreduce,
-        sequence_parallel_enabled=args.sequence_parallel)
+    logits_parallel = \
+        tensor_parallel.linear_with_grad_accumulation_and_async_allreduce(
+            input=input_parallel,
+            weight=word_embeddings_weight,
+            bias=bias,
+            gradient_accumulation_fusion=args.gradient_accumulation_fusion,
+            async_grad_allreduce=async_grad_allreduce,
+            sequence_parallel_enabled=args.sequence_parallel)
     # Gather if needed.
 
     if parallel_output:
@@ -114,8 +114,9 @@ class Pooler(MegatronModule):
         # gather data along sequence dimensions
         # same pooler is run on all tensor parallel nodes
         if self.sequence_parallel:
-            hidden_states = tensor_parallel.gather_from_sequence_parallel_region(
-                hidden_states, tensor_parallel_output_grad=False)
+            gfpr = tensor_parallel.gather_from_sequence_parallel_region
+            hidden_states = gfpr(hidden_states,
+                                 tensor_parallel_output_grad=False)
 
         pooled = hidden_states[sequence_index, :, :]
         pooled = self.dense(pooled)
@@ -215,7 +216,6 @@ class Embedding(MegatronModule):
         self.tokentype_embeddings = torch.nn.Embedding(num_tokentypes,
                                                        self.hidden_size)
         # Initialize the token-type embeddings.
-        args = get_args()
         self.init_method(self.tokentype_embeddings.weight)
 
     def forward(self, input_ids, position_ids, tokentype_ids=None):
@@ -236,7 +236,8 @@ class Embedding(MegatronModule):
         # Data format change to avoid explicit tranposes : [b s h] --> [s b h].
         embeddings = embeddings.transpose(0, 1).contiguous()
 
-        # If the input flag for fp32 residual connection is set, convert for float.
+        # If the input flag for fp32 residual
+        # connection is set, convert for float.
         if self.fp32_residual_connection:
             embeddings = embeddings.float()
 
@@ -261,7 +262,7 @@ class Embedding(MegatronModule):
         if self.add_position_embedding:
             state_dict_[self._position_embeddings_key] \
                 = self.position_embeddings.state_dict(prefix=prefix,
-                                                  keep_vars=keep_vars)
+                                                      keep_vars=keep_vars)
         if self.num_tokentypes > 0:
             state_dict_[self._tokentype_embeddings_key] \
                 = self.tokentype_embeddings.state_dict(prefix=prefix,
@@ -343,8 +344,7 @@ class TransformerLanguageModel(MegatronModule):
                  pre_process=True,
                  post_process=True):
         args = get_args()
-        # TODO: passing share_word_embeddings=False will not work correctly for T5 and embeddings will not be synced. Fix later for T5.
-        if args.untie_embeddings_and_output_weights: assert not add_decoder
+
         super(TransformerLanguageModel, self).__init__(
             share_word_embeddings=not args.untie_embeddings_and_output_weights)
 
@@ -359,7 +359,8 @@ class TransformerLanguageModel(MegatronModule):
         self.decoder_attn_mask_type = decoder_attn_mask_type
         self.add_pooler = add_pooler
         self.encoder_hidden_state = None
-        self.untie_embeddings_and_output_weights = args.untie_embeddings_and_output_weights
+        self.untie_embeddings_and_output_weights =\
+            args.untie_embeddings_and_output_weights
 
         # Embeddings.
         if self.pre_process:
@@ -443,15 +444,6 @@ class TransformerLanguageModel(MegatronModule):
                 self.pooler = Pooler(self.hidden_size, self.init_method)
                 self._pooler_key = 'pooler'
 
-            if self.untie_embeddings_and_output_weights:
-                self.output_layer = tensor_parallel.ColumnParallelLinear(
-                    args.hidden_size,
-                    args.padded_vocab_size,
-                    bias=
-                    False,  # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
-                    init_method=self.init_method)
-                self._output_layer_key = 'output_layer'
-
     def set_input_tensor(self, input_tensor):
         """ See megatron.model.transformer.set_input_tensor()"""
 
@@ -462,11 +454,13 @@ class TransformerLanguageModel(MegatronModule):
 
         if self.add_encoder and self.add_decoder:
             assert len(input_tensor) == 1, \
-                'input_tensor should only be length 1 for stage with both encoder and decoder'
+                'input_tensor should only be length 1 ' \
+                'for stage with both encoder and decoder'
             self.encoder.set_input_tensor(input_tensor[0])
         elif self.add_encoder:
             assert len(input_tensor) == 1, \
-                'input_tensor should only be length 1 for stage with only encoder'
+                'input_tensor should only be length ' \
+                '1 for stage with only encoder'
             self.encoder.set_input_tensor(input_tensor[0])
         elif self.add_decoder:
             if len(input_tensor) == 2:
@@ -615,25 +609,24 @@ class TransformerLanguageModel(MegatronModule):
         state_dict_ = {}
         if self.pre_process:
             state_dict_[self._embedding_key] \
-                = self.embedding.state_dict_for_save_checkpoint(prefix=prefix,
-                                                                keep_vars=keep_vars)
+                = self.embedding.state_dict_for_save_checkpoint(
+                prefix=prefix, keep_vars=keep_vars)
+
         if self.add_encoder:
             state_dict_[self._encoder_key] \
-                = self.encoder.state_dict_for_save_checkpoint(prefix=prefix,
-                                                              keep_vars=keep_vars)
+                = self.encoder.state_dict_for_save_checkpoint(
+                prefix=prefix, keep_vars=keep_vars)
+
         if self.post_process:
             if self.add_pooler:
                 state_dict_[self._pooler_key] \
-                    = self.pooler.state_dict_for_save_checkpoint(prefix=prefix,
-                                                                 keep_vars=keep_vars)
-            if self.untie_embeddings_and_output_weights:
-                state_dict_[self._output_layer_key] \
-                    = self.output_layer.state_dict(prefix=prefix, keep_vars=keep_vars)
+                    = self.pooler.state_dict_for_save_checkpoint(
+                    prefix=prefix, keep_vars=keep_vars)
 
         if self.add_decoder:
             state_dict_[self._decoder_key] \
-                = self.decoder.state_dict_for_save_checkpoint(prefix=prefix,
-                                                              keep_vars=keep_vars)
+                = self.decoder.state_dict_for_save_checkpoint(
+                prefix=prefix, keep_vars=keep_vars)
 
         return state_dict_
 

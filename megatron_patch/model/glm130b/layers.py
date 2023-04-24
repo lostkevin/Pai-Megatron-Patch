@@ -17,8 +17,6 @@ import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.parameter import Parameter
 
-from megatron import get_args
-from megatron.core import mpu
 from megatron.core.parallel_state import (get_tensor_model_parallel_rank,
                                           get_tensor_model_parallel_world_size)
 from megatron.core.tensor_parallel.layers import (

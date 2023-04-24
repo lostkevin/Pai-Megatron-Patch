@@ -5,11 +5,65 @@ from typing import List, Union
 import icetk.sentencepiece_model_pb2 as sp_model
 from icetk.text_tokenizer import TextTokenizer
 from icetk.utils import auto_create
-
-from .tokenizer import AbstractTokenizer
+from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
+class AbstractTokenizer(ABC):
+    """Abstract class for tokenizer."""
+    def __init__(self, name):
+        self.name = name
+        super().__init__()
+
+    @property
+    @abstractmethod
+    def vocab_size(self):
+        pass
+
+    @property
+    @abstractmethod
+    def vocab(self):
+        """Dictionary from vocab text token to id token."""
+        pass
+
+    @property
+    @abstractmethod
+    def inv_vocab(self):
+        """Dictionary from vocab id token to text token."""
+        pass
+
+    @abstractmethod
+    def tokenize(self, text):
+        pass
+
+    def detokenize(self, token_ids):
+        raise NotImplementedError('detokenizer is not implemented for {} '
+                                  'tokenizer'.format(self.name))
+
+    @property
+    def cls(self):
+        raise NotImplementedError('CLS is not provided for {} '
+                                  'tokenizer'.format(self.name))
+
+    @property
+    def sep(self):
+        raise NotImplementedError('SEP is not provided for {} '
+                                  'tokenizer'.format(self.name))
+
+    @property
+    def pad(self):
+        raise NotImplementedError('PAD is not provided for {} '
+                                  'tokenizer'.format(self.name))
+
+    @property
+    def eod(self):
+        raise NotImplementedError('EOD is not provided for {} '
+                                  'tokenizer'.format(self.name))
+
+    @property
+    def mask(self):
+        raise NotImplementedError('MASK is not provided for {} '
+                                  'tokenizer'.format(self.name))
 
 class GLM130BTokenizer:
     def __init__(
@@ -36,7 +90,8 @@ class GLM130BTokenizer:
         encode_special_tokens=False,
     ):
         # special token
-        special_token_type = 4 if encode_special_tokens else 3  # 3 - CONTROL, 4 - USER_DEFINE
+        special_token_type = 4\
+            if encode_special_tokens else 3
         for token in special_tokens:
             text_tokenizer.proto.pieces.append(
                 sp_model.ModelProto.SentencePiece(piece=token,
@@ -61,7 +116,8 @@ class GLM130BTokenizer:
         text_tokenizer.refresh()
 
     def _get_text_tokenizer(self, encode_special_tokens=False):
-        name = '_special_text_tokenizer' if encode_special_tokens else '_text_tokenizer'
+        name = '_special_text_tokenizer' if\
+            encode_special_tokens else '_text_tokenizer'
         if not hasattr(self, name):
             fp = os.path.join(self.path, 'ice_text.model')
             auto_create(fp)
@@ -76,11 +132,11 @@ class GLM130BTokenizer:
     @staticmethod
     def get_blank_token(length: int):
         assert length >= 2
-        return f'<|blank_{length}|>'
+        return '<|blank_{length}|>'
 
     @staticmethod
     def get_tab_token():
-        return f'<|tab|>'
+        return '<|tab|>'
 
     @property
     def text_tokenizer(self):
@@ -125,13 +181,7 @@ class GLM130BTokenizer:
                whitespaces=True,
                special_tokens=False,
                add_dummy_prefix=True) -> List[int]:
-        """
-        @param text: Text to encode.
-        @param linebreak: Whether to encode newline (\n) in text.
-        @param whitespaces: Whether to encode multiple whitespaces or tab in text, useful for source code encoding.
-        @param special_tokens: Whether to encode special token ([MASK], [gMASK], etc.) in text.
-        @param add_dummy_prefix: Whether to add dummy blank space in the beginning.
-        """
+
         text = self._preprocess(text, linebreak, whitespaces)
         if not add_dummy_prefix:
             text = '<n>' + text
@@ -156,13 +206,7 @@ class GLM130BTokenizer:
                  whitespaces=True,
                  special_tokens=False,
                  add_dummy_prefix=True) -> List[str]:
-        """
-        @param text: Text to encode.
-        @param linebreak: Whether to encode newline (\n) in text.
-        @param whitespaces: Whether to encode multiple whitespaces or tab in text, useful for source code encoding.
-        @param special_tokens: Whether to encode special token ([MASK], [gMASK], etc.) in text.
-        @param add_dummy_prefix: Whether to add dummy blank space in the beginning.
-        """
+
         text = self._preprocess(text, linebreak, whitespaces)
         if not add_dummy_prefix:
             text = '<n>' + text

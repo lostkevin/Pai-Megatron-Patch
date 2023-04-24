@@ -43,8 +43,10 @@ def check_checkpoint_args(checkpoint_args):
             checkpoint_value = getattr(checkpoint_args, arg_name)
         args_value = getattr(args, arg_name)
         error_message = '{} value from checkpoint ({}) is not equal to the ' \
-                        'input argument value ({}).'.format(
-                            arg_name, checkpoint_value, args_value)
+                        'input argument' \
+                        'value ({}).'.format(arg_name,
+                                             checkpoint_value,
+                                             args_value)
         assert checkpoint_value == args_value, error_message
 
     _compare('num_layers')
@@ -76,8 +78,9 @@ def fix_query_key_value_ordering(model, checkpoint_version):
             assert len(model) == 1
             model = model[0]
         for name, param in model.named_parameters():
-            if name.endswith(
-                ('.query_key_value.weight', '.query_key_value.bias')):
+            tmp1 = '.query_key_value.weight'
+            tmp2 = '.query_key_value.bias'
+            if name.endswith((tmp1, tmp2)):
                 if checkpoint_version == 0:
                     fixed_param = _transpose_first_dim(param.data, 3, True,
                                                        model)
