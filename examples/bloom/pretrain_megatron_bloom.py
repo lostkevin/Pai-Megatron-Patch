@@ -27,7 +27,7 @@ from megatron_patch.training import pretrain
 
 try:
     from megatron.model import ModelType
-except Exception:
+except ImportError:
     from megatron.core.enums import ModelType
 
 
