@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 import sys
 import time
 
@@ -19,7 +20,8 @@ import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
 from megatron import (get_args, get_num_microbatches, get_signal_handler,
-                      get_timers, print_rank_0, update_num_microbatches)
+                      get_tensorboard_writer, get_timers, is_last_rank,
+                      print_rank_0, print_rank_last, update_num_microbatches)
 from megatron.checkpointing import save_checkpoint
 from megatron.core import mpu
 from megatron.initialize import (initialize_megatron, set_jit_fusion_options,
@@ -28,14 +30,14 @@ from megatron.model import DistributedDataParallel as LocalDDP
 from megatron.model import Float16Module
 from megatron.optimizer import get_megatron_optimizer
 from megatron.training import (build_train_valid_test_data_iterators,
-                               evaluate_and_print_results, get_model,
-                               get_optimizer_param_scheduler, print_datetime,
-                               save_checkpoint_and_time, train_step,
-                               training_log)
+                               get_model, get_optimizer_param_scheduler,
+                               print_datetime, save_checkpoint_and_time)
 from megatron.utils import (calc_params_l2_norm,
-                            check_adlr_autoresume_termination, unwrap_model)
+                            check_adlr_autoresume_termination, report_memory,
+                            unwrap_model)
 
 from .checkpointing import load_checkpoint
+from .schedules import get_forward_backward_func
 
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
@@ -205,6 +207,91 @@ def setup_model_and_optimizer(model_provider_func,
     return model, optimizer, opt_param_scheduler
 
 
+def train_step(forward_step_func, data_iterator, model, optimizer,
+               opt_param_scheduler):
+    """Single training step."""
+    args = get_args()
+    timers = get_timers()
+
+    # Set grad to zero.
+    if args.DDP_impl == 'local' and args.use_contiguous_buffers_in_local_ddp:
+        for partition in model:
+            partition.zero_grad_buffer()
+    optimizer.zero_grad()
+
+    # Forward pass.
+    timers('forward-backward',
+           log_level=1).start(barrier=args.barrier_with_L1_time)
+    forward_backward_func = get_forward_backward_func()
+    fwd_bwd_timers = timers if args.timing_log_level > 1 else None
+    losses_reduced = forward_backward_func(
+        forward_step_func=forward_step_func,
+        data_iterator=data_iterator,
+        model=model,
+        num_microbatches=get_num_microbatches(),
+        dtype=args.params_dtype,
+        tensor_shape=(args.seq_length, args.micro_batch_size,
+                      args.hidden_size),
+        grad_scaler=optimizer.scale_loss,
+        sequence_parallel=args.sequence_parallel,
+        forward_only=False,
+        timers=fwd_bwd_timers)
+    timers('forward-backward').stop()
+
+    # Empty unused memory.
+    if args.empty_unused_memory_level >= 1:
+        torch.cuda.empty_cache()
+
+    # Reduce gradients.
+    optimizer.reduce_model_grads(args, timers)
+
+    # Vision gradients.
+    if args.vision_pretraining and args.vision_pretraining_type == 'dino':
+        unwrapped_model = unwrap_model(model[0],
+                                       (torchDDP, LocalDDP, Float16Module))
+        unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
+
+    # Update parameters.
+    timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
+    update_successful, grad_norm, num_zeros_in_grad = optimizer.step(
+        args, timers)
+    timers('optimizer').stop()
+
+    # Gather params.
+    if update_successful:
+        optimizer.gather_model_params(args, timers)
+
+    # Vision momentum.
+    if args.vision_pretraining and args.vision_pretraining_type == 'dino':
+        unwrapped_model = unwrap_model(model[0],
+                                       (torchDDP, LocalDDP, Float16Module))
+        unwrapped_model.update_momentum(args.curr_iteration)
+
+    # Update learning rate.
+    if update_successful:
+        increment = get_num_microbatches() * \
+                    args.micro_batch_size * \
+                    args.data_parallel_size
+        opt_param_scheduler.step(increment=increment)
+        skipped_iter = 0
+    else:
+        skipped_iter = 1
+
+    # Empty unused memory.
+    if args.empty_unused_memory_level >= 2:
+        torch.cuda.empty_cache()
+
+    if mpu.is_pipeline_last_stage(ignore_virtual=True):
+        # Average loss across microbatches.
+        loss_reduced = {}
+        for key in losses_reduced[0]:
+            losses_reduced_for_key = [x[key] for x in losses_reduced]
+            loss_reduced[key] = sum(losses_reduced_for_key) / len(
+                losses_reduced_for_key)
+        return loss_reduced, skipped_iter, grad_norm, num_zeros_in_grad
+    return {}, skipped_iter, grad_norm, num_zeros_in_grad
+
+
 def train(forward_step_func, model, optimizer, opt_param_scheduler,
           train_data_iterator, valid_data_iterator,
           process_non_loss_data_func):
@@ -310,3 +397,285 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             sys.exit()
 
     return iteration
+
+
+def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
+                 loss_scale, report_memory_flag, skipped_iter, grad_norm,
+                 params_norm, num_zeros_in_grad):
+    """Log training information such as losses, timing, ...."""
+    args = get_args()
+    timers = get_timers()
+    writer = get_tensorboard_writer()
+
+    # Advanced, skipped, and Nan iterations.
+    advanced_iters_key = 'advanced iterations'
+    skipped_iters_key = 'skipped iterations'
+    nan_iters_key = 'nan iterations'
+    # Advanced iterations.
+    if not skipped_iter:
+        total_loss_dict[advanced_iters_key] = total_loss_dict.get(
+            advanced_iters_key, 0) + 1
+    else:
+        if advanced_iters_key not in total_loss_dict:
+            total_loss_dict[advanced_iters_key] = 0
+    # Skipped iterations.
+    total_loss_dict[skipped_iters_key] = total_loss_dict.get(
+        skipped_iters_key, 0) + skipped_iter
+    # Update losses and set nan iterations
+    got_nan = False
+    for key in loss_dict:
+        if not skipped_iter:
+            total_loss_dict[key] = total_loss_dict.get(
+                key, torch.cuda.FloatTensor([0.0])) + loss_dict[key]
+        else:
+            value = loss_dict[key].float().sum().item()
+            is_nan =\
+                value == float('inf') or\
+                value == -float('inf') or value != value
+            got_nan = got_nan or is_nan
+    total_loss_dict[nan_iters_key] = total_loss_dict.get(nan_iters_key,
+                                                         0) + int(got_nan)
+
+    # Logging.
+    timers_to_log = [
+        'forward-backward', 'forward-compute', 'backward-compute',
+        'batch-generator', 'forward-recv', 'forward-send', 'backward-recv',
+        'backward-send', 'forward-send-forward-recv',
+        'forward-send-backward-recv', 'backward-send-forward-recv',
+        'backward-send-backward-recv',
+        'forward-backward-send-forward-backward-recv',
+        'layernorm-grads-all-reduce', 'embedding-grads-all-reduce',
+        'grads-all-reduce', 'grads-reduce-scatter', 'params-all-gather',
+        'optimizer-copy-to-main-grad', 'optimizer-unscale-and-check-inf',
+        'optimizer-clip-main-grad', 'optimizer-count-zeros',
+        'optimizer-inner-step', 'optimizer-copy-main-to-model-params',
+        'optimizer'
+    ]
+
+    # Calculate batch size.
+    batch_size = args.micro_batch_size * args.data_parallel_size * \
+        get_num_microbatches()
+
+    total_iterations =\
+        total_loss_dict[advanced_iters_key] +\
+        total_loss_dict[skipped_iters_key]
+
+    # Tensorboard values.
+    # Timer requires all the ranks to call.
+    if args.log_timers_to_tensorboard and \
+       (iteration % args.tensorboard_log_interval == 0):
+        timers.write(timers_to_log,
+                     writer,
+                     iteration,
+                     normalizer=total_iterations)
+    if writer and (iteration % args.tensorboard_log_interval == 0):
+        if args.log_learning_rate_to_tensorboard:
+            writer.add_scalar('learning-rate', learning_rate, iteration)
+            writer.add_scalar('learning-rate vs samples', learning_rate,
+                              args.consumed_train_samples)
+        if args.log_batch_size_to_tensorboard:
+            writer.add_scalar('batch-size', batch_size, iteration)
+            writer.add_scalar('batch-size vs samples', batch_size,
+                              args.consumed_train_samples)
+        for key in loss_dict:
+            writer.add_scalar(key, loss_dict[key].to(dtype=torch.float32),
+                              iteration)
+            writer.add_scalar(key + ' vs samples',
+                              loss_dict[key].to(dtype=torch.float32),
+                              args.consumed_train_samples)
+        if args.log_loss_scale_to_tensorboard:
+            writer.add_scalar('loss-scale', loss_scale, iteration)
+            writer.add_scalar('loss-scale vs samples', loss_scale,
+                              args.consumed_train_samples)
+        if args.log_world_size_to_tensorboard:
+            writer.add_scalar('world-size', args.world_size, iteration)
+            writer.add_scalar('world-size vs samples', args.world_size,
+                              args.consumed_train_samples)
+        if grad_norm is not None:
+            writer.add_scalar('grad-norm', grad_norm, iteration)
+            writer.add_scalar('grad-norm vs samples', grad_norm,
+                              args.consumed_train_samples)
+        if num_zeros_in_grad is not None:
+            writer.add_scalar('num-zeros', num_zeros_in_grad, iteration)
+            writer.add_scalar('num-zeros vs samples', num_zeros_in_grad,
+                              args.consumed_train_samples)
+        if params_norm is not None:
+            writer.add_scalar('params-norm', params_norm, iteration)
+            writer.add_scalar('params-norm vs samples', params_norm,
+                              args.consumed_train_samples)
+        if args.log_memory_to_tensorboard:
+            mem_stats = torch.cuda.memory_stats()
+            writer.add_scalar(
+                'mem-reserved-bytes',
+                mem_stats['reserved_bytes.all.current'],
+                iteration,
+            )
+            writer.add_scalar(
+                'mem-allocated-bytes',
+                mem_stats['allocated_bytes.all.current'],
+                iteration,
+            )
+            writer.add_scalar(
+                'mem-allocated-count',
+                mem_stats['allocation.all.current'],
+                iteration,
+            )
+
+    if iteration % args.log_interval == 0:
+        elapsed_time = timers('interval-time').elapsed(barrier=True)
+        elapsed_time_per_iteration = elapsed_time / total_iterations
+        if writer:
+            if args.log_timers_to_tensorboard:
+                writer.add_scalar('iteration-time', elapsed_time_per_iteration,
+                                  iteration)
+        log_string = ' iteration {:8d}/{:8d} |'.format(iteration,
+                                                       args.train_iters)
+        log_string += ' consumed samples: {:12d} |'.format(
+            args.consumed_train_samples)
+        log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(
+            elapsed_time_per_iteration * 1000.0)
+        log_string += ' learning rate: {:.3E} |'.format(learning_rate)
+        log_string += ' global batch size: {:5d} |'.format(batch_size)
+        for key in total_loss_dict:
+            if key not in [
+                    advanced_iters_key, skipped_iters_key, nan_iters_key
+            ]:
+                avg = total_loss_dict[key].item() / \
+                      float(max(1, total_loss_dict[advanced_iters_key]))
+                if avg > 0.0:
+                    log_string += ' {}: {:.6E} |'.format(key, avg)
+                total_loss_dict[key] = torch.cuda.FloatTensor([0.0])
+        log_string += ' loss scale: {:.1f} |'.format(loss_scale)
+        if grad_norm is not None:
+            log_string += ' grad norm: {:.3f} |'.format(grad_norm)
+        if num_zeros_in_grad is not None:
+            log_string += ' num zeros: {:.1f} |'.format(num_zeros_in_grad)
+        if params_norm is not None:
+            log_string += ' params norm: {:.3f} |'.format(params_norm)
+        log_string += ' number of skipped iterations: {:3d} |'.format(
+            total_loss_dict[skipped_iters_key])
+        log_string += ' number of nan iterations: {:3d} |'.format(
+            total_loss_dict[nan_iters_key])
+        total_loss_dict[advanced_iters_key] = 0
+        total_loss_dict[skipped_iters_key] = 0
+        total_loss_dict[nan_iters_key] = 0
+        print_rank_last(log_string)
+        if report_memory_flag and learning_rate > 0.:
+            # Report memory after optimizer state has been initialized.
+            report_memory('(after {} iterations)'.format(iteration))
+            report_memory_flag = False
+        timers.log(timers_to_log, normalizer=args.log_interval)
+
+    return report_memory_flag
+
+
+def evaluate(forward_step_func,
+             data_iterator,
+             model,
+             process_non_loss_data_func,
+             verbose=False):
+    """Evaluation."""
+    args = get_args()
+
+    # Turn on evaluation mode which disables dropout.
+    for model_module in model:
+        model_module.eval()
+
+    total_loss_dict = {}
+
+    with torch.no_grad():
+        iteration = 0
+        while iteration < args.eval_iters:
+            iteration += 1
+            if verbose and iteration % args.log_interval == 0:
+                print_rank_0('Evaluating iter {}/{}'.format(
+                    iteration, args.eval_iters))
+
+            forward_backward_func = get_forward_backward_func()
+            loss_dicts = forward_backward_func(
+                forward_step_func=forward_step_func,
+                data_iterator=data_iterator,
+                model=model,
+                num_microbatches=get_num_microbatches(),
+                dtype=args.params_dtype,
+                tensor_shape=(args.seq_length, args.micro_batch_size,
+                              args.hidden_size),
+                sequence_parallel=args.sequence_parallel,
+                forward_only=True,
+                timers=None)
+
+            # Empty unused memory
+            if args.empty_unused_memory_level >= 1:
+                torch.cuda.empty_cache()
+
+            if mpu.is_pipeline_last_stage(ignore_virtual=True):
+                # Reduce across processes.
+                for loss_dict in loss_dicts:
+                    for key in loss_dict:
+                        total_loss_dict[key] = total_loss_dict.get(
+                            key, torch.cuda.FloatTensor([0.0
+                                                         ])) + loss_dict[key]
+
+            args.consumed_valid_samples +=\
+                mpu.get_data_parallel_world_size() *\
+                args.micro_batch_size * get_num_microbatches()
+        collected_non_loss_data = None
+        if process_non_loss_data_func is not None and is_last_rank():
+            collected_non_loss_data = forward_backward_func(
+                forward_step_func,
+                data_iterator,
+                model,
+                optimizer=None,
+                timers=None,
+                forward_only=True,
+                collect_non_loss_data=True)
+
+    # Move model back to the train mode.
+    for model_module in model:
+        model_module.train()
+
+    for key in total_loss_dict:
+        total_loss_dict[key] /= args.eval_iters * get_num_microbatches()
+
+    return total_loss_dict, collected_non_loss_data
+
+
+def evaluate_and_print_results(prefix,
+                               forward_step_func,
+                               data_iterator,
+                               model,
+                               iteration,
+                               process_non_loss_data_func,
+                               verbose=False):
+    """Helper function to evaluate and dump results on screen."""
+    args = get_args()
+    writer = get_tensorboard_writer()
+
+    total_loss_dict, collected_non_loss_data = evaluate(
+        forward_step_func, data_iterator, model, process_non_loss_data_func,
+        verbose)
+    string = ' validation loss at {} | '.format(prefix)
+    for key in total_loss_dict:
+        string += '{} value: {:.6E} | '.format(key,
+                                               total_loss_dict[key].item())
+        ppl = math.exp(min(20, total_loss_dict[key].item()))
+        string += '{} PPL: {:.6E} | '.format(key, ppl)
+        if writer:
+            writer.add_scalar('{} validation'.format(key),
+                              total_loss_dict[key].item(), iteration)
+            writer.add_scalar('{} validation vs samples'.format(key),
+                              total_loss_dict[key].item(),
+                              args.consumed_train_samples)
+            if args.log_validation_ppl_to_tensorboard:
+                writer.add_scalar('{} validation ppl'.format(key), ppl,
+                                  iteration)
+                writer.add_scalar('{} validation ppl vs samples'.format(key),
+                                  ppl, args.consumed_train_samples)
+
+    if process_non_loss_data_func is not None and writer and is_last_rank():
+        process_non_loss_data_func(collected_non_loss_data, iteration, writer)
+
+    length = len(string) + 1
+    print_rank_last('-' * length)
+    print_rank_last(string)
+    print_rank_last('-' * length)

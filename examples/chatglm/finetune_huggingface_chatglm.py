@@ -12,22 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from functools import partial
-
-import torch
-
 from megatron import get_args
 from megatron.initialize import initialize_megatron
-from megatron.utils import (average_losses_across_data_parallel_group,
-                            get_ltor_masks_and_position_ids)
-from megatron_patch.data.finetune_dataset import BloomDataset
+from megatron_patch.data.finetune_dataset import ChatGLMDataset
 from megatron_patch.finetune_utils import finetune
-from megatron_patch.model.bloom.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer
+from transformers import AutoModel
 
 
 def get_tasks_args(parser):
-    group = parser.add_argument_group(title='bloom')
+    """Provide extra arguments required for tasks."""
+    group = parser.add_argument_group(title='chatglm')
 
     group.add_argument('--transformer-type',
                        type=str,
@@ -61,19 +56,15 @@ def get_tasks_args(parser):
                        default=None,
                        help='path(s) to the validation data.')
 
-    group.add_argument('--embed-layernorm',
-                       action='store_true',
-                       help='use layernorm for embedding')
+    group.add_argument('--source-seq-len',
+                       type=int,
+                       default=None,
+                       help='source-seq-len')
 
-    group.add_argument('--position-embedding-type',
-                       type=str,
-                       default='absolute',
-                       help='Define position embedding type '
-                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
-
-    group.add_argument('--glu-activation',
-                       type=str,
-                       help='GLU activations to use.')
+    group.add_argument('--target-seq-len',
+                       type=int,
+                       default=None,
+                       help='target-seq-len')
 
     group.add_argument('--patch-tokenizer-type',
                        type=str,
@@ -83,55 +74,36 @@ def get_tasks_args(parser):
 
 
 def model_provider(pre_process=True, post_process=True):
-    model = GPTModel(num_tokentypes=0,
-                     parallel_output=True,
-                     pre_process=pre_process,
-                     post_process=post_process)
+    args = get_args()
+    model = AutoModel.from_pretrained(args.load, trust_remote_code=True)
     return model
 
 
 def train_valid_datasets_provider():
+    """Build train and validation dataset."""
     args = get_args()
     tokenizer = build_tokenizer(args)
-    train_dataset = BloomDataset(args.train_data, tokenizer, args.seq_length)
-    valid_dataset = BloomDataset(args.valid_data, tokenizer, args.seq_length)
+    train_dataset = ChatGLMDataset(args.train_data, tokenizer,
+                                   args.source_seq_len, args.target_seq_len)
+    valid_dataset = ChatGLMDataset(args.valid_data, tokenizer,
+                                   args.source_seq_len, args.target_seq_len)
     return train_dataset, valid_dataset
 
 
 def forward_step(data_iterator, model):
-    args = get_args()
-    tokenizer = get_tokenizer()
     try:
         data_iterator = next(data_iterator)
     except BaseException:
         data_iterator = data_iterator
 
-    tokens_ = data_iterator['input_ids'].long().cuda()
-
-    labels = tokens_[:, 1:].contiguous()
-    tokens = tokens_[:, :-1].contiguous()
-
-    attention_mask, loss_mask, position_ids = \
-        get_ltor_masks_and_position_ids(tokens,
-                                        tokenizer.eod,
-                                        args.reset_position_ids,
-                                        args.reset_attention_mask,
-                                        args.eod_mask_loss)
-
-    output_tensor = model(tokens, position_ids, attention_mask, labels=labels)
-
-    def loss_func(loss_mask, output_tensor):
-        losses = output_tensor.float()
-        loss_mask = loss_mask.view(-1).float()
-        loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
-        averaged_loss = average_losses_across_data_parallel_group([loss])
-        return loss, {'lm loss': averaged_loss[0]}
-
-    return output_tensor, partial(loss_func, loss_mask)
+    tokens = data_iterator['input_ids'].long().cuda()
+    # huggingface will shift labels inside transformers
+    labels = data_iterator['labels'].long().cuda()
+    output_tensor = model(input_ids=tokens, labels=labels)
+    return output_tensor.loss
 
 
 if __name__ == '__main__':
-
     initialize_megatron(extra_args_provider=get_tasks_args,
                         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
 

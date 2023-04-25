@@ -36,6 +36,19 @@ def build_tokenizer(args):
         tokenizer = AutoTokenizer.from_pretrained('THUDM/chatglm-6b',
                                                   trust_remote_code=True)
         args.padded_vocab_size = 130528
+    elif args.patch_tokenizer_type == 'GLM10BZHTokenizerFromHF':
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained('THUDM/glm-10b-chinese',
+                                                  trust_remote_code=True)
+        args.padded_vocab_size = 50048
+    elif args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
+        from .icetk_glm130b_tokenizer import _IceTokenizer
+        tokenizer = _IceTokenizer()
+        """
+        from .icetk_glm_130B.ice_tokenizer import GLM130BTokenizer
+        tokenizer = GLM130BTokenizer()
+        """
+        args.padded_vocab_size = 150528
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(
@@ -43,7 +56,9 @@ def build_tokenizer(args):
 
     if args.patch_tokenizer_type !=\
             'BloomTokenizerFromHF' and args.patch_tokenizer_type !=\
-            'ChatGLMTokenizerFromHF':
+            'ChatGLMTokenizerFromHF' and\
+            args.patch_tokenizer_type != 'GLM10BZHTokenizerFromHF'\
+            and args.patch_tokenizer_type != 'IcetkGLM130BTokenizer':
         args.padded_vocab_size = _vocab_size_with_padding(
             tokenizer.vocab_size, args)
     global _GLOBAL_TOKENIZER

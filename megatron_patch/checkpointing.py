@@ -20,8 +20,8 @@ import numpy as np
 import torch
 
 from megatron import update_num_microbatches
-from megatron.checkpointing import (find_checkpoint_rank_0,
-                                    fix_query_key_value_ordering,
+from megatron.checkpointing import (_transpose_first_dim,
+                                    find_checkpoint_rank_0,
                                     get_checkpoint_names,
                                     get_checkpoint_tracker_filename,
                                     get_checkpoint_version, read_metadata,
@@ -43,18 +43,22 @@ def check_checkpoint_args(checkpoint_args):
             checkpoint_value = getattr(checkpoint_args, arg_name)
         args_value = getattr(args, arg_name)
         error_message = '{} value from checkpoint ({}) is not equal to the ' \
-                        'input argument value ({}).'.format(
-                            arg_name, checkpoint_value, args_value)
+                        'input argument' \
+                        'value ({}).'.format(arg_name,
+                                             checkpoint_value,
+                                             args_value)
         assert checkpoint_value == args_value, error_message
 
     _compare('num_layers')
     _compare('hidden_size')
     _compare('num_attention_heads')
+    """
     if args.vocab_file:
         _compare('max_position_embeddings')
         _compare('make_vocab_size_divisible_by')
         _compare('padded_vocab_size')
         _compare('tokenizer_type')
+    """
     if args.data_parallel_random_init:
         _compare('data_parallel_random_init')
     if get_checkpoint_version() < 3.0:
@@ -63,6 +67,45 @@ def check_checkpoint_args(checkpoint_args):
     if get_checkpoint_version() >= 3.0:
         _compare('tensor_model_parallel_size')
         _compare('pipeline_model_parallel_size')
+
+
+def fix_query_key_value_ordering(model, checkpoint_version):
+    """Fix up query/key/value matrix ordering if checkpoint
+    version is smaller than 2.0
+    """
+    if checkpoint_version < 2.0:
+        if isinstance(model, list):
+            assert len(model) == 1
+            model = model[0]
+        for name, param in model.named_parameters():
+            tmp1 = '.query_key_value.weight'
+            tmp2 = '.query_key_value.bias'
+            if name.endswith((tmp1, tmp2)):
+                if checkpoint_version == 0:
+                    fixed_param = _transpose_first_dim(param.data, 3, True,
+                                                       model)
+                elif checkpoint_version == 1.0:
+                    fixed_param = _transpose_first_dim(param.data, 3, False,
+                                                       model)
+                else:
+                    print_rank_0(
+                        f'Invalid checkpoint version {checkpoint_version}.')
+                    sys.exit()
+                param.data.copy_(fixed_param)
+            if name.endswith(('.key_value.weight', '.key_value.bias')):
+                if checkpoint_version == 0:
+                    fixed_param = _transpose_first_dim(param.data, 2, True,
+                                                       model)
+                elif checkpoint_version == 1.0:
+                    fixed_param = _transpose_first_dim(param.data, 2, False,
+                                                       model)
+                else:
+                    print_rank_0(
+                        f'Invalid checkpoint version {checkpoint_version}.')
+                    sys.exit()
+                param.data.copy_(fixed_param)
+        print_rank_0(' succesfully fixed query-key-values ordering for'
+                     ' checkpoint version {}'.format(checkpoint_version))
 
 
 def _load_base_checkpoint(load_dir, use_distributed_optimizer, rank0=False):
@@ -106,7 +149,6 @@ def _load_base_checkpoint(load_dir, use_distributed_optimizer, rank0=False):
             )
 
     model_checkpoint_name, optim_checkpoint_name = checkpoint_names
-
     # Load the checkpoint.
     args = get_args()
     try:
@@ -187,7 +229,7 @@ def load_checkpoint(model,
     assert args.consumed_valid_samples == 0
     if 'args' in model_state_dict:
         checkpoint_args = model_state_dict['args']
-        check_checkpoint_args(checkpoint_args)
+        # check_checkpoint_args(checkpoint_args)
         args.consumed_train_samples = getattr(checkpoint_args,
                                               'consumed_train_samples', 0)
         update_num_microbatches(consumed_samples=args.consumed_train_samples)

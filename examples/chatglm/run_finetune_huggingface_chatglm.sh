@@ -1,4 +1,5 @@
 #!/bin/bash
+#sh run_finetune_huggingface_chatglm.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 6B 4 64 64 1e-4 1e-5 fp16 true /mnt/glm-datasets/AdvertiseGen/train.json /mnt/glm-datasets/AdvertiseGen/dev.json /mnt/glm-ckpts/chatglm-6b 2 /mnt/output_megatron_chatglm
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -25,51 +26,25 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 
 MODEL_SIZE=$4
 BATCH_SIZE=$5
-SEQ_LEN=$6
-LR=$7
-MIN_LR=$8
-PR=$9
-TP=${10}
-PP=${11}
-AC=${12}
-DO=${13}
-SP=${14}
-TRAIN_DATASET_PATH=${15}
-VALID_DATASET_PATH=${16}
-PRETRAIN_CHECKPOINT_PATH=${17}
-EPOCH=${18}
-OUTPUT_BASEPATH=${19}
+SOURCE_SEQ_LEN=$6
+TARGET_SEQ_LEN=$7
+LR=$8
+MIN_LR=$9
+PR=${10}
+DO=${11}
+TRAIN_DATASET_PATH=${12}
+VALID_DATASET_PATH=${13}
+PRETRAIN_CHECKPOINT_PATH=${14}
+EPOCH=${15}
+OUTPUT_BASEPATH=${16}
 
-if [ $MODEL_SIZE = 1.1B ]; then
+if [ $MODEL_SIZE = 6B ]; then
 
-NUM_LAYERS=24
-HIDDEN_SIZE=1536
-NUM_ATTN_HEADS=16
-
-elif [ $MODEL_SIZE = 1.7B ]; then
-
-NUM_LAYERS=24
-HIDDEN_SIZE=2048
-NUM_ATTN_HEADS=16
-
-elif [ $MODEL_SIZE = 7.1B ]; then
-
-NUM_LAYERS=30
+NUM_LAYERS=28
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
+SEQ_LEN=2048
 
-fi
-
-if [ $AC = full ]; then
-    activation_checkpoint_options=" \
-		    --recompute-method uniform \
-		    --recompute-granularity full"
-elif [ $AC = sel ]; then
-    activation_checkpoint_options=" \
-        --recompute-activations"
-elif [ $AC = none ]; then
-    activation_checkpoint_options=" \
-                    "
 fi
 
 if [ $PR = fp16 ]; then
@@ -89,16 +64,7 @@ elif [ $DO = false ]; then
                     "
 fi
 
-if [ $SP = true ] && [ $TP -gt 1 ]; then
-    sp_options=" \
-		    --sequence-parallel"
-
-elif [ $SP = false ]; then
-    sp_options=" \
-                    "
-fi
-
-NAME="${ENV}-finetune-megatron-bloom-${MODEL_SIZE}-ep-${EPOCH}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}"
+NAME="${ENV}-finetune-huggingface-chatglm-${MODEL_SIZE}-ep-${EPOCH}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-do-${DO}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
@@ -109,6 +75,7 @@ mkdir -p ${TENSORBOARD_DIR}
 FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 
 megatron_options="  \
+        --transformer-type huggingface \
         --load ${PRETRAIN_CHECKPOINT_PATH} \
         --save ${FINETUNE_CHECKPOINT_PATH} \
         --train-data ${TRAIN_DATASET_PATH} \
@@ -139,19 +106,16 @@ megatron_options="  \
         --log-timers-to-tensorboard \
         --log-batch-size-to-tensorboard \
         --log-validation-ppl-to-tensorboard \
+        --source-seq-len ${SOURCE_SEQ_LEN} \
+        --target-seq-len ${TARGET_SEQ_LEN} \
         --finetune \
         --no-load-optim \
         --DDP-impl local\
-        --tensor-model-parallel-size ${TP} \
-        --pipeline-model-parallel-size ${PP} \
-        --patch-tokenizer-type BloomTokenizerFromHF \
-        --embed-layernorm \
-        --glu-activation geglu \
-        --position-embedding-type alibi
+        --patch-tokenizer-type ChatGLMTokenizerFromHF
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_bloom.py
-${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options}"
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_huggingface_chatglm.py
+${megatron_options} ${do_options} ${pr_options}"
 
 
 echo ${run_cmd}

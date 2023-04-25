@@ -6,12 +6,12 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=0
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=8
+GPUS_PER_NODE=1
 
 elif [ $ENV = dlc ]; then
 
@@ -26,39 +26,52 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 MODEL_SIZE=$4
 BATCH_SIZE=$5
 GLOBAL_BATCH_SIZE=$6
-SEQ_LEN=$7
-LR=$8
-MIN_LR=$9
-PR=${10}
-TP=${11}
-PP=${12}
-AC=${13}
-DO=${14}
-SP=${15}
-SAVE_INTERVAL=${16}
-DATASET_PATH=${17}
-PRETRAIN_CHECKPOINT_PATH=${18}
-TRAIN_TOKENS=${19}
-WARMUP_TOKENS=${20}
-OUTPUT_BASEPATH=${21}
+SOURCE_SEQ_LEN=$7
+TARGET_SEQ_LEN=$8
+LR=$9
+MIN_LR=${10}
+PR=${11}
+TP=${12}
+PP=${13}
+AC=${14}
+DO=${15}
+FL=${16}
+SP=${17}
+SAVE_INTERVAL=${18}
+DATASET_PATH=${19}
+PRETRAIN_CHECKPOINT_PATH=${20}
+TRAIN_TOKENS=${21}
+WARMUP_TOKENS=${22}
+OUTPUT_BASEPATH=${23}
 
-if [ $MODEL_SIZE = 1.1B ]; then
+if [ ! -f gpt2-vocab.json ]; then
+  wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-vocab.json
+fi
 
-NUM_LAYERS=24
-HIDDEN_SIZE=1536
-NUM_ATTN_HEADS=16
+if [ ! -f gpt2-merges.txt ]; then
+  wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-merges.txt
+fi
 
-elif [ $MODEL_SIZE = 1.7B ]; then
+if [ $MODEL_SIZE = 2B ]; then
 
-NUM_LAYERS=24
+NUM_LAYERS=6
 HIDDEN_SIZE=2048
-NUM_ATTN_HEADS=16
-
-elif [ $MODEL_SIZE = 7.1B ]; then
-
-NUM_LAYERS=30
-HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
+SEQ_LEN=1024
+
+elif [ $MODEL_SIZE = 10B ]; then
+
+NUM_LAYERS=48
+HIDDEN_SIZE=4096
+NUM_ATTN_HEADS=64
+SEQ_LEN=1024
+
+elif [ $MODEL_SIZE = 130B ]; then
+
+NUM_LAYERS=70
+HIDDEN_SIZE=12288
+NUM_ATTN_HEADS=96
+SEQ_LEN=2048
 
 fi
 
@@ -88,6 +101,15 @@ if [ $DO = true ]; then
 
 elif [ $DO = false ]; then
     do_options=" \
+                    "
+fi
+
+if [ $FL = true ]; then
+    flash_options=" \
+		    --use-flash-attn"
+
+elif [ $FL = false ]; then
+    flash_options=" \
                     "
 fi
 
@@ -152,15 +174,18 @@ megatron_options=" \
         --DDP-impl local \
         --no-load-optim \
         --no-load-rng \
+        --num-workers 8 \
         --finetune \
-        --embed-layernorm \
-        --glu-activation geglu \
-        --position-embedding-type alibi \
-        --patch-tokenizer-type BloomTokenizerFromHF
+        --source-seq-len ${SOURCE_SEQ_LEN} \
+        --target-seq-len ${TARGET_SEQ_LEN} \
+        --no-position-embedding \
+        --swiglu \
+        --use-rotary-position-embeddings \
+        --patch-tokenizer-type IcetkGLM130BTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_bloom.py
- ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options}"
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_glm130b.py
+ ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
 
 echo ${run_cmd}
 eval ${run_cmd}

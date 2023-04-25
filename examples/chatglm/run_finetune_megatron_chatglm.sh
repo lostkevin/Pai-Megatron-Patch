@@ -1,4 +1,5 @@
 #!/bin/bash
+#sh run_finetune_megatron_chatglm.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 6B 4 64 64 1e-4 1e-5 fp16 1 1 sel true false false /mnt/glm-datasets/AdvertiseGen/train.json /mnt/glm-datasets/AdvertiseGen/dev.json /mnt/glm-ckpts/chatglm-6b-to-megatron/ 2 /mnt/output_megatron_chatglm/
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -25,38 +26,30 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 
 MODEL_SIZE=$4
 BATCH_SIZE=$5
-SEQ_LEN=$6
-LR=$7
-MIN_LR=$8
-PR=$9
-TP=${10}
-PP=${11}
-AC=${12}
-DO=${13}
-SP=${14}
-TRAIN_DATASET_PATH=${15}
-VALID_DATASET_PATH=${16}
-PRETRAIN_CHECKPOINT_PATH=${17}
-EPOCH=${18}
-OUTPUT_BASEPATH=${19}
+SOURCE_SEQ_LEN=$6
+TARGET_SEQ_LEN=$7
+LR=$8
+MIN_LR=$9
+PR=${10}
+TP=${11}
+PP=${12}
+AC=${13}
+DO=${14}
+FL=${15}
+SP=${16}
+TRAIN_DATASET_PATH=${17}
+VALID_DATASET_PATH=${18}
+PRETRAIN_CHECKPOINT_PATH=${19}
+EPOCH=${20}
+OUTPUT_BASEPATH=${21}
 
-if [ $MODEL_SIZE = 1.1B ]; then
 
-NUM_LAYERS=24
-HIDDEN_SIZE=1536
-NUM_ATTN_HEADS=16
+if [ $MODEL_SIZE = 6B ]; then
 
-elif [ $MODEL_SIZE = 1.7B ]; then
-
-NUM_LAYERS=24
-HIDDEN_SIZE=2048
-NUM_ATTN_HEADS=16
-
-elif [ $MODEL_SIZE = 7.1B ]; then
-
-NUM_LAYERS=30
+NUM_LAYERS=28
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
+SEQ_LEN=2048
 
 fi
 
@@ -89,6 +82,15 @@ elif [ $DO = false ]; then
                     "
 fi
 
+if [ $FL = true ]; then
+    flash_options=" \
+		    --use-flash-attn"
+
+elif [ $FL = false ]; then
+    flash_options=" \
+                    "
+fi
+
 if [ $SP = true ] && [ $TP -gt 1 ]; then
     sp_options=" \
 		    --sequence-parallel"
@@ -98,15 +100,17 @@ elif [ $SP = false ]; then
                     "
 fi
 
-NAME="${ENV}-finetune-megatron-bloom-${MODEL_SIZE}-ep-${EPOCH}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}"
+FT_NAME="${ENV}-finetune-megatron-chatglm-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
+OUTPUT_BASEPATH=/mnt/output_megatron_chatglm
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
 current_time=$(date "+%Y.%m.%d-%H.%M.%S")
-TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${NAME}_${current_time}"
+TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${FT_NAME}_${current_time}"
 mkdir -p ${TENSORBOARD_DIR}
 
-FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
+FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${FT_NAME}"
+LOGGING_PATH="${OUTPUT_BASEPATH}/log/${FT_NAME}_${current_time}"
 
 megatron_options="  \
         --load ${PRETRAIN_CHECKPOINT_PATH} \
@@ -116,8 +120,10 @@ megatron_options="  \
         --num-layers ${NUM_LAYERS} \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
+        --source-seq-len ${SOURCE_SEQ_LEN} \
+        --target-seq-len ${TARGET_SEQ_LEN} \
         --seq-length ${SEQ_LEN} \
-        --max-position-embeddings ${SEQ_LEN} \
+        --max-position-embeddings ${SEQ_LEN}  \
         --keep-last \
         --micro-batch-size ${BATCH_SIZE} \
         --epochs ${EPOCH} \
@@ -129,29 +135,33 @@ megatron_options="  \
         --adam-beta1 0.9 \
         --adam-beta2 0.95 \
         --init-method-std 0.01 \
-        --num-workers 8\
+        --num-workers 0\
         --log-interval 1 \
-        --eval-interval 100 \
+        --eval-interval 1000 \
         --eval-iters 10 \
-        --save-interval 100000000 \
+        --save-interval 1000000 \
         --tensorboard-queue-size 1 \
         --tensorboard-dir ${TENSORBOARD_DIR} \
         --log-timers-to-tensorboard \
         --log-batch-size-to-tensorboard \
         --log-validation-ppl-to-tensorboard \
-        --finetune \
-        --no-load-optim \
-        --DDP-impl local\
         --tensor-model-parallel-size ${TP} \
         --pipeline-model-parallel-size ${PP} \
-        --patch-tokenizer-type BloomTokenizerFromHF \
-        --embed-layernorm \
-        --glu-activation geglu \
-        --position-embedding-type alibi
+        --finetune \
+        --DDP-impl local \
+        --no-load-optim \
+        --no-load-rng \
+        --seed 1234 \
+        --position-embedding-type rotary \
+        --apply-residual-connection-post-layernorm \
+        --openai-gelu \
+        --no-bias-gelu-fusion \
+        --position-encoding-2d \
+        --patch-tokenizer-type ChatGLMTokenizerFromHF
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_bloom.py
-${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options}"
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_chatglm.py
+ ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
 
 
 echo ${run_cmd}

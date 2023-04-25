@@ -269,7 +269,7 @@ class BloomDataset(GPTDataset):
                                        max_seq_length):
         tokens = tokenizer(sample['prompt'])
         input_ids = tokens['input_ids']
-        input_ids = self.truncate(tokenizer, input_ids, max_seq_length)
+        input_ids = self.truncate(tokenizer, input_ids, max_seq_length + 1)
         train_sample = {'input_ids': np.array(input_ids)}
         return train_sample
 
@@ -299,12 +299,12 @@ class ChatGLMDataset(GPTDataset):
         total = 0
         with open(filename, encoding='utf-8-sig') as f:
             for example in f:
-                text = json.loads(example)['text']
-                prompt = text.split('\n')[0]
-                answer = text.replace(prompt, '').strip()
+                json_obj = json.loads(example)
+                content = json_obj['content']
+                summary = json_obj['summary']
                 sample = {
-                    'source': prompt,
-                    'target': answer,
+                    'source': content,
+                    'target': summary,
                 }
                 total += 1
                 samples.append(sample)
@@ -345,15 +345,15 @@ class ChatGLMDataset(GPTDataset):
 
 
 class GLMDataset(GPTDataset):
-    def __init__(self, datapaths, tokenizer, max_seq_length):
+    def __init__(self, datapaths, tokenizer, max_source_seq_length,
+                 max_target_seq_length):
         self.tokenizer = tokenizer
-        self.max_seq_length = max_seq_length
         self.prompt = ''
         self.samples = []
         self.random = random.Random(1234)
         self.blank_maskratio = 0.1
         self.max_src_length, self.max_tgt_length =\
-            max_seq_length, max_seq_length
+            max_source_seq_length, max_target_seq_length
         for datapath in datapaths:
             self.samples.extend(
                 self.process_samples_from_single_path(datapath))
@@ -364,8 +364,7 @@ class GLMDataset(GPTDataset):
 
     def __getitem__(self, idx):
         raw_sample = self.samples[idx]
-        return self.gpt_convert_example_to_feature(raw_sample, self.tokenizer,
-                                                   self.max_seq_length)
+        return self.gpt_convert_example_to_feature(raw_sample, self.tokenizer)
 
     def process_samples_from_single_path(self, filename):
         print(' > Processing {} ...'.format(filename))
@@ -373,9 +372,9 @@ class GLMDataset(GPTDataset):
         total = 0
         with open(filename, encoding='utf-8-sig') as f:
             for example in f:
-                text = json.loads(example)['text']
-                prompt = text.split('\n')[0]
-                answer = text.replace(prompt, '').strip()
+                json_obj = json.loads(example)
+                prompt = json_obj['question']
+                answer = json_obj['answer']
                 source_tokenized_text = self.tokenizer._tokenize(prompt)
                 target_tokenized_text = self.tokenizer._tokenize(answer)
                 sample = {
@@ -406,14 +405,13 @@ class GLMDataset(GPTDataset):
             masked_src += ' ' + token
         return masked_src, masked_tgt
 
-    def gpt_convert_example_to_feature(self, sample, tokenizer,
-                                       max_seq_length):
-        source_text, _ = sample['source'], sample['target']
+    def gpt_convert_example_to_feature(self, sample, tokenizer):
+        # GLM BlankLMDataset
+        source_text = sample['target']
         mask_id = tokenizer.mask_token_id
-        sop_id = tokenizer.bos_token_id
+        sop_id = tokenizer.cls_token_id
         eop_id = tokenizer.eop_token_id
         pad_id = tokenizer.pad_token_id
-
         masked_src, masked_tgt = self.mask_text(source_text)
         source_text = masked_src
 
@@ -424,7 +422,7 @@ class GLMDataset(GPTDataset):
                 text = text + [pad_id] * (max_len - len(text))
             return text
 
-        source_tokens = tokenizer(source_text)['input_ids']
+        source_tokens = tokenizer.convert_tokens_to_ids(source_text.split())
         source_tokens = pad_to(source_tokens, self.max_src_length, pad_id)
         sep = len(source_tokens)
         position_ids = list(range(len(source_tokens)))
@@ -438,14 +436,16 @@ class GLMDataset(GPTDataset):
         loss_mask = [0] * len(source_tokens)
         for i, mask_pos in enumerate(mask_positions):
             tgt_text = masked_tgt[i]
-            tgt_tokens = tokenizer(tgt_text)['input_ids']
+            tgt_tokens = tokenizer.convert_tokens_to_ids(tgt_text.split())
             tokens += [sop_id] + tgt_tokens
             target_ids += tgt_tokens + [eop_id]
             loss_mask += [1] * (len(tgt_tokens) + 1)
             position_ids += [mask_pos] * (len(tgt_tokens) + 1)
             block_position_ids += [i + 1 for i in range(len(tgt_tokens) + 1)]
+
         max_length = self.max_src_length + int(
             self.max_src_length * self.blank_maskratio)
+
         tokens = pad_to(tokens, max_length, pad_id)
         target_ids = pad_to(target_ids, max_length, pad_id)
         loss_mask = pad_to(loss_mask, max_length, 0)
@@ -461,3 +461,85 @@ class GLMDataset(GPTDataset):
         }
 
         return train_sample
+
+
+class GLMSeq2SeqDataset(GPTDataset):
+    def __init__(self, data_dir, task, tokenizer, max_source_seq_length,
+                 max_target_seq_length):
+        from .processor import SummmaryProcessor
+        self.tokenizer = tokenizer
+        self.data_dir = data_dir
+        self.task = task
+        self.max_src_length, self.max_tgt_length =\
+            max_source_seq_length, max_target_seq_length
+        from megatron import get_args
+        self.args = get_args()
+        if self.args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
+            self.mask_token = '[sMASK]'
+            self.cls_id = self.tokenizer.get_command('ENC')
+            self.mask_id = self.tokenizer.get_command(self.mask_token)
+            self.pad_id = 0
+            self.sop_id = self.tokenizer.get_command('sop')
+            self.eop_id = self.tokenizer.get_command('eop')
+
+        self.split = 'train'
+        if self.task in ['gigaword', 'cnn_dm', 'cnn_dm_original']:
+            self.processor = SummmaryProcessor(self.task, self.data_dir,
+                                               tokenizer)
+        self.samples = self.processor.create_examples('train')
+        print('  >> total number of samples: {}'.format(len(self.samples)))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        raw_sample = self.samples[idx]
+        return self.gpt_convert_example_to_feature(raw_sample, self.tokenizer)
+
+    def gpt_convert_example_to_feature(self, sample, tokenizer):
+        source_text, target_text = sample['text_a'], sample['text_b']
+
+        if self.args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
+            source_tokens = self.tokenizer.tokenizer.encode(' ' + source_text)
+            prompt = [self.cls_id, self.mask_id
+                      ] + self.tokenizer.tokenizer.encode(' Content:')
+
+        if len(source_tokens) > self.max_src_length - len(prompt):
+            source_tokens = source_tokens[:self.max_src_length - len(prompt)]
+        source_tokens = prompt + source_tokens
+
+        if len(source_tokens) < self.max_src_length:
+            source_tokens = source_tokens + [self.pad_id] * (
+                self.max_src_length - len(source_tokens))
+        sep = len(source_tokens)
+        position_ids = list(range(len(source_tokens)))
+        block_position_ids = [0] * len(source_tokens)
+        mask_pos = source_tokens.index(self.mask_id)
+        if self.split == 'train':
+            if self.args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
+                target_tokens = self.tokenizer.tokenizer.encode(' ' +
+                                                                target_text)
+
+            target_tokens = target_tokens + [self.eop_id]
+            if len(target_tokens) > self.max_tgt_length:
+                target_tokens = target_tokens[:self.max_tgt_length]
+            loss_mask = [1] * len(target_tokens)
+            if len(target_tokens) < self.max_tgt_length:
+                loss_mask += [0] * (self.max_tgt_length - len(target_tokens))
+                target_tokens += [self.pad_id] * (self.max_tgt_length -
+                                                  len(target_tokens))
+            tokens = source_tokens + [self.sop_id] + target_tokens[:-1]
+            loss_mask = [0] * len(source_tokens) + loss_mask
+            target_ids = [0] * len(source_tokens) + target_tokens
+            position_ids += [mask_pos] * len(target_tokens)
+            block_position_ids += list(range(1, len(target_tokens) + 1))
+            position_ids = [position_ids, block_position_ids]
+            train_sample = {
+                'text': np.array(tokens, dtype=np.int64),
+                'target': np.array(target_ids, dtype=np.int64),
+                'attention_mask': np.array(sep, dtype=np.int64),
+                'loss_mask': np.array(loss_mask, dtype=np.int64),
+                'position_id': np.array(position_ids, dtype=np.int64)
+            }
+
+            return train_sample
