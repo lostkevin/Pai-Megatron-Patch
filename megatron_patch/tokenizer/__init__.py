@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from megatron.tokenizer.tokenizer import _vocab_size_with_padding
 
 _GLOBAL_TOKENIZER = None
@@ -49,6 +48,31 @@ def build_tokenizer(args):
         tokenizer = GLM130BTokenizer()
         """
         args.padded_vocab_size = 150528
+    elif args.patch_tokenizer_type == 'AlpacaTokenizer':
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.load,
+            cache_dir=args.cache_dir,
+            model_max_length=args.seq_length,
+            padding_side="right",
+            use_fast=False,
+        )
+        DEFAULT_PAD_TOKEN = "[PAD]"
+        DEFAULT_EOS_TOKEN = "</s>"
+        DEFAULT_BOS_TOKEN = "<s>"
+        DEFAULT_UNK_TOKEN = "<unk>"
+
+        special_tokens_dict = dict()
+        if tokenizer.pad_token is None:
+            special_tokens_dict["pad_token"] = DEFAULT_PAD_TOKEN
+        if tokenizer.eos_token is None:
+            special_tokens_dict["eos_token"] = DEFAULT_EOS_TOKEN
+        if tokenizer.bos_token is None:
+            special_tokens_dict["bos_token"] = DEFAULT_BOS_TOKEN
+        if tokenizer.unk_token is None:
+            special_tokens_dict["unk_token"] = DEFAULT_UNK_TOKEN
+        tokenizer.add_special_tokens(special_tokens_dict)
+        args.padded_vocab_size = tokenizer.vocab_size
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(
@@ -58,9 +82,12 @@ def build_tokenizer(args):
             'BloomTokenizerFromHF' and args.patch_tokenizer_type !=\
             'ChatGLMTokenizerFromHF' and\
             args.patch_tokenizer_type != 'GLM10BZHTokenizerFromHF'\
-            and args.patch_tokenizer_type != 'IcetkGLM130BTokenizer':
+            and args.patch_tokenizer_type != 'IcetkGLM130BTokenizer' and\
+            args.patch_tokenizer_type != 'AlpacaTokenizer':
+
         args.padded_vocab_size = _vocab_size_with_padding(
             tokenizer.vocab_size, args)
+
     global _GLOBAL_TOKENIZER
     _GLOBAL_TOKENIZER = tokenizer
     return _GLOBAL_TOKENIZER

@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import json
 import os
 import random
 import re
 from abc import ABC, abstractmethod
-
+import torch
 import numpy as np
 from torch.utils.data import Dataset
 
@@ -543,3 +544,89 @@ class GLMSeq2SeqDataset(GPTDataset):
             }
 
             return train_sample
+
+
+class AlpacaDataset(GPTDataset):
+    def __init__(self, datapaths, tokenizer):
+        self.IGNORE_INDEX = -100
+        self.tokenizer = tokenizer
+        PROMPT_DICT = {
+            "prompt_input": (
+                "Below is an instruction that describes a task, paired with an input that provides further context. "
+                "Write a response that appropriately completes the request.\n\n"
+                "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
+            ),
+            "prompt_no_input": (
+                "Below is an instruction that describes a task. "
+                "Write a response that appropriately completes the request.\n\n"
+                "### Instruction:\n{instruction}\n\n### Response:"
+            ),
+        }
+        from megatron_patch.data import utils
+        list_data_dict = utils.jload(datapaths[0])
+        prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
+        sources = [
+            prompt_input.format_map(example) if example.get("input", "") != "" else prompt_no_input.format_map(example)
+            for example in list_data_dict
+        ]
+        targets = [f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict]
+        data_dict = self.preprocess(sources, targets, tokenizer)
+
+        self.input_ids = data_dict["input_ids"]
+        self.labels = data_dict["labels"]
+        self.samples = []
+        for inputs, labels in zip(self.input_ids, self.labels):
+            self.samples.append([inputs, labels])
+
+        print('  >> total number of samples: {}'.format(len(self.samples)))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        raw_sample = self.samples[idx]
+        return self.gpt_convert_example_to_feature(raw_sample, self.tokenizer)
+
+    def preprocess(self, sources, targets, tokenizer):
+        """Preprocess the data by tokenizing."""
+        examples = [s + t for s, t in zip(sources, targets)]
+        examples_tokenized, sources_tokenized = [self.tokenize(strings, tokenizer) for strings in (examples, sources)]
+        input_ids = examples_tokenized["input_ids"]
+        labels = copy.deepcopy(input_ids)
+        for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):
+            label[:source_len] = self.IGNORE_INDEX
+        return dict(input_ids=input_ids, labels=labels)
+
+    def tokenize(self, strings, tokenizer):
+        """Tokenize a list of strings."""
+        tokenized_list = [
+            tokenizer(
+                text,
+                return_tensors="pt",
+                padding='max_length',
+                max_length=tokenizer.model_max_length,
+                truncation=True,
+            )
+            for text in strings
+        ]
+        input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
+        input_ids_lens = labels_lens = [
+            tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item() for tokenized in tokenized_list
+        ]
+        return dict(
+            input_ids=input_ids,
+            labels=labels,
+            input_ids_lens=input_ids_lens,
+            labels_lens=labels_lens,
+        )
+
+    def gpt_convert_example_to_feature(self, sample, tokenizer):
+        input_ids, labels = sample
+        attention_mask = input_ids.ne(self.tokenizer.pad_token_id)
+        train_sample = {
+            'input_ids': input_ids.numpy(),
+            'labels': labels.numpy(),
+            'attention_mask': attention_mask.numpy()
+        }
+
+        return train_sample
