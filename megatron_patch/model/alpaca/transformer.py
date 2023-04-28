@@ -110,12 +110,7 @@ class ParallelMLP(MegatronModule):
         elif args.onnx_safe:
             self.activation_func = erf_gelu
         elif args.swiglu:
-
-            def swiglu(x):
-                x = torch.chunk(x, 2, dim=-1)
-                return F.silu(x[0]) * x[1]
-
-            self.activation_func = swiglu
+            self.activation_func = torch.nn.functional.silu
 
         # Project back to h.
         self.dense_4h_to_h = tensor_parallel.RowParallelLinear(
