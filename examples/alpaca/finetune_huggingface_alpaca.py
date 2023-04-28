@@ -60,9 +60,12 @@ def get_tasks_args(parser):
                        type=str,
                        help='patch-tokenizer-type')
 
-    group.add_argument('--cache-dir',
-                       type=str,
-                       help='cache-dir')
+    group.add_argument('--cache-dir', type=str, help='cache-dir')
+
+    group.add_argument('--max-padding-length',
+                       type=int,
+                       default=None,
+                       help='max-padding-length')
 
     return parser
 
@@ -70,19 +73,9 @@ def get_tasks_args(parser):
 def model_provider(pre_process=True, post_process=True):
     args = get_args()
     tokenizer = get_tokenizer()
-    model = AutoModelForCausalLM.from_pretrained(args.load, trust_remote_code=True)
-    num_new_tokens = len(tokenizer) - tokenizer.vocab_size
-
-    if num_new_tokens > 0:
-        input_embeddings = model.get_input_embeddings().weight.data
-        output_embeddings = model.get_output_embeddings().weight.data
-
-        input_embeddings_avg = input_embeddings[:-num_new_tokens].mean(dim=0, keepdim=True)
-        output_embeddings_avg = output_embeddings[:-num_new_tokens].mean(dim=0, keepdim=True)
-
-        input_embeddings[-num_new_tokens:] = input_embeddings_avg
-        output_embeddings[-num_new_tokens:] = output_embeddings_avg
-
+    model = AutoModelForCausalLM.from_pretrained(args.load,
+                                                 trust_remote_code=True)
+    model.resize_token_embeddings(len(tokenizer))
     return model
 
 
@@ -90,8 +83,10 @@ def train_valid_datasets_provider():
     """Build train and validation dataset."""
     args = get_args()
     tokenizer = build_tokenizer(args)
-    train_dataset = AlpacaDataset(args.train_data, tokenizer)
-    valid_dataset = AlpacaDataset(args.valid_data, tokenizer)
+    train_dataset = AlpacaDataset(args.train_data, tokenizer,
+                                  args.max_padding_length)
+    valid_dataset = AlpacaDataset(args.valid_data, tokenizer,
+                                  args.max_padding_length)
     return train_dataset, valid_dataset
 
 
@@ -101,10 +96,12 @@ def forward_step(data_iterator, model):
     except BaseException:
         data_iterator = data_iterator
 
-    tokens = data_iterator['input_ids'].long().cuda()
-    labels = data_iterator['labels'].long().cuda()
-    attention_mask = data_iterator['attention_mask'].long().cuda()
-    output_tensor = model(input_ids=tokens, labels=labels, attention_mask=attention_mask)
+    tokens = data_iterator['input_ids'].cuda()
+    labels = data_iterator['labels'].cuda()
+    attention_mask = data_iterator['attention_mask'].cuda()
+    output_tensor = model(input_ids=tokens,
+                          labels=labels,
+                          attention_mask=attention_mask)
     return output_tensor.loss
 
 

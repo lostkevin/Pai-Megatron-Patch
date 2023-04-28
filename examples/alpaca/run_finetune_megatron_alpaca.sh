@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_megatron_chatglm.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 6B 4 64 64 1e-4 1e-5 fp16 1 1 sel true false false /mnt/glm-datasets/AdvertiseGen/train.json /mnt/glm-datasets/AdvertiseGen/dev.json /mnt/glm-ckpts/chatglm-6b-to-megatron/ 2 /mnt/output_megatron_chatglm/
+#sh run_finetune_megatron_alpaca.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 4 1e-4 1e-5 100 fp16 1 1 sel true false false  /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron/ 2 /mnt/output_alpach
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -26,30 +26,30 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 
 MODEL_SIZE=$4
 BATCH_SIZE=$5
-SOURCE_SEQ_LEN=$6
-TARGET_SEQ_LEN=$7
-LR=$8
-MIN_LR=$9
-PR=${10}
-TP=${11}
-PP=${12}
-AC=${13}
-DO=${14}
-FL=${15}
-SP=${16}
-TRAIN_DATASET_PATH=${17}
-VALID_DATASET_PATH=${18}
-PRETRAIN_CHECKPOINT_PATH=${19}
-EPOCH=${20}
-OUTPUT_BASEPATH=${21}
+LR=$6
+MIN_LR=$7
+PAD_LEN=$8
+PR=$9
+TP=${10}
+PP=${11}
+AC=${12}
+DO=${13}
+FL=${14}
+SP=${15}
+TRAIN_DATASET_PATH=${16}
+VALID_DATASET_PATH=${17}
+PRETRAIN_CHECKPOINT_PATH=${18}
+EPOCH=${19}
+OUTPUT_BASEPATH=${20}
 
 
-if [ $MODEL_SIZE = 6B ]; then
+if [ $MODEL_SIZE = 7B ]; then
 
-NUM_LAYERS=28
+NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
 SEQ_LEN=2048
+INTERMEDIATE_SIZE=11008
 
 fi
 
@@ -100,7 +100,7 @@ elif [ $SP = false ]; then
                     "
 fi
 
-FT_NAME="${ENV}-finetune-megatron-chatglm-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
+FT_NAME="${ENV}-finetune-megatron-alpaca-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
 OUTPUT_BASEPATH=/mnt/output_megatron_chatglm
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
@@ -120,10 +120,9 @@ megatron_options="  \
         --num-layers ${NUM_LAYERS} \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
-        --source-seq-len ${SOURCE_SEQ_LEN} \
-        --target-seq-len ${TARGET_SEQ_LEN} \
         --seq-length ${SEQ_LEN} \
         --max-position-embeddings ${SEQ_LEN}  \
+        --intermediate-size ${INTERMEDIATE_SIZE} \
         --keep-last \
         --micro-batch-size ${BATCH_SIZE} \
         --epochs ${EPOCH} \
@@ -152,12 +151,13 @@ megatron_options="  \
         --no-load-optim \
         --no-load-rng \
         --seed 1234 \
+        --max-padding-length ${PAD_LEN} \
+        --cache-dir cache_dir \
         --position-embedding-type rotary \
         --apply-residual-connection-post-layernorm \
         --openai-gelu \
         --no-bias-gelu-fusion \
-        --position-encoding-2d \
-        --patch-tokenizer-type ChatGLMTokenizerFromHF
+        --patch-tokenizer-type AlpacaTokenizer
         "
 
 run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_alpaca.py

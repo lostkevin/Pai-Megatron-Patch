@@ -18,9 +18,9 @@ import torch
 from megatron import get_args
 from megatron.initialize import initialize_megatron
 from megatron.utils import average_losses_across_data_parallel_group
-from megatron_patch.data.finetune_dataset import ChatGLMDataset
+from megatron_patch.data.finetune_dataset import AlpacaDataset
 from megatron_patch.finetune_utils import finetune
-from megatron_patch.model.chatglm.gpt_model import GPTModel
+from megatron_patch.model.alpaca.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer
 
 
@@ -44,6 +44,11 @@ def get_tasks_args(parser):
                        help='Number of finetunning epochs. Zero results in '
                        'evaluation only.')
 
+    group.add_argument('--intermediate-size',
+                       type=int,
+                       default=None,
+                       help='--intermediate-size')
+
     group.add_argument('--keep-last',
                        action='store_true',
                        help='Keep the last batch (maybe incomplete) in'
@@ -60,25 +65,18 @@ def get_tasks_args(parser):
                        default=None,
                        help='path(s) to the validation data.')
 
-    group.add_argument('--source-seq-len',
-                       type=int,
-                       default=None,
-                       help='source-seq-len')
+    group.add_argument('--cache-dir', type=str, help='cache-dir')
 
-    group.add_argument('--target-seq-len',
+    group.add_argument('--max-padding-length',
                        type=int,
                        default=None,
-                       help='target-seq-len')
+                       help='max-padding-length')
 
     group.add_argument('--position-embedding-type',
                        type=str,
                        default='absolute',
                        help='Define position embedding type '
                        '("absolute"|"rotary"|"alibi"). "absolute" by default.')
-
-    group.add_argument('--position-encoding-2d',
-                       action='store_true',
-                       help='position-encoding-2d')
 
     group.add_argument('--patch-tokenizer-type',
                        type=str,
@@ -99,10 +97,10 @@ def train_valid_datasets_provider():
     """Build train and validation dataset."""
     args = get_args()
     tokenizer = build_tokenizer(args)
-    train_dataset = ChatGLMDataset(args.train_data, tokenizer,
-                                   args.source_seq_len, args.target_seq_len)
-    valid_dataset = ChatGLMDataset(args.valid_data, tokenizer,
-                                   args.source_seq_len, args.target_seq_len)
+    train_dataset = AlpacaDataset(args.train_data, tokenizer,
+                                  args.max_padding_length)
+    valid_dataset = AlpacaDataset(args.valid_data, tokenizer,
+                                  args.max_padding_length)
     return train_dataset, valid_dataset
 
 
@@ -114,7 +112,8 @@ def forward_step(data_iterator, model):
 
     input_ids = data_iterator['input_ids'].long().cuda()
     labels = data_iterator['labels'].long().cuda()
-    lm_logits = model(input_ids=input_ids)
+    attention_mask = data_iterator['attention_mask'].cuda()
+    lm_logits = model(input_ids=input_ids, attention_mask=attention_mask)
     shift_logits = lm_logits[..., :-1, :].contiguous()
     shift_labels = labels[..., 1:].contiguous()
     loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
