@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_megatron_alpaca.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 4 1e-4 1e-5 100 fp16 1 1 sel true false false  /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron/ 2 /mnt/output_alpach
+#sh run_finetune_megatron_alpaca.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 4 1e-4 1e-5 100 fp16 1 1 sel true false false  /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron/ 2 /mnt/output_alpach
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -154,9 +154,7 @@ megatron_options="  \
         --max-padding-length ${PAD_LEN} \
         --cache-dir cache_dir \
         --position-embedding-type rotary \
-        --apply-residual-connection-post-layernorm \
-        --openai-gelu \
-        --no-bias-gelu-fusion \
+        --swiglu \
         --patch-tokenizer-type AlpacaTokenizer
         "
 

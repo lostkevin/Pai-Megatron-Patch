@@ -21,7 +21,6 @@ from torch import Tensor
 
 from megatron import core, get_args
 from megatron.core import mpu, tensor_parallel
-from megatron.model import LayerNorm
 from megatron.model.enums import AttnMaskType, AttnType, LayerType, ModelType
 from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.module import MegatronModule
@@ -110,6 +109,13 @@ class ParallelMLP(MegatronModule):
             self.activation_func = openai_gelu
         elif args.onnx_safe:
             self.activation_func = erf_gelu
+        elif args.swiglu:
+
+            def swiglu(x):
+                x = torch.chunk(x, 2, dim=-1)
+                return F.silu(x[0]) * x[1]
+
+            self.activation_func = swiglu
 
         # Project back to h.
         self.dense_4h_to_h = tensor_parallel.RowParallelLinear(
@@ -574,19 +580,6 @@ class ParallelTransformerLayer(MegatronModule):
         self.hidden_dropout = args.hidden_dropout
         self.bias_dropout_fusion = args.bias_dropout_fusion
 
-        if self.layer_type == LayerType.decoder:
-            self.inter_attention = ParallelAttention(
-                init_method,
-                output_layer_init_method,
-                layer_number,
-                attention_type=AttnType.cross_attn)
-            # Layernorm on the attention output.
-            self.post_inter_attention_layernorm = LayerNorm(
-                args.hidden_size,
-                eps=args.layernorm_epsilon,
-                no_persist_layer_norm=args.no_persist_layer_norm,
-                sequence_parallel=args.sequence_parallel)
-
         self.sequence_parallel = args.sequence_parallel
         self.mlp = ParallelMLP(init_method, output_layer_init_method)
 
@@ -638,8 +631,6 @@ class ParallelTransformerLayer(MegatronModule):
 
             mlp_output = tensor_parallel.checkpoint(remove_bias_forward, False,
                                                     layernorm_output)
-            mlp_bias = self.mlp.dense_4h_to_h.bias \
-                if self.mlp.dense_4h_to_h.skip_bias_add else None
         else:
             mlp_output, mlp_bias = self.mlp(layernorm_output)
 
