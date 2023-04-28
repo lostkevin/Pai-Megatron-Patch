@@ -18,17 +18,27 @@ import sys
 
 import numpy as np
 import torch
+from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
 from megatron import update_num_microbatches
 from megatron.checkpointing import (_transpose_first_dim,
                                     find_checkpoint_rank_0,
                                     get_checkpoint_names,
                                     get_checkpoint_tracker_filename,
-                                    get_checkpoint_version, read_metadata,
-                                    set_checkpoint_version)
+                                    get_checkpoint_version, get_rng_state,
+                                    read_metadata, set_checkpoint_version)
 from megatron.core import mpu, tensor_parallel
 from megatron.global_vars import get_args
+from megatron.model import DistributedDataParallel as LocalDDP
+from megatron.model import Float16Module
 from megatron.utils import print_rank_0, unwrap_model
+
+
+def ensure_directory_exists(filename):
+    """Build filename's path if it does not already exists."""
+    dirname = os.path.dirname(filename)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
 
 
 def check_checkpoint_args(checkpoint_args):
@@ -317,3 +327,117 @@ def load_checkpoint(model,
                  f'at iteration {iteration}')
 
     return iteration
+
+
+def get_hf_checkpoint_dir(checkpoints_path, iteration, release=False):
+    """A unified checkpoint name."""
+    if release:
+        directory = 'release'
+    else:
+        directory = 'iter_{:07d}'.format(iteration)
+
+    return os.path.join(checkpoints_path, directory)
+
+
+def save_checkpoint(iteration, model, optimizer, opt_param_scheduler):
+    """Save a model checkpoint."""
+    args = get_args()
+
+    # Only rank zero of the data parallel writes to the disk.
+    model = unwrap_model(model)
+
+    print_rank_0('saving checkpoint at iteration {:7d} to {}'.format(
+        iteration, args.save))
+
+    # Collect rng state across data parallel ranks.
+    rng_state = get_rng_state()
+
+    # Checkpoint file names.
+    model_checkpoint_name, optim_checkpoint_name = \
+        get_checkpoint_names(args.save,
+                             iteration,
+                             args.use_distributed_optimizer)
+
+    # Collect args, model, RNG.
+    model_state_dict = {}
+    if not torch.distributed.is_initialized() \
+       or mpu.get_data_parallel_rank() == 0:
+
+        # Arguments, iteration, and model.
+        model_state_dict['args'] = args
+        model_state_dict['checkpoint_version'] = 3.0
+        model_state_dict['iteration'] = iteration
+        if args.transformer_type == 'megatron':
+            if len(model) == 1:
+                model_state_dict['model'] = model[
+                    0].state_dict_for_save_checkpoint()
+            else:
+                for i in range(len(model)):
+                    mpu.set_virtual_pipeline_model_parallel_rank(i)
+                    model_state_dict['model%d' % i] = \
+                        model[i].state_dict_for_save_checkpoint()
+        elif args.transformer_type == 'huggingface':
+            model_state_dict['model'] = model[0].state_dict()
+
+        # RNG states.
+        if not args.no_save_rng:
+            model_state_dict['rng_state'] = rng_state
+
+    # Collect optimizer state.
+    # (Optimizer is saved separately from the model, due
+    # to the conflicting data pattern when using the distributed optimizer.)
+    optim_state_dict = {}
+    if not args.no_save_optim \
+       and (not torch.distributed.is_initialized()
+            or mpu.get_data_parallel_rank() == 0
+            or args.use_distributed_optimizer):
+
+        # Optimizer stuff.
+        if optimizer is not None:
+            optim_state_dict['optimizer'] = optimizer.state_dict()
+        if opt_param_scheduler is not None:
+            optim_state_dict['opt_param_scheduler'] = \
+                opt_param_scheduler.state_dict()
+
+    if args.transformer_type == 'megatron':
+        # Save.
+        if args.use_distributed_optimizer:
+            # Save model separate from optimizer.
+            if model_state_dict:
+                ensure_directory_exists(model_checkpoint_name)
+                torch.save(model_state_dict, model_checkpoint_name)
+            if optim_state_dict:
+                ensure_directory_exists(optim_checkpoint_name)
+                torch.save(optim_state_dict, optim_checkpoint_name)
+        else:
+            # Save model and optimizer together.
+            state_dict = {**model_state_dict, **optim_state_dict}
+            if state_dict:
+                ensure_directory_exists(model_checkpoint_name)
+                torch.save(state_dict, model_checkpoint_name)
+
+    elif args.transformer_type == 'huggingface':
+        checkpoint_dir = get_hf_checkpoint_dir(args.save, iteration)
+        ensure_directory_exists(checkpoint_dir)
+        unwrapped_model = unwrap_model(model[0],
+                                       (torchDDP, LocalDDP, Float16Module))
+        unwrapped_model.save_pretrained(checkpoint_dir)
+
+    # Wait so everyone is done (necessary)
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
+
+    print_rank_0(
+        '  successfully saved checkpoint at iteration {:7d} to {}'.format(
+            iteration, args.save))
+
+    # And update the latest iteration
+    if not torch.distributed.is_initialized() or torch.distributed.get_rank(
+    ) == 0:
+        tracker_filename = get_checkpoint_tracker_filename(args.save)
+        with open(tracker_filename, 'w') as f:
+            f.write(str(iteration))
+
+    # Wait so everyone is done (not necessary)
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()

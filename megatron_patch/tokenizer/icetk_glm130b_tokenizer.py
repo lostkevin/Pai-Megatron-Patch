@@ -1,13 +1,14 @@
 import logging
 import os
+from abc import ABC, abstractmethod
 from typing import List, Union
 
 import icetk.sentencepiece_model_pb2 as sp_model
 from icetk.text_tokenizer import TextTokenizer
 from icetk.utils import auto_create
-from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
+
 
 class AbstractTokenizer(ABC):
     """Abstract class for tokenizer."""
@@ -64,6 +65,7 @@ class AbstractTokenizer(ABC):
     def mask(self):
         raise NotImplementedError('MASK is not provided for {} '
                                   'tokenizer'.format(self.name))
+
 
 class GLM130BTokenizer:
     def __init__(
