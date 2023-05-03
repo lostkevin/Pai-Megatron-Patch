@@ -2,7 +2,7 @@ import os
 os.environ["WANDB_DISABLED"] = "true"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 from typing import List
 
@@ -184,8 +184,8 @@ if __name__ == "__main__":
     val_dataset = create_prompt_dataset('./rl_data/val_data.json')
 
     # Store data into prompt and label pairs
-    train_set = [(sample["prompt"], sample["label"]) for sample in train_dataset][:1000]
-    val_set = [(sample["prompt"], sample["label"]) for sample in val_dataset][:1000]
+    train_set = [(sample["prompt"], sample["label"]) for sample in train_dataset]
+    val_set = [(sample["prompt"], sample["label"]) for sample in val_dataset]
 
     # Split contents into summaries and labels
     train_posts, train_summaries = zip(*train_set)
