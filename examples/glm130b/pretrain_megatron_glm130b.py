@@ -64,9 +64,8 @@ def get_tasks_args(parser):
 
     group.add_argument('--data-dir', default=None, help='data-dir')
 
-    group.add_argument('--glu-activation',
-                       type=str,
-                       help='GLU activations to use.')
+    group.add_argument('--geglu', action='store_true',
+                       help='Use gated linear units and SiLU activation instead of default gelu')
 
     group.add_argument('--train-data',
                        default=None,

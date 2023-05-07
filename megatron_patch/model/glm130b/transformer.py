@@ -19,8 +19,6 @@ from megatron.model.module import MegatronModule
 from megatron.model.rotary_pos_embedding import apply_rotary_pos_emb
 from megatron.model.utils import attention_mask_func, erf_gelu, openai_gelu
 
-from .glu_activations import GLU_ACTIVATIONS
-
 try:
     from einops import rearrange
 except ImportError:
@@ -124,13 +122,14 @@ class ParallelMLP(MegatronModule):
 
             self.activation_func = swiglu
         elif args.squared_relu:
-
             def squared_relu(x):
                 return torch.pow(F.relu(x), 2)
-
             self.activation_func = squared_relu
-        elif args.glu_activation:
-            self.activation_func = GLU_ACTIVATIONS[args.glu_activation]
+        elif args.geglu:
+            def geglu(x):
+                x1, x2 = x.chunk(2, dim=(x.ndim - 1))
+                return x1 * F.gelu(x2)
+            self.activation_func = geglu
         else:
             self.bias_gelu_fusion = args.bias_gelu_fusion
             self.activation_func = F.gelu

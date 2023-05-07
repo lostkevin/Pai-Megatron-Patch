@@ -173,7 +173,7 @@ megatron_options=" \
         --num-workers 0 \
         --generation-length ${GEN_LEN} \
         --apply-residual-connection-post-layernorm \
-        --glu-activation geglu \
+        --geglu \
         --no-position-embedding \
         --use-rotary-position-embeddings \
         --patch-tokenizer-type IcetkGLM130BTokenizer
