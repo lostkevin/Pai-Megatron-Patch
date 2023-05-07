@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 import os
 import time
+from bisect import bisect_right
+from itertools import accumulate
 
 import numpy as np
 import torch
@@ -25,33 +28,17 @@ from megatron.data.indexed_dataset import make_dataset as make_indexed_dataset
 from megatron_patch.tokenizer import get_tokenizer
 
 
-class GLMDataset(Dataset):
+class GLM130BDataset_mmap(Dataset):
     """Datasets for glm model pretraining."""
     def __init__(self, name, indexed_dataset, data_prefix, num_epochs,
-                 max_num_samples, max_seq_length, source_seq_length,
-                 target_seq_length, short_seq_prob, seed):
-        """__init__ method.
+                 max_num_samples, max_seq_length, generation_length,
+                short_seq_prob, seed):
 
-        Arguments:
-            name: Indexed dataset name.
-            indexed_dataset: Indexed dataset path.
-            data_prefix: Indexed dataset prefix.
-            num_epochs: Number epochs.
-            max_num_samples: Max number samples.
-            masked_lm_prob: Masked lm probability.
-            max_seq_length: Maximum length of the sequence.
-             All values are padded to this length.
-            short_seq_prob: Short sequence probablity.
-            seed: Random seed
-            binary_head: A boolean to specify whether use binary head or not.
-
-        """
         self.name = name
         self.seed = seed
         self.max_seq_length = max_seq_length
-        self.source_seq_length = source_seq_length
-        self.target_seq_length = target_seq_length
-        self.blank_maskratio = 0.1
+        self.generation_length = generation_length
+
         # Dataset.
         self.indexed_dataset = indexed_dataset
 
@@ -62,11 +49,9 @@ class GLMDataset(Dataset):
 
         # Vocab stuff.
         self.tokenizer = get_tokenizer()
+        self.mask_id = self.tokenizer.get_command('[MASK]')
+        self.gmask_id = self.tokenizer.get_command('[gMASK]')
         self.pad_id = 0
-        self.mask_token = '[sMASK]'
-        self.mask_id = self.tokenizer.get_command(self.mask_token)
-        self.sop_id = self.tokenizer.get_command('sop')
-        self.eop_id = self.tokenizer.get_command('eop')
 
     def __len__(self):
         return self.samples_mapping.shape[0]
@@ -74,33 +59,10 @@ class GLMDataset(Dataset):
     def __getitem__(self, idx):
         start_idx, end_idx, seq_length = self.samples_mapping[idx]
         sample = [self.indexed_dataset[i] for i in range(start_idx, end_idx)]
-        # Note that this rng state should be numpy and not python since
-        # python randint is inclusive whereas the numpy one is exclusive.
-        # We % 2**32 since numpy requres the seed to be between 0 and 2**32 - 1
-        np_rng = np.random.RandomState(seed=((self.seed + idx) % 2**32))
+        return self.build_training_sample(sample, idx)
 
-        return self.build_training_sample(sample, seq_length,
-                                          self.max_seq_length, np_rng)
-
-    def mask_tokens(self, sample, np_rng):
+    def build_training_sample(self, sample, idx):
         tokens = sample[0].tolist()
-        mask_ratio = self.blank_maskratio
-        n = len(tokens)
-        indices = sorted(np_rng.randint(len(tokens), size=int(n * mask_ratio)))
-        masked_src, masked_tgt = [], []
-        for i, idx in enumerate(indices):
-            masked_tgt.append(tokens[idx])
-            tokens[idx] = self.mask_id
-        for i, token in enumerate(tokens):
-            if i != 0 and token == self.mask_id and tokens[i -
-                                                           1] == self.mask_id:
-                continue
-            masked_src.append(token)
-        return masked_src, masked_tgt
-
-    def build_training_sample(self, sample, target_seq_length, max_seq_length,
-                              np_rng):
-        source_tokens, target_tokens = self.mask_tokens(sample, np_rng)
 
         def pad_to(text, max_len, pad_id):
             if len(text) > max_len:
@@ -109,50 +71,114 @@ class GLMDataset(Dataset):
                 text = text + [pad_id] * (max_len - len(text))
             return text
 
-        source_tokens = pad_to(source_tokens, self.source_seq_length,
-                               self.pad_id)
-        sep = len(source_tokens)
-        position_ids = list(range(len(source_tokens)))
-        block_position_ids = [0] * len(source_tokens)
-        mask_positions = [
-            i for i, x in enumerate(source_tokens) if x == self.mask_id
-        ]
-        assert len(mask_positions) <= len(target_tokens)
-        tokens = source_tokens
-        target_ids = [0] * len(source_tokens)
-        loss_mask = [0] * len(source_tokens)
+        mask_id = self.gmask_id
+        sop_id = self.tokenizer.get_command('sop')
 
-        for i, mask_pos in enumerate(mask_positions):
-            tgt_token = target_tokens[i]
-            tokens.extend([self.sop_id, tgt_token])
-            # tokens += [self.sop_id] + [tgt_tokens]
-            # target_ids += [tgt_tokens] + [self.eop_id]
-            target_ids.extend([tgt_token, self.eop_id])
-            loss_mask += [1] * (1 + 1)
-            position_ids += [mask_pos] * (1 + 1)
-            block_position_ids += [i + 1 for i in range(1 + 1)]
-        """
-        max_length = self.source_seq_length + int(
-            self.source_seq_length * self.blank_maskratio)
-        """
-        max_length = self.max_seq_length
+        if idx == 0:
+            prompt, text = [], tokens
+        else:
+            prompt_length = self.max_seq_length - 1 - self.generation_length
+            prompt, text = tokens[:prompt_length], tokens[prompt_length:]
 
-        tokens = pad_to(tokens, max_length, self.pad_id)
-        target_ids = pad_to(target_ids, max_length, self.pad_id)
-        loss_mask = pad_to(loss_mask, max_length, 0)
-        position_ids = pad_to(position_ids, max_length, 0)
-        block_position_ids = pad_to(block_position_ids, max_length, 0)
-        position_ids = [position_ids, block_position_ids]
-        train_sample = {
-            'text': np.array(tokens, dtype=np.int64),
-            'target': np.array(target_ids, dtype=np.int64),
-            'attention_mask': np.array(sep, dtype=np.int64),
-            'loss_mask': np.array(loss_mask, dtype=np.int64),
-            'position_id': np.array(position_ids, dtype=np.int64)
+        seq_length = len(prompt) + len(text) + 1
+        attention_mask = np.tril(
+            np.ones((seq_length, seq_length), dtype=np.int64))
+        attention_mask[:len(prompt) + 1, :len(prompt) + 1] = 1
+
+        tokens = prompt + [mask_id, sop_id] + text[:-1]
+        targets = prompt + [mask_id] + text
+        loss_mask = [0] * (len(prompt) + 1) + [1] * len(text)
+
+        #tokens = pad_to(tokens, self.max_seq_length, self.pad_id)
+        #targets = pad_to(targets, self.max_seq_length, self.pad_id)
+        #loss_mask = pad_to(loss_mask, self.max_seq_length, self.pad_id)
+
+        return {
+            'tokens':
+            np.array(tokens, dtype=np.int64),
+            'targets':
+            np.array(targets, dtype=np.int64),
+            'position_ids':
+            np.arange(0, seq_length, dtype=np.int64),
+            'attention_mask': attention_mask,
+            'loss_mask':
+            np.array(loss_mask,
+                     dtype=np.int64),
         }
 
-        return train_sample
+class GLM130BDataset(torch.utils.data.Dataset):
+    def __init__(self, path, max_seq_length, generation_length):
+        self.path = path
+        self.max_seq_length = max_seq_length
+        self.generation_length = generation_length
+        self.dtype = np.int64
+        self.tokenizer = get_tokenizer()
 
+        self.tokenizer = get_tokenizer()
+        self.mask_id = self.tokenizer.get_command('[MASK]')
+        self.gmask_id = self.tokenizer.get_command('[gMASK]')
+        self.data = []
+        self.process_single_file(self.path)
+
+    def process_single_file(self, path):
+        num_sequences = []
+        with open(os.path.join(path), 'r', encoding='utf-8') as file:
+            raw_text = file.read()
+            tokens = self.tokenizer.tokenize(raw_text)
+            self.num_tokenized_tokens = len(tokens)
+            self.num_original_tokens = len(raw_text.strip().split(' '))
+            self.data.append({
+                'raw_text':
+                tokens,
+                'num_original_tokens':
+                len(raw_text.strip().split(' ')),
+                'num_sequences':
+                max(
+                    math.ceil(
+                        max(len(tokens) - (self.max_seq_length - 1), 0) /
+                        self.generation_length) + 1,
+                    1,
+                ),
+            })
+            num_sequences.append(self.data[-1]['num_sequences'])
+        self.weights = list(accumulate(num_sequences))
+        self.left_weights = [0] + self.weights[:-1]
+
+    def __len__(self):
+        return self.data[0]['num_sequences']
+
+    def __getitem__(self, idx):
+        document_idx = bisect_right(self.weights, idx)
+        idx = idx - self.left_weights[document_idx]
+        start_idx = idx * self.generation_length
+        end_idx = start_idx + self.max_seq_length - 1  # for additional [gMASK]
+        tokens = self.data[document_idx]['raw_text'][start_idx:end_idx]
+
+        mask_id = self.gmask_id
+        sop_id = self.tokenizer.get_command('sop')
+
+        if idx == 0:
+            prompt, text = [], tokens
+        else:
+            prompt_length = self.max_seq_length - 1 - self.generation_length
+            prompt, text = tokens[:prompt_length], tokens[prompt_length:]
+
+        seq_length = len(prompt) + len(text) + 1
+        attention_mask = np.tril(
+            np.ones((seq_length, seq_length), dtype=np.int64))
+        attention_mask[:len(prompt) + 1, :len(prompt) + 1] = 1
+        return {
+            'tokens':
+            np.array(prompt + [mask_id, sop_id] + text[:-1], dtype=np.int64),
+            'targets':
+            np.array(prompt + [mask_id] + text, dtype=np.int64),
+            'position_ids':
+            np.arange(0, seq_length, dtype=np.int64),
+            'attention_mask': attention_mask,
+            'loss_mask':
+            np.array([0] * (len(prompt) + 1) + [1] * len(text),
+                     dtype=np.int64),
+        }
 
 def _get_a_and_b_segments(sample, np_rng):
     """Divide sample into a and b segments."""
@@ -259,6 +285,89 @@ def build_pretrain_glm_datasets(data_prefix, data_impl, splits_string,
             assert indexed_dataset.doc_idx[0] == 0
             assert indexed_dataset.doc_idx.shape[0] == \
                    (total_num_of_documents + 1)
+        return dataset
+
+    train_dataset = build_dataset(0, 'train')
+    valid_dataset = build_dataset(1, 'valid')
+    test_dataset = build_dataset(2, 'test')
+
+    return (train_dataset, valid_dataset, test_dataset)
+
+"""
+def build_pretrain_glm130b_datasets(data_prefix,
+                                    data_impl,
+                                    splits_string,
+                                    train_valid_test_num_samples,
+                                    max_seq_length,
+                                    generation_length,
+                                    short_seq_prob,
+                                    seed,
+                                    skip_warmup):
+
+    data_prefix = data_prefix[0]
+    indexed_dataset = _get_indexed_dataset(data_prefix, data_impl, skip_warmup)
+    # Get start and end indices of train/valid/train into doc-idx
+    # Note that doc-idx is desinged to be num-docs + 1 so we can
+    # easily iterate over it.
+    total_num_of_documents = indexed_dataset.doc_idx.shape[0] - 1
+    splits = _get_train_valid_test_split(splits_string, total_num_of_documents)
+
+    def build_dataset(index, name):
+
+        dataset = None
+        if splits[index + 1] > splits[index]:
+            # Get the pointer to the original doc-idx so we can set it later.
+            doc_idx_ptr = indexed_dataset.get_doc_idx()
+            # Slice the doc-idx
+            start_index = splits[index]
+            # Add +1 so we can index into the dataset to get the upper bound.
+            end_index = splits[index + 1] + 1
+            # New doc_idx view.
+            indexed_dataset.set_doc_idx(doc_idx_ptr[start_index:end_index])
+            # Build the dataset accordingly.
+            kwargs = dict(
+                name=name,
+                data_prefix=data_prefix,
+                num_epochs=None,
+                max_num_samples=train_valid_test_num_samples[index],
+                max_seq_length=max_seq_length,
+                seed=seed,
+            )
+
+            dataset = GLM130BDataset(indexed_dataset=indexed_dataset,
+                                 generation_length=generation_length,
+                                 short_seq_prob=short_seq_prob,
+                                 **kwargs)
+
+            # Set the original pointer so dataset remains the main dataset.
+            indexed_dataset.set_doc_idx(doc_idx_ptr)
+            # Checks.
+            assert indexed_dataset.doc_idx[0] == 0
+            assert indexed_dataset.doc_idx.shape[0] == \
+                   (total_num_of_documents + 1)
+        return dataset
+
+    train_dataset = build_dataset(0, 'train')
+    valid_dataset = build_dataset(1, 'valid')
+    test_dataset = build_dataset(2, 'test')
+
+    return (train_dataset, valid_dataset, test_dataset)
+"""
+
+def build_pretrain_glm130b_datasets(data_prefix,
+                                    data_impl,
+                                    splits_string,
+                                    train_valid_test_num_samples,
+                                    max_seq_length,
+                                    generation_length,
+                                    short_seq_prob,
+                                    seed,
+                                    skip_warmup):
+
+    def build_dataset(index, name):
+
+        dataset = GLM130BDataset(data_prefix[0], max_seq_length, generation_length)
+
         return dataset
 
     train_dataset = build_dataset(0, 'train')

@@ -48,10 +48,15 @@ class SwiGLU(_GLUBaseModule):
         super().__init__(F.silu)
 
 
-liglu = torch.jit.script(LiGLU())
-geglu = torch.jit.script(GEGLU())
-reglu = torch.jit.script(ReGLU())
-swiglu = torch.jit.script(SwiGLU())
+#liglu = torch.jit.script(LiGLU())
+#geglu = torch.jit.script(GEGLU())
+#reglu = torch.jit.script(ReGLU())
+#swiglu = torch.jit.script(SwiGLU())
+
+liglu = LiGLU()
+geglu = GEGLU()
+reglu = ReGLU()
+swiglu = SwiGLU()
 
 GLU_ACTIVATIONS = {
     'geglu': geglu,

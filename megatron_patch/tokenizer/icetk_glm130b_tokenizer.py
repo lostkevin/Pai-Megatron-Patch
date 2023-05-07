@@ -115,7 +115,7 @@ class GLM130BTokenizer:
                 text_tokenizer.proto.pieces.append(
                     sp_model.ModelProto.SentencePiece(
                         piece='<0x{:02X}>'.format(i), score=0.0, type=6))
-        text_tokenizer.refresh()
+        # text_tokenizer.refresh()
 
     def _get_text_tokenizer(self, encode_special_tokens=False):
         name = '_special_text_tokenizer' if\

@@ -155,5 +155,4 @@ if __name__ == '__main__':
              model_provider,
              ModelType.encoder_or_decoder,
              forward_step,
-             extra_args_provider=get_tasks_args,
-             args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
+             extra_args_provider=get_tasks_args)
