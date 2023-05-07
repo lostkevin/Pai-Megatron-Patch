@@ -20,7 +20,7 @@ from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.pretrain_dataset import \
-    build_pretrain_glm130b_datasets
+    build_pretrain_glm130b_datasets_from_original, build_pretrain_glm130b_datasets_from_idxmap
 from megatron_patch.model.glm130b.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import pretrain
@@ -105,17 +105,24 @@ def model_provider(pre_process=True, post_process=True):
 def train_valid_test_datasets_provider(train_val_test_num_samples):
     args = get_args()
 
+    """
     train_ds, valid_ds, test_ds = \
-        build_pretrain_glm130b_datasets(
+        build_pretrain_glm130b_datasets_from_original(
             data_prefix=args.data_path,
-            data_impl=args.data_impl,
-            splits_string=args.split,
-            train_valid_test_num_samples=train_val_test_num_samples,
             max_seq_length=args.seq_length,
-            generation_length=args.generation_length,
-            short_seq_prob=args.short_seq_prob,
-            seed=args.seed,
-            skip_warmup=(not args.mmap_warmup))
+            generation_length=args.generation_length)
+    """
+
+    train_ds, valid_ds, test_ds = \
+        build_pretrain_glm130b_datasets_from_idxmap(
+        data_prefix=args.data_path,
+        data_impl=args.data_impl,
+        splits_string=args.split,
+        train_valid_test_num_samples=train_val_test_num_samples,
+        seq_length=args.seq_length,
+        generation_length=args.generation_length,
+        seed=args.seed,
+        skip_warmup=(not args.mmap_warmup))
 
     return train_ds, valid_ds, test_ds
 

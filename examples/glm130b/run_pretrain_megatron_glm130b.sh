@@ -137,6 +137,7 @@ SAVED_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 megatron_options=" \
         --save ${SAVED_PRETRAIN_CHECKPOINT_PATH} \
         --split 98,2,0 \
+        --data-impl mmap \
         --data-path ${DATASET_PATH}
         --lr ${LR} \
         --min-lr ${MIN_LR} \
@@ -170,7 +171,7 @@ megatron_options=" \
         --DDP-impl local \
         --no-load-optim \
         --no-load-rng \
-        --num-workers 0 \
+        --num-workers 8 \
         --generation-length ${GEN_LEN} \
         --apply-residual-connection-post-layernorm \
         --geglu \
