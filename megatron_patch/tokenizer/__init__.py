@@ -43,10 +43,6 @@ def build_tokenizer(args):
     elif args.patch_tokenizer_type == 'IcetkGLM130BTokenizer':
         from .icetk_glm130b_tokenizer import _IceTokenizer
         tokenizer = _IceTokenizer()
-        """
-        from .icetk_glm_130B.ice_tokenizer import GLM130BTokenizer
-        tokenizer = GLM130BTokenizer()
-        """
         args.padded_vocab_size = 150528
     elif args.patch_tokenizer_type == 'AlpacaTokenizer':
         from transformers import AutoTokenizer

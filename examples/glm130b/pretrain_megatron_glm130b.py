@@ -19,9 +19,10 @@ import torch
 from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
-from megatron_patch.data.pretrain_dataset import build_pretrain_glm_datasets
+from megatron_patch.data.pretrain_dataset import \
+    build_pretrain_glm130b_datasets_from_original, build_pretrain_glm130b_datasets_from_idxmap
 from megatron_patch.model.glm130b.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer
+from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import pretrain
 
 try:
@@ -38,15 +39,10 @@ def get_tasks_args(parser):
                        default='megatron',
                        help='transformer-type')
 
-    group.add_argument('--source-seq-len',
+    group.add_argument('--generation-length',
                        type=int,
                        default=None,
-                       help='source-seq-len')
-
-    group.add_argument('--target-seq-len',
-                       type=int,
-                       default=None,
-                       help='target-seq-len')
+                       help='--generation-length')
 
     group.add_argument('--task', type=str, default=None, help='task')
 
@@ -68,9 +64,8 @@ def get_tasks_args(parser):
 
     group.add_argument('--data-dir', default=None, help='data-dir')
 
-    group.add_argument('--glu-activation',
-                       type=str,
-                       help='GLU activations to use.')
+    group.add_argument('--geglu', action='store_true',
+                       help='Use gated linear units and SiLU activation instead of default gelu')
 
     group.add_argument('--train-data',
                        default=None,
@@ -91,6 +86,10 @@ def get_tasks_args(parser):
                        type=str,
                        help='patch-tokenizer-type')
 
+    group.add_argument('--position-encoding-2d',
+                       action='store_true',
+                       help='position-encoding-2d')
+
     return parser
 
 
@@ -103,28 +102,36 @@ def model_provider(pre_process=True, post_process=True):
                      post_process=post_process)
     return model
 
-
 def train_valid_test_datasets_provider(train_val_test_num_samples):
     args = get_args()
+
+    """
     train_ds, valid_ds, test_ds = \
-        build_pretrain_glm_datasets(
+        build_pretrain_glm130b_datasets_from_original(
             data_prefix=args.data_path,
-            data_impl=args.data_impl,
-            splits_string=args.split,
-            train_valid_test_num_samples=train_val_test_num_samples,
             max_seq_length=args.seq_length,
-            source_seq_length=args.source_seq_len,
-            target_seq_length=args.target_seq_len,
-            short_seq_prob=args.short_seq_prob,
-            seed=args.seed,
-            skip_warmup=(not args.mmap_warmup))
+            generation_length=args.generation_length)
+    """
+
+    train_ds, valid_ds, test_ds = \
+        build_pretrain_glm130b_datasets_from_idxmap(
+        data_prefix=args.data_path,
+        data_impl=args.data_impl,
+        splits_string=args.split,
+        train_valid_test_num_samples=train_val_test_num_samples,
+        seq_length=args.seq_length,
+        generation_length=args.generation_length,
+        seed=args.seed,
+        skip_warmup=(not args.mmap_warmup))
 
     return train_ds, valid_ds, test_ds
 
 
 def forward_step(data_iterator, model):
 
-    keys = ['text', 'target', 'attention_mask', 'loss_mask', 'position_id']
+    keys = [
+        'tokens', 'targets', 'position_ids', 'attention_mask', 'loss_mask'
+    ]
     datatype = torch.int64
     # Broadcast data.
     if data_iterator is not None:
@@ -132,12 +139,15 @@ def forward_step(data_iterator, model):
     else:
         data = None
 
-    data_b = tensor_parallel.broadcast_data(keys, data, datatype)
-    tokens = data_b['text'].long().cuda()
-    labels = data_b['target'].long().cuda()
-    attention_mask = data_b['attention_mask'].long().cuda()
-    loss_mask = data_b['loss_mask'].float().cuda()
-    position_ids = data_b['position_id'].long().cuda()
+    batch = tensor_parallel.broadcast_data(keys, data, datatype)
+
+    tokens = batch['tokens'].long().cuda().contiguous()
+    labels = batch['targets'].long().cuda().contiguous()
+    attention_mask = batch['attention_mask'].long().cuda().contiguous()
+    loss_mask = batch['loss_mask'].long().cuda().contiguous()
+    position_ids = batch['position_ids'].long().cuda().contiguous()
+    attention_mask = attention_mask < 0.5
+    attention_mask = attention_mask.to(torch.bool).unsqueeze(1)
     output_tensor = model(tokens, position_ids, attention_mask, labels=labels)
 
     def loss_func(loss_mask, output_tensor):
@@ -149,11 +159,9 @@ def forward_step(data_iterator, model):
 
     return output_tensor, partial(loss_func, loss_mask)
 
-
 if __name__ == '__main__':
     pretrain(train_valid_test_datasets_provider,
              model_provider,
              ModelType.encoder_or_decoder,
              forward_step,
-             extra_args_provider=get_tasks_args,
-             args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
+             extra_args_provider=get_tasks_args)

@@ -1,4 +1,5 @@
 #!/bin/bash
+#sh run_pretrain_megatron_glm130b.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 2B 1 8 512 128 1e-5 1e-6 fp16 1 1 sel true false false 100000 /mnt/glm-datasets/wudao_glm130bbpe_text_document none 100000 10000 /mnt/output_glm130b
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -6,12 +7,12 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=1
+GPUS_PER_NODE=8
 
 elif [ $ENV = dlc ]; then
 
@@ -26,8 +27,8 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 MODEL_SIZE=$4
 BATCH_SIZE=$5
 GLOBAL_BATCH_SIZE=$6
-SOURCE_SEQ_LEN=$7
-TARGET_SEQ_LEN=$8
+SEQ_LEN=$7
+GEN_LEN=$8
 LR=$9
 MIN_LR=${10}
 PR=${11}
@@ -44,35 +45,32 @@ TRAIN_TOKENS=${21}
 WARMUP_TOKENS=${22}
 OUTPUT_BASEPATH=${23}
 
-if [ ! -f gpt2-vocab.json ]; then
-  wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-vocab.json
-fi
-
-if [ ! -f gpt2-merges.txt ]; then
-  wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-merges.txt
-fi
-
 if [ $MODEL_SIZE = 2B ]; then
 
 NUM_LAYERS=6
 HIDDEN_SIZE=2048
 NUM_ATTN_HEADS=32
-SEQ_LEN=1024
+
 
 elif [ $MODEL_SIZE = 10B ]; then
 
 NUM_LAYERS=48
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=64
-SEQ_LEN=1024
+
 
 elif [ $MODEL_SIZE = 130B ]; then
 
 NUM_LAYERS=70
 HIDDEN_SIZE=12288
 NUM_ATTN_HEADS=96
-SEQ_LEN=2048
 
+
+fi
+
+if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
+    load_options=" \
+		    --load $PRETRAIN_CHECKPOINT_PATH"
 fi
 
 if [ $AC = full ]; then
@@ -126,7 +124,7 @@ TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
 LR_WARMUP_ITERS=$(( ${WARMUP_TOKENS}  / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
 LR_DECAY_ITERS=$(( ${TRAIN_TOKENS} /  ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
 
-NAME="${ENV}-pretrain-megatron-bloom-${MODEL_SIZE}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}-tt-${TRAIN_TOKENS}-wt-${WARMUP_TOKENS}"
+NAME="${ENV}-pretrain-megatron-glm130b-${MODEL_SIZE}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}-tt-${TRAIN_TOKENS}-wt-${WARMUP_TOKENS}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
@@ -137,7 +135,6 @@ mkdir -p ${TENSORBOARD_DIR}
 SAVED_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 
 megatron_options=" \
-        --load ${PRETRAIN_CHECKPOINT_PATH} \
         --save ${SAVED_PRETRAIN_CHECKPOINT_PATH} \
         --split 98,2,0 \
         --data-impl mmap \
@@ -175,17 +172,16 @@ megatron_options=" \
         --no-load-optim \
         --no-load-rng \
         --num-workers 8 \
-        --finetune \
-        --source-seq-len ${SOURCE_SEQ_LEN} \
-        --target-seq-len ${TARGET_SEQ_LEN} \
+        --generation-length ${GEN_LEN} \
+        --apply-residual-connection-post-layernorm \
+        --geglu \
         --no-position-embedding \
-        --swiglu \
         --use-rotary-position-embeddings \
         --patch-tokenizer-type IcetkGLM130BTokenizer
         "
 
 run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_glm130b.py
- ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
+ ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 echo ${run_cmd}
 eval ${run_cmd}

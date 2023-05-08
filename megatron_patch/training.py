@@ -49,7 +49,7 @@ def pretrain(train_valid_test_dataset_provider,
              forward_step_func,
              process_non_loss_data_func=None,
              extra_args_provider=None,
-             args_defaults={}):
+             args_defaults={'tokenizer_type': 'GPT2BPETokenizer'}):
     """Main training program.
 
     This function will run the followings in the order provided:
@@ -175,7 +175,7 @@ def setup_model_and_optimizer(model_provider_func,
     model = get_model(model_provider_func, model_type)
     unwrapped_model = unwrap_model(model, (torchDDP, LocalDDP, Float16Module))
 
-    if args.finetune and args.no_load_optim:
+    if args.load is not None and args.no_load_optim:
         load_checkpoint(model, None, None)
 
     optimizer = get_megatron_optimizer(model, no_wd_decay_cond, scale_lr_cond,
