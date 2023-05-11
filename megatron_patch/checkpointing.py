@@ -38,7 +38,7 @@ def ensure_directory_exists(filename):
     """Build filename's path if it does not already exists."""
     dirname = os.path.dirname(filename)
     if not os.path.exists(dirname):
-        os.system(f'rm -rf {dirname}')
+        os.system(f'mkdir {dirname}')
 
 
 def check_checkpoint_args(checkpoint_args):
