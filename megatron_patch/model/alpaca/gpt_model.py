@@ -73,6 +73,10 @@ class GPTModel(MegatronModule):
             pre_process=self.pre_process,
             post_process=self.post_process)
 
+        self.lm_head = torch.nn.Linear(args.hidden_size,
+                                       args.padded_vocab_size,
+                                       bias=False)
+
         self.initialize_word_embeddings(init_method_normal)
 
     def set_input_tensor(self, input_tensor):
@@ -90,13 +94,15 @@ class GPTModel(MegatronModule):
                                         position_ids,
                                         attention_mask,
                                         inference_params=inference_params)
-
+        """
         if self.post_process:
             # return post_language_model_processing(
             lm_output = post_language_model_processing(
                 lm_output, labels, self.word_embeddings_weight(),
                 self.parallel_output, self.fp16_lm_cross_entropy)
-        return lm_output
+        """
+        lm_output = self.lm_head(lm_output)
+        return lm_output.transpose(0, 1).contiguous()
 
     def state_dict_for_save_checkpoint(self, prefix='', keep_vars=False):
 
@@ -104,6 +110,11 @@ class GPTModel(MegatronModule):
         state_dict_[self._language_model_key] \
             = self.language_model.state_dict_for_save_checkpoint(
                 prefix=prefix, keep_vars=keep_vars)
+
+        state_dict_['lm_head'] \
+            = self.lm_head.state_dict_for_save_checkpoint(
+                prefix=prefix, keep_vars=keep_vars)
+
         # Save word_embeddings.
         if self.post_process and not self.pre_process:
             state_dict_[self._word_embeddings_for_head_key] \
@@ -118,6 +129,10 @@ class GPTModel(MegatronModule):
         if self.post_process and not self.pre_process:
             self.word_embeddings.load_state_dict(
                 state_dict[self._word_embeddings_for_head_key], strict=strict)
+
+        self.lm_head.load_state_dict(state_dict['lm_head'], strict=strict)
+
         if self._language_model_key in state_dict:
             state_dict = state_dict[self._language_model_key]
+
         self.language_model.load_state_dict(state_dict, strict=strict)

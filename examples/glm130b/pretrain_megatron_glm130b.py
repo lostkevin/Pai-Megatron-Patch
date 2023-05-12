@@ -20,9 +20,9 @@ from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.pretrain_dataset import \
-    build_pretrain_glm130b_datasets_from_original, build_pretrain_glm130b_datasets_from_idxmap
+    build_pretrain_glm130b_datasets_from_idxmap
 from megatron_patch.model.glm130b.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer
 from megatron_patch.training import pretrain
 
 try:
@@ -64,8 +64,7 @@ def get_tasks_args(parser):
 
     group.add_argument('--data-dir', default=None, help='data-dir')
 
-    group.add_argument('--geglu', action='store_true',
-                       help='Use gated linear units and SiLU activation instead of default gelu')
+    group.add_argument('--geglu', action='store_true')
 
     group.add_argument('--train-data',
                        default=None,
@@ -102,9 +101,9 @@ def model_provider(pre_process=True, post_process=True):
                      post_process=post_process)
     return model
 
+
 def train_valid_test_datasets_provider(train_val_test_num_samples):
     args = get_args()
-
     """
     train_ds, valid_ds, test_ds = \
         build_pretrain_glm130b_datasets_from_original(
@@ -115,23 +114,21 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
     train_ds, valid_ds, test_ds = \
         build_pretrain_glm130b_datasets_from_idxmap(
-        data_prefix=args.data_path,
-        data_impl=args.data_impl,
-        splits_string=args.split,
-        train_valid_test_num_samples=train_val_test_num_samples,
-        seq_length=args.seq_length,
-        generation_length=args.generation_length,
-        seed=args.seed,
-        skip_warmup=(not args.mmap_warmup))
+            data_prefix=args.data_path,
+            data_impl=args.data_impl,
+            splits_string=args.split,
+            train_valid_test_num_samples=train_val_test_num_samples,
+            seq_length=args.seq_length,
+            generation_length=args.generation_length,
+            seed=args.seed,
+            skip_warmup=(not args.mmap_warmup))
 
     return train_ds, valid_ds, test_ds
 
 
 def forward_step(data_iterator, model):
 
-    keys = [
-        'tokens', 'targets', 'position_ids', 'attention_mask', 'loss_mask'
-    ]
+    keys = ['tokens', 'targets', 'position_ids', 'attention_mask', 'loss_mask']
     datatype = torch.int64
     # Broadcast data.
     if data_iterator is not None:
@@ -158,6 +155,7 @@ def forward_step(data_iterator, model):
         return loss, {'lm loss': averaged_loss[0]}
 
     return output_tensor, partial(loss_func, loss_mask)
+
 
 if __name__ == '__main__':
     pretrain(train_valid_test_datasets_provider,

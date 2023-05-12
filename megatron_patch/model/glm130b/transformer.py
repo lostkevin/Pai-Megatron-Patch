@@ -116,19 +116,24 @@ class ParallelMLP(MegatronModule):
         elif args.onnx_safe:
             self.activation_func = erf_gelu
         elif args.swiglu:
+
             def swiglu(x):
                 x = torch.chunk(x, 2, dim=-1)
                 return F.silu(x[0]) * x[1]
 
             self.activation_func = swiglu
         elif args.squared_relu:
+
             def squared_relu(x):
                 return torch.pow(F.relu(x), 2)
+
             self.activation_func = squared_relu
         elif args.geglu:
+
             def geglu(x):
                 x1, x2 = x.chunk(2, dim=(x.ndim - 1))
                 return x1 * F.gelu(x2)
+
             self.activation_func = geglu
         else:
             self.bias_gelu_fusion = args.bias_gelu_fusion
