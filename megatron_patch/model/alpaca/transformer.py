@@ -344,6 +344,9 @@ class ParallelAttention(MegatronModule):
         self.position_embedding_type = args.position_embedding_type
         self.bf16 = args.bf16
         self.use_flash_attn = args.use_flash_attn
+        self.hidden_size = args.hidden_size
+        self.num_heads = args.num_attention_heads
+        self.head_dim = self.hidden_size // self.num_heads
         if self.use_flash_attn:
             if flash_attn_unpadded_func is None:
                 raise ImportError(
@@ -368,27 +371,26 @@ class ParallelAttention(MegatronModule):
         self.num_attention_heads_per_partition = core.utils.divide(
             args.num_attention_heads, world_size)
 
-        # Strided linear layer.
-        if attention_type == AttnType.self_attn:
-            self.query_key_value = tensor_parallel.ColumnParallelLinear(
-                args.hidden_size,
-                3 * projection_size,
-                gather_output=False,
-                init_method=init_method,
-                bias=False)
-        else:
-            assert attention_type == AttnType.cross_attn
-            self.query = tensor_parallel.ColumnParallelLinear(
-                args.hidden_size,
-                projection_size,
-                gather_output=False,
-                init_method=init_method)
+        self.query = tensor_parallel.ColumnParallelLinear(
+            args.hidden_size,
+            projection_size,
+            gather_output=False,
+            bias=False,
+            init_method=init_method)
 
-            self.key_value = tensor_parallel.ColumnParallelLinear(
-                args.hidden_size,
-                2 * projection_size,
-                gather_output=False,
-                init_method=init_method)
+        self.key = tensor_parallel.ColumnParallelLinear(
+            args.hidden_size,
+            projection_size,
+            gather_output=False,
+            bias=False,
+            init_method=init_method)
+
+        self.value = tensor_parallel.ColumnParallelLinear(
+            args.hidden_size,
+            projection_size,
+            gather_output=False,
+            bias=False,
+            init_method=init_method)
 
         self.core_attention = CoreAttention(self.layer_number,
                                             self.attn_mask_type)
@@ -409,7 +411,8 @@ class ParallelAttention(MegatronModule):
 
         if self.position_embedding_type == 'rotary':
             dim = self.hidden_size_per_attention_head
-            self.rotary_emb = LlamaRotaryEmbedding(dim)
+            self.rotary_emb = LlamaRotaryEmbedding(
+                dim, args.max_position_embeddings)
         else:
             self.rotary_emb = None
 
@@ -449,7 +452,7 @@ class ParallelAttention(MegatronModule):
         # =====================
         # Query, Key, and Value
         # =====================
-
+        """
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer, _ = self.query_key_value(hidden_states)
 
@@ -462,17 +465,46 @@ class ParallelAttention(MegatronModule):
 
         # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
         # torch.Size([128, 1, 32, 128])
-        (query_layer, key_layer,
-         value_layer) = tensor_parallel.split_tensor_along_last_dim(
+        (query_layer, key_layer, value_layer) =
+         tensor_parallel.split_tensor_along_last_dim(
              mixed_x_layer, 3)
 
-        position_ids = position_ids.transpose(0, 1)
-        cos, sin = self.rotary_emb(value_layer, seq_len=position_ids.max() + 1)
-        # [seq_len, batch, num_attention_heads,
-        # hidden_size_per_attention_head]
-        query_layer, key_layer = apply_rotary_pos_emb(query_layer, key_layer,
-                                                      cos, sin, position_ids)
+        query_layer = query_layer.permute(1, 2, 0, 3)
+        key_layer = key_layer.permute(1, 2, 0, 3)
+        value_layer = value_layer.permute(1, 2, 0, 3)
+        """
+        q_len, bsz, _ = hidden_states.size()
+        query_layer = self.query(hidden_states)[0].view(
+            q_len, bsz, self.num_heads,
+            self.head_dim).transpose(0, 1).transpose(1, 2)
+        key_layer = self.key(hidden_states)[0].view(q_len, bsz, self.num_heads,
+                                                    self.head_dim).transpose(
+                                                        0, 1).transpose(1, 2)
+        value_layer = self.value(hidden_states)[0].view(
+            q_len, bsz, self.num_heads,
+            self.head_dim).transpose(0, 1).transpose(1, 2)
 
+        kv_seq_len = key_layer.shape[-2]
+        cos, sin = self.rotary_emb(value_layer, seq_len=kv_seq_len)
+        query_states, key_states = apply_rotary_pos_emb(
+            query_layer, key_layer, cos, sin, position_ids)
+        attn_weights = torch.matmul(query_states, key_states.transpose(
+            2, 3)) / math.sqrt(self.hidden_size_per_attention_head)
+        attn_weights = attn_weights + attention_mask
+        attn_weights = torch.max(
+            attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
+        # upcast attention to fp32
+        attn_weights = torch.nn.functional.softmax(attn_weights,
+                                                   dim=-1,
+                                                   dtype=torch.float32).to(
+                                                       query_states.dtype)
+        attn_output = torch.matmul(attn_weights, value_layer)
+
+        attn_output = attn_output.transpose(1, 2)
+        attn_output = attn_output.reshape(bsz, kv_seq_len, self.hidden_size)
+        attn_output = attn_output.transpose(1, 0)
+        output, bias = self.dense(attn_output)
+        """
         # ==================================
         # core attention computation
         # ==================================
@@ -501,8 +533,11 @@ class ParallelAttention(MegatronModule):
         # =================
         # Output. [sq, b, h]
         # =================
+        import pdb;pdb.set_trace()
+        #context_layer: torch.Size([80, 1, 4096])
         output, bias = self.dense(context_layer)
 
+        """
         return output, bias
 
 
@@ -594,48 +629,24 @@ class ParallelTransformerLayer(MegatronModule):
                 enc_dec_attn_mask=None,
                 inference_params=None):
         # hidden_states: [s, b, h]
-
         # Layer norm at the beginning of the transformer layer.
-        layernorm_output = self.input_layernorm(hidden_states)
+        residual = hidden_states
+        hidden_states = self.input_layernorm(hidden_states)
         # Self attention.
-        attention_output, attention_bias = \
+        hidden_states, _ = \
             self.self_attention(
-                layernorm_output,
+                hidden_states,
                 position_ids,
                 attention_mask,
                 inference_params=inference_params)
 
-        # Residual connection.
-        if self.apply_residual_connection_post_layernorm:
-            residual = layernorm_output
-        else:
-            residual = hidden_states
+        hidden_states = residual + hidden_states
 
-        layernorm_input = attention_output + residual
-
-        # Layer norm post the self attention.
-        layernorm_output = self.post_attention_layernorm(layernorm_input)
-
-        args = get_args()
-
-        if args.recompute_granularity == 'selective':
-
-            def remove_bias_forward(layernorm_output):
-                mlp_output, mlp_bias = self.mlp(layernorm_output)
-                return mlp_output
-
-            mlp_output = tensor_parallel.checkpoint(remove_bias_forward, False,
-                                                    layernorm_output)
-        else:
-            mlp_output, mlp_bias = self.mlp(layernorm_output)
-
-        # Second residual connection.
-        if self.apply_residual_connection_post_layernorm:
-            residual = layernorm_output
-        else:
-            residual = layernorm_input
-
-        output = mlp_output + residual
+        # Fully Connected
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states, _ = self.mlp(hidden_states)
+        output = residual + hidden_states
 
         # Jit compiled function creates 'view' tensor. This tensor
         # potentially gets saved in the MPU checkpoint function context,

@@ -215,7 +215,6 @@ class Embedding(MegatronModule):
         # Embeddings.
         words_embeddings = self.word_embeddings(input_ids)
         embeddings = words_embeddings
-
         if self.position_embedding_type == 'absolute':
             assert self.position_embeddings is not None
             embeddings = embeddings + self.position_embeddings(position_ids)

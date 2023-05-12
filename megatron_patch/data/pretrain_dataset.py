@@ -14,15 +14,18 @@
 
 import math
 import os
-import time
 from bisect import bisect_right
 from itertools import accumulate
+
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+
 from megatron import print_rank_0
-from megatron.data.gpt_dataset import get_indexed_dataset_, get_train_valid_test_split_, _build_index_mappings
+from megatron.data.gpt_dataset import (_build_index_mappings,
+                                       get_indexed_dataset_,
+                                       get_train_valid_test_split_)
 from megatron_patch.tokenizer import get_tokenizer
+
 
 class GLM130BDataset_Ori(torch.utils.data.Dataset):
     def __init__(self, path, max_seq_length, generation_length):
@@ -89,20 +92,20 @@ class GLM130BDataset_Ori(torch.utils.data.Dataset):
             np.array(prompt + [mask_id] + text, dtype=np.int64),
             'position_ids':
             np.arange(0, seq_length, dtype=np.int64),
-            'attention_mask': attention_mask,
+            'attention_mask':
+            attention_mask,
             'loss_mask':
             np.array([0] * (len(prompt) + 1) + [1] * len(text),
                      dtype=np.int64),
         }
 
 
-def build_pretrain_glm130b_datasets_from_original(data_prefix,
-                                    max_seq_length,
-                                    generation_length):
-
+def build_pretrain_glm130b_datasets_from_original(data_prefix, max_seq_length,
+                                                  generation_length):
     def build_dataset():
 
-        dataset = GLM130BDataset_Ori(data_prefix[0], max_seq_length, generation_length)
+        dataset = GLM130BDataset_Ori(data_prefix[0], max_seq_length,
+                                     generation_length)
 
         return dataset
 
@@ -114,9 +117,15 @@ def build_pretrain_glm130b_datasets_from_original(data_prefix,
 
 
 class GLM130BDataset_IdxMap(torch.utils.data.Dataset):
-
-    def __init__(self, name, data_prefix, documents, indexed_dataset,
-                 num_samples, seq_length, generation_length, seed,
+    def __init__(self,
+                 name,
+                 data_prefix,
+                 documents,
+                 indexed_dataset,
+                 num_samples,
+                 seq_length,
+                 generation_length,
+                 seed,
                  return_doc_ids=False):
 
         self.max_seq_length = seq_length
@@ -138,7 +147,6 @@ class GLM130BDataset_IdxMap(torch.utils.data.Dataset):
             _build_index_mappings(self.name, data_prefix,
                                   documents, self.indexed_dataset.sizes,
                                   num_samples, seq_length, seed)
-
 
     def __len__(self):
         # -1 is due to data structure used to retieve the index:
@@ -163,17 +171,19 @@ class GLM130BDataset_IdxMap(torch.utils.data.Dataset):
         else:
             # Otherwise, get the rest of the initial document.
             doc_ids.append(self.doc_idx[doc_index_f])
-            sample_list = [self.indexed_dataset.get(self.doc_idx[doc_index_f],
-                                                    offset=offset_f)]
+            sample_list = [
+                self.indexed_dataset.get(self.doc_idx[doc_index_f],
+                                         offset=offset_f)
+            ]
             # Loop over all in between documents and add the entire document.
             for i in range(doc_index_f + 1, doc_index_l):
                 doc_ids.append(self.doc_idx[i])
                 sample_list.append(self.indexed_dataset.get(self.doc_idx[i]))
             # And finally add the relevant portion of last document.
             doc_ids.append(self.doc_idx[doc_index_l])
-            sample_list.append(self.indexed_dataset.get(
-                self.doc_idx[doc_index_l],
-                length=offset_l + 1))
+            sample_list.append(
+                self.indexed_dataset.get(self.doc_idx[doc_index_l],
+                                         length=offset_l + 1))
             sample = np.concatenate(sample_list)
 
         tokens = sample[:-2].tolist()
@@ -198,23 +208,27 @@ class GLM130BDataset_IdxMap(torch.utils.data.Dataset):
             np.array(prompt + [mask_id] + text, dtype=np.int64),
             'position_ids':
             np.arange(0, seq_length, dtype=np.int64),
-            'attention_mask': attention_mask,
+            'attention_mask':
+            attention_mask,
             'loss_mask':
             np.array([0] * (len(prompt) + 1) + [1] * len(text),
                      dtype=np.int64),
         }
 
 
-def build_pretrain_glm130b_datasets_from_idxmap(data_prefix, data_impl, splits_string,
-                                     train_valid_test_num_samples,
-                                     seq_length, generation_length, seed, skip_warmup,
-                                     return_doc_ids=False):
+def build_pretrain_glm130b_datasets_from_idxmap(data_prefix,
+                                                data_impl,
+                                                splits_string,
+                                                train_valid_test_num_samples,
+                                                seq_length,
+                                                generation_length,
+                                                seed,
+                                                skip_warmup,
+                                                return_doc_ids=False):
     """Build train, valid, and test datasets."""
     data_prefix = data_prefix[0]
     # Indexed dataset.
-    indexed_dataset = get_indexed_dataset_(data_prefix,
-                                           data_impl,
-                                           skip_warmup)
+    indexed_dataset = get_indexed_dataset_(data_prefix, data_impl, skip_warmup)
 
     total_num_of_documents = indexed_dataset.sizes.shape[0]
     splits = get_train_valid_test_split_(splits_string, total_num_of_documents)
@@ -227,6 +241,7 @@ def build_pretrain_glm130b_datasets_from_idxmap(data_prefix, data_impl, splits_s
         print_rank_0('     document indices in [{}, {}) total of {} '
                      'documents'.format(splits[index], splits[index + 1],
                                         splits[index + 1] - splits[index]))
+
     print_split_stats('train', 0)
     print_split_stats('validation', 1)
     print_split_stats('test', 2)
@@ -234,13 +249,14 @@ def build_pretrain_glm130b_datasets_from_idxmap(data_prefix, data_impl, splits_s
     def build_dataset(index, name):
         dataset = None
         if splits[index + 1] > splits[index]:
-            documents = np.arange(start=splits[index], stop=splits[index + 1],
-                                  step=1, dtype=np.int32)
-            dataset = GLM130BDataset_IdxMap(name, data_prefix,
-                                 documents, indexed_dataset,
-                                 train_valid_test_num_samples[index],
-                                 seq_length, generation_length, seed,
-                                 return_doc_ids)
+            documents = np.arange(start=splits[index],
+                                  stop=splits[index + 1],
+                                  step=1,
+                                  dtype=np.int32)
+            dataset = GLM130BDataset_IdxMap(
+                name, data_prefix, documents, indexed_dataset,
+                train_valid_test_num_samples[index], seq_length,
+                generation_length, seed, return_doc_ids)
         return dataset
 
     train_dataset = build_dataset(0, 'train')
