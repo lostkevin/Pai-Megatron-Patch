@@ -152,14 +152,13 @@ if __name__ == "__main__":
         for i in tqdm(range(len(prompts))):
             tmp = tokenizer.decode(
                 tokenizer(
-                    prompts[i].split("TL;DR:")[0],
+                    prompts[i],
                     truncation=True,
-                    max_length=max_length - 5,  # to make sure "TL;DR" dont get truncated
+                    max_length=max_length,  # [canceled] to make sure "TL;DR" dont get truncated
                     add_special_tokens=False,
                 )["input_ids"],
                 skip_special_tokens=True,
             ).strip()
-            tmp = tmp + "\nTL;DR:"
             tmp = tokenizer.decode(
                 tokenizer(tmp, truncation=True, max_length=max_length, add_special_tokens=False)["input_ids"],
                 skip_special_tokens=True,
@@ -168,7 +167,7 @@ if __name__ == "__main__":
         return formatted_prompts
 
     def reward_fn(samples: List[str], **kwargs):
-        original_samples = [text.split("TL;DR:")[0] + "TL;DR: " for text in samples]
+        original_samples = [text for text in samples]
         original_samples = [text + post_summary_dict[text.strip()] for text in original_samples]
         original_scores = get_scores(original_samples)
         scores = get_scores(samples)
