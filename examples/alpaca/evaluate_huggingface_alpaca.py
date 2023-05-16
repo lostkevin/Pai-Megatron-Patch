@@ -18,7 +18,7 @@ import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
 from megatron import get_args, is_last_rank, print_rank_0
-from megatron.core import parallel_state, tensor_parallel
+from megatron.core import parallel_state
 from megatron.core.pipeline_parallel.p2p_communication import send_forward
 from megatron.initialize import initialize_megatron
 from megatron.model import DistributedDataParallel as LocalDDP
@@ -26,10 +26,9 @@ from megatron.model import Float16Module
 from megatron.utils import unwrap_model
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer
 from megatron_patch.training import get_model
 from transformers import AutoModelForCausalLM
-
 
 try:
     from megatron.model import ModelType
@@ -81,13 +80,12 @@ def get_tasks_args(parser):
 
     group.add_argument('--cache-dir', type=str, help='cache-dir')
 
-
     group.add_argument('--patch-tokenizer-type',
                        type=str,
                        help='patch-tokenizer-type')
 
-
     return parser
+
 
 def get_model_provider():
     """Based on evaluation metric set the parallel-output flag and
@@ -95,12 +93,12 @@ def get_model_provider():
     def model_provider(pre_process=True, post_process=True):
         args = get_args()
         tokenizer = build_tokenizer(args)
-        model = AutoModelForCausalLM.from_pretrained(args.load, trust_remote_code=False)
+        model = AutoModelForCausalLM.from_pretrained(args.load,
+                                                     trust_remote_code=False)
         model.resize_token_embeddings(len(tokenizer))
         return model
 
     return model_provider
-
 
 
 def forward_step(batch, model):
@@ -110,14 +108,16 @@ def forward_step(batch, model):
     input_ids = batch['input_ids'].long().cuda()
     labels = batch['labels'].long().cuda()
     attention_mask = batch['attention_mask'].cuda()
-    
+
     # Tell the model what our actual batch size will be
     args = get_args()
     args.micro_batch_size = len(labels)
 
     # Forward pass through the model.
     unwrapped_model = unwrap_model(model, (torchDDP, LocalDDP, Float16Module))
-    output = unwrapped_model(input_ids=input_ids, labels=labels, attention_mask=attention_mask)
+    output = unwrapped_model(input_ids=input_ids,
+                             labels=labels,
+                             attention_mask=attention_mask)
     send_forward(output)
     if parallel_state.is_pipeline_last_stage():
         print_rank_0(output.loss)
@@ -221,4 +221,3 @@ def main():
 if __name__ == '__main__':
     initialize_megatron(extra_args_provider=get_tasks_args)
     main()
-

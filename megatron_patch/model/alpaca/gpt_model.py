@@ -16,35 +16,27 @@
 import torch
 
 from megatron import get_args
-from megatron.core import tensor_parallel
 from megatron.model.enums import AttnMaskType
 from megatron.model.module import MegatronModule
 from megatron.model.utils import init_method_normal, scaled_init_method_normal
 
-from .language_model import get_language_model, parallel_lm_logits
+from .language_model import get_language_model
 
 
-def post_language_model_processing(lm_output, labels, logit_weights,
-                                   parallel_output, fp16_lm_cross_entropy):
-
-    # Output. Format [s b h]
-    output = parallel_lm_logits(lm_output, logit_weights, parallel_output)
+def post_language_model_processing(output, labels):
 
     if labels is None:
         # [s b h] => [b s h]
         return output.transpose(0, 1).contiguous()
     else:
-        # [b s] => [s b]
-        labels = labels.transpose(0, 1).contiguous()
-        if fp16_lm_cross_entropy:
-            assert output.dtype == torch.half
-            loss = tensor_parallel.vocab_parallel_cross_entropy(output, labels)
-        else:
-            loss = tensor_parallel.vocab_parallel_cross_entropy(
-                output.float(), labels)
+        # [s b] => [b s]
+        logits = output.transpose(0, 1).contiguous()
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
+        loss = loss_fct(shift_logits.reshape(-1, shift_logits.size(-1)),
+                        shift_labels.reshape(-1))
 
-        # [s b] => [b, s]
-        loss = loss.transpose(0, 1).contiguous()
         return loss
 
 
@@ -94,15 +86,12 @@ class GPTModel(MegatronModule):
                                         position_ids,
                                         attention_mask,
                                         inference_params=inference_params)
-        """
+
         if self.post_process:
-            # return post_language_model_processing(
-            lm_output = post_language_model_processing(
-                lm_output, labels, self.word_embeddings_weight(),
-                self.parallel_output, self.fp16_lm_cross_entropy)
-        """
-        lm_output = self.lm_head(lm_output)
-        return lm_output.transpose(0, 1).contiguous()
+            output = self.lm_head(lm_output)
+            lm_output = post_language_model_processing(output, labels)
+
+        return lm_output
 
     def state_dict_for_save_checkpoint(self, prefix='', keep_vars=False):
 
@@ -111,15 +100,16 @@ class GPTModel(MegatronModule):
             = self.language_model.state_dict_for_save_checkpoint(
                 prefix=prefix, keep_vars=keep_vars)
 
-        state_dict_['lm_head'] \
-            = self.lm_head.state_dict_for_save_checkpoint(
-                prefix=prefix, keep_vars=keep_vars)
-
         # Save word_embeddings.
         if self.post_process and not self.pre_process:
             state_dict_[self._word_embeddings_for_head_key] \
                 = self.word_embeddings.state_dict(prefix=prefix,
                                                   keep_vars=keep_vars)
+
+        state_dict_['lm_head'] \
+            = self.lm_head.state_dict(prefix=prefix,
+                                      keep_vars=keep_vars)
+
         return state_dict_
 
     def load_state_dict(self, state_dict, strict=True):

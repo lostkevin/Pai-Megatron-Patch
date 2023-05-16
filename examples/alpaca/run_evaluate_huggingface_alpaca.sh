@@ -88,4 +88,3 @@ run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingfa
 echo ${run_cmd}
 eval ${run_cmd}
 set +x
-
