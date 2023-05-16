@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+import io
+import json
 import math
 import os
 from bisect import bisect_right
@@ -98,22 +101,6 @@ class GLM130BDataset_Ori(torch.utils.data.Dataset):
             np.array([0] * (len(prompt) + 1) + [1] * len(text),
                      dtype=np.int64),
         }
-
-
-def build_pretrain_glm130b_datasets_from_original(data_prefix, max_seq_length,
-                                                  generation_length):
-    def build_dataset():
-
-        dataset = GLM130BDataset_Ori(data_prefix[0], max_seq_length,
-                                     generation_length)
-
-        return dataset
-
-    train_dataset = build_dataset()
-    valid_dataset = build_dataset()
-    test_dataset = build_dataset()
-
-    return (train_dataset, valid_dataset, test_dataset)
 
 
 class GLM130BDataset_IdxMap(torch.utils.data.Dataset):
@@ -216,6 +203,117 @@ class GLM130BDataset_IdxMap(torch.utils.data.Dataset):
         }
 
 
+class AlpacaDataset_Ori(torch.utils.data.Dataset):
+    def __init__(self, datapath, max_padding_length):
+        self.IGNORE_INDEX = -100
+        self.tokenizer = get_tokenizer()
+        self.max_padding_length = max_padding_length
+        PROMPT_DICT = {
+            'prompt_input':
+            ('Below is an instruction that describes a task,'
+             ' paired with an input that provides further context. '
+             'Write a response that appropriately completes the request.\n\n'
+             '### Instruction:\n{instruction}'
+             '\n\n### Input:\n{input}\n\n### Response:'),
+            'prompt_no_input':
+            ('Below is an instruction that describes a task. '
+             'Write a response that appropriately completes the request.\n\n'
+             '### Instruction:\n{instruction}\n\n### Response:'),
+        }
+
+        list_data_dict = self.jload(datapath)
+        prompt_input, prompt_no_input = PROMPT_DICT[
+            'prompt_input'], PROMPT_DICT['prompt_no_input']
+        sources = [
+            prompt_input.format_map(example) if example.get('input', '') != ''
+            else prompt_no_input.format_map(example)
+            for example in list_data_dict
+        ]
+        targets = [
+            f"{example['output']}{self.tokenizer.eos_token}"
+            for example in list_data_dict
+        ]
+        data_dict = self.preprocess(sources, targets, self.tokenizer)
+
+        self.input_ids = data_dict['input_ids']
+        self.labels = data_dict['labels']
+        self.samples = []
+        for inputs, labels in zip(self.input_ids, self.labels):
+            self.samples.append([inputs, labels])
+
+        print('  >> total number of samples: {}'.format(len(self.samples)))
+
+    def _make_r_io_base(self, f, mode: str):
+        if not isinstance(f, io.IOBase):
+            f = open(f, mode=mode)
+        return f
+
+    def jload(self, f, mode='r'):
+        """Load a .json file into a dictionary."""
+        f = self._make_r_io_base(f, mode)
+        jdict = json.load(f)
+        f.close()
+        return jdict
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        raw_sample = self.samples[idx]
+        return self.gpt_convert_example_to_feature(raw_sample)
+
+    def preprocess(self, sources, targets, tokenizer):
+        """Preprocess the data by tokenizing."""
+        examples = [s + t for s, t in zip(sources, targets)]
+        examples_tokenized, sources_tokenized = [
+            self.tokenize(strings, tokenizer)
+            for strings in (examples, sources)
+        ]
+        input_ids = examples_tokenized['input_ids']
+        labels = copy.deepcopy(input_ids)
+        for label, source_len in zip(labels,
+                                     sources_tokenized['input_ids_lens']):
+            label[:source_len] = self.IGNORE_INDEX
+        return dict(input_ids=input_ids, labels=labels)
+
+    def tokenize(self, strings, tokenizer):
+        """Tokenize a list of strings."""
+        tokenized_list = [
+            tokenizer(
+                text,
+                return_tensors='np',
+                padding='max_length',
+                max_length=self.max_padding_length,
+                truncation=True,
+            ) for text in strings
+        ]
+        input_ids = labels = [
+            tokenized.input_ids[0] for tokenized in tokenized_list
+        ]
+        input_ids_lens = labels_lens = [
+            (tokenized.input_ids != tokenizer.pad_token_id).sum().item()
+            for tokenized in tokenized_list
+        ]
+        return dict(
+            input_ids=input_ids,
+            labels=labels,
+            input_ids_lens=input_ids_lens,
+            labels_lens=labels_lens,
+        )
+
+    def gpt_convert_example_to_feature(self, sample):
+        input_ids, labels = sample
+        attention_mask = np.ones(input_ids.shape, dtype=np.int64)
+        attention_mask[attention_mask == self.tokenizer.pad_token_id] = 0
+        train_sample = {
+            'input_ids': input_ids,
+            'labels': labels,
+            'attention_mask': attention_mask
+        }
+
+        return train_sample
+
+
 def build_pretrain_glm130b_datasets_from_idxmap(data_prefix,
                                                 data_impl,
                                                 splits_string,
@@ -262,5 +360,36 @@ def build_pretrain_glm130b_datasets_from_idxmap(data_prefix,
     train_dataset = build_dataset(0, 'train')
     valid_dataset = build_dataset(1, 'valid')
     test_dataset = build_dataset(2, 'test')
+
+    return (train_dataset, valid_dataset, test_dataset)
+
+
+def build_pretrain_glm130b_datasets_from_original(data_prefix, max_seq_length,
+                                                  generation_length):
+    def build_dataset():
+
+        dataset = GLM130BDataset_Ori(data_prefix[0], max_seq_length,
+                                     generation_length)
+
+        return dataset
+
+    train_dataset = build_dataset()
+    valid_dataset = build_dataset()
+    test_dataset = build_dataset()
+
+    return (train_dataset, valid_dataset, test_dataset)
+
+
+def build_pretrain_alpaca_datasets_from_original(data_prefix,
+                                                 max_padding_length):
+    def build_dataset():
+
+        dataset = AlpacaDataset_Ori(data_prefix[0], max_padding_length)
+
+        return dataset
+
+    train_dataset = build_dataset()
+    valid_dataset = build_dataset()
+    test_dataset = build_dataset()
 
     return (train_dataset, valid_dataset, test_dataset)

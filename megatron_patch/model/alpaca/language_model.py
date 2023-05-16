@@ -519,6 +519,11 @@ class TransformerLanguageModel(MegatronModule):
             encoder_input = self.embedding(enc_input_ids,
                                            enc_position_ids,
                                            tokentype_ids=tokentype_ids)
+
+            batch_size = enc_input_ids.shape[0]
+            enc_attn_mask = self._prepare_decoder_attention_mask(
+                enc_attn_mask, (batch_size, self.seq_length), encoder_input)
+
         else:
             encoder_input = None
 
@@ -532,10 +537,6 @@ class TransformerLanguageModel(MegatronModule):
                                         dtype=torch.long,
                                         device=device)
             enc_position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-
-        batch_size = enc_input_ids.shape[0]
-        enc_attn_mask = self._prepare_decoder_attention_mask(
-            enc_attn_mask, (batch_size, self.seq_length), encoder_input)
 
         # Run encoder.
         if enc_hidden_states is None:

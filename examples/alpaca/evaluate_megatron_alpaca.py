@@ -11,13 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import math
 
 import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
-from megatron import get_args, is_last_rank, print_rank_0
-from megatron.core import parallel_state, tensor_parallel
+from megatron import get_args, print_rank_0
+from megatron.core import parallel_state
 from megatron.core.pipeline_parallel.p2p_communication import (recv_forward,
                                                                send_forward)
 from megatron.initialize import initialize_megatron
@@ -30,6 +29,7 @@ from megatron_patch.finetune_utils import build_data_loader
 from megatron_patch.model.alpaca.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer
 from megatron_patch.training import get_model
+
 try:
     from megatron.model import ModelType
 except ImportError:
@@ -74,7 +74,6 @@ def get_tasks_args(parser):
 
     group.add_argument('--data-dir', default=None, help='data-dir')
 
-
     group.add_argument('--train-data',
                        default=None,
                        help='Whitespace separated paths or corpora names '
@@ -95,7 +94,6 @@ def get_tasks_args(parser):
     group.add_argument('--patch-tokenizer-type',
                        type=str,
                        help='patch-tokenizer-type')
-
 
     return parser
 
@@ -123,7 +121,7 @@ def forward_step(batch, model):
     input_ids = batch['input_ids'].long().cuda()
     labels = batch['labels'].long().cuda()
     attention_mask = batch['attention_mask'].cuda()
-    
+
     # Tell the model what our actual batch size will be
     args = get_args()
     args.micro_batch_size = len(labels)
@@ -132,17 +130,17 @@ def forward_step(batch, model):
     # Forward pass through the model.
     unwrapped_model = unwrap_model(model, (torchDDP, LocalDDP, Float16Module))
     unwrapped_model.set_input_tensor(input_tensor)
-    output = unwrapped_model(input_ids=input_ids, attention_mask=attention_mask)
+    output = unwrapped_model(input_ids=input_ids,
+                             attention_mask=attention_mask)
     shift_logits = output[..., :-1, :].contiguous()
     shift_labels = labels[..., 1:].contiguous()
     send_forward(output)
     loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
     if parallel_state.is_pipeline_last_stage():
         loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)),
-                    shift_labels.view(-1))
+                        shift_labels.view(-1))
         print_rank_0(loss)
         return loss
-
 
     return None
 
@@ -171,6 +169,7 @@ def evaluate(data_loader, model):
                 total_output += output
 
     return total_output
+
 
 def main():
     """Main program."""
@@ -205,4 +204,3 @@ def main():
 if __name__ == '__main__':
     initialize_megatron(extra_args_provider=get_tasks_args)
     main()
-

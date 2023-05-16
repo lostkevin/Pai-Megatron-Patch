@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
@@ -9,13 +10,14 @@ class BLOOMRewardModel(nn.Module):
         model = AutoModelForCausalLM.from_pretrained(model_path)
         self.config = model.config
         # `gpt-neo(x)` models use `hidden_size` attribute names instead of `n_embd``
-        self.config.n_embd = self.config.hidden_size if hasattr(self.config, "hidden_size") else self.config.n_embd
+        self.config.n_embd = self.config.hidden_size if hasattr(
+            self.config, 'hidden_size') else self.config.n_embd
         self.transformer = model.transformer
         self.v_head = nn.Linear(self.config.n_embd, 1, bias=False)
         # self.tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
-        self.tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-1b1")
+        self.tokenizer = AutoTokenizer.from_pretrained('bigscience/bloom-1b1')
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.PAD_ID = self.tokenizer(self.tokenizer.pad_token)["input_ids"][0]
+        self.PAD_ID = self.tokenizer(self.tokenizer.pad_token)['input_ids'][0]
 
     def forward(
         self,
@@ -72,7 +74,8 @@ class BLOOMRewardModel(nn.Module):
             # print("torch.all(torch.eq(chosen[i], rejected[i])).item(): ", torch.all(torch.eq(chosen[i], rejected[i])).item())
             if torch.all(torch.eq(chosen[i], rejected[i])).item():
                 c_inds = (chosen[i] == self.PAD_ID).nonzero()
-                c_ind = c_inds[0].item() if len(c_inds) > 0 else chosen.shape[1]
+                c_ind = c_inds[0].item(
+                ) if len(c_inds) > 0 else chosen.shape[1]
                 chosen_end_scores.append(chosen_rewards[i, c_ind - 1])
                 inference = True
                 continue
@@ -108,7 +111,8 @@ class BLOOMRewardModel(nn.Module):
             rejected_end_scores.append(r_truncated_reward[-1])
 
             # Compute loss
-            loss += -torch.log(torch.sigmoid(c_truncated_reward - r_truncated_reward)).mean()
+            loss += -torch.log(
+                torch.sigmoid(c_truncated_reward - r_truncated_reward)).mean()
         loss = loss / bs
 
         if not inference:
@@ -117,10 +121,10 @@ class BLOOMRewardModel(nn.Module):
 
         if inference:
             chosen_end_scores = torch.stack(chosen_end_scores)
-            return {"chosen_end_scores": chosen_end_scores}
+            return {'chosen_end_scores': chosen_end_scores}
 
         return {
-            "loss": loss,
-            "chosen_end_scores": chosen_end_scores,
-            "rejected_end_scores": rejected_end_scores,
+            'loss': loss,
+            'chosen_end_scores': chosen_end_scores,
+            'rejected_end_scores': rejected_end_scores,
         }

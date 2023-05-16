@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_megatron_alpaca.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-4 1e-5 100 fp16 1 1 sel true false false  /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron-tp1-pp1 2 /mnt/output_alpach
+#sh run_pretrain_megatron_alpaca.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 8 2048 2048 1e-5 1e-6 fp16 1 2 sel true false false 100000 /mnt/alpaca-datasets/alpaca_data.json none 100000 10000 /mnt/output_alpaca
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -26,21 +26,24 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 
 MODEL_SIZE=$4
 BATCH_SIZE=$5
-LR=$6
-MIN_LR=$7
+GLOBAL_BATCH_SIZE=$6
+SEQ_LEN=$7
 PAD_LEN=$8
-PR=$9
-TP=${10}
-PP=${11}
-AC=${12}
-DO=${13}
-FL=${14}
-SP=${15}
-TRAIN_DATASET_PATH=${16}
-VALID_DATASET_PATH=${17}
-PRETRAIN_CHECKPOINT_PATH=${18}
-EPOCH=${19}
-OUTPUT_BASEPATH=${20}
+LR=$9
+MIN_LR=${10}
+PR=${11}
+TP=${12}
+PP=${13}
+AC=${14}
+DO=${15}
+FL=${16}
+SP=${17}
+SAVE_INTERVAL=${18}
+DATASET_PATH=${19}
+PRETRAIN_CHECKPOINT_PATH=${20}
+TRAIN_TOKENS=${21}
+WARMUP_TOKENS=${22}
+OUTPUT_BASEPATH=${23}
 
 
 if [ $MODEL_SIZE = 7B ]; then
@@ -48,9 +51,13 @@ if [ $MODEL_SIZE = 7B ]; then
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
-SEQ_LEN=2048
 INTERMEDIATE_SIZE=11008
 
+fi
+
+if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
+    load_options=" \
+		    --load $PRETRAIN_CHECKPOINT_PATH"
 fi
 
 if [ $AC = full ]; then
@@ -100,45 +107,48 @@ elif [ $SP = false ]; then
                     "
 fi
 
-FT_NAME="${ENV}-finetune-megatron-alpaca-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
-OUTPUT_BASEPATH=/mnt/output_megatron_chatglm
+TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
+LR_WARMUP_ITERS=$(( ${WARMUP_TOKENS}  / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
+LR_DECAY_ITERS=$(( ${TRAIN_TOKENS} /  ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
+
+NAME="${ENV}-pretrain-megatron-alpaca-${MODEL_SIZE}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}-tt-${TRAIN_TOKENS}-wt-${WARMUP_TOKENS}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
 current_time=$(date "+%Y.%m.%d-%H.%M.%S")
-TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${FT_NAME}_${current_time}"
+TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${NAME}_${current_time}"
 mkdir -p ${TENSORBOARD_DIR}
 
-FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${FT_NAME}"
-LOGGING_PATH="${OUTPUT_BASEPATH}/log/${FT_NAME}_${current_time}"
+SAVED_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 
 megatron_options="  \
-        --load ${PRETRAIN_CHECKPOINT_PATH} \
-        --save ${FINETUNE_CHECKPOINT_PATH} \
-        --train-data ${TRAIN_DATASET_PATH} \
-        --valid-data ${VALID_DATASET_PATH} \
+        --save ${SAVED_PRETRAIN_CHECKPOINT_PATH} \
+        --split 98,2,0 \
+        --data-impl mmap \
+        --data-path ${DATASET_PATH}
+        --lr ${LR} \
+        --min-lr ${MIN_LR} \
+        --lr-decay-style linear \
+        --adam-beta1 0.9 \
+        --adam-beta2 0.95 \
+        --weight-decay 0.1 \
+        --clip-grad 1.0 \
+        --init-method-std 0.006 \
+        --lr-decay-iters ${LR_DECAY_ITERS} \
+        --lr-warmup-iters ${LR_WARMUP_ITERS} \
+        --train-iters ${TRAIN_ITERS} \
+        --micro-batch-size ${BATCH_SIZE} \
+        --global-batch-size ${GLOBAL_BATCH_SIZE} \
         --num-layers ${NUM_LAYERS} \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
-        --seq-length ${SEQ_LEN} \
-        --max-position-embeddings ${SEQ_LEN}  \
         --intermediate-size ${INTERMEDIATE_SIZE} \
-        --keep-last \
-        --micro-batch-size ${BATCH_SIZE} \
-        --epochs ${EPOCH} \
-        --lr ${LR} \
-        --min-lr ${MIN_LR} \
-        --lr-decay-style cosine \
-        --weight-decay 0.1 \
-        --clip-grad 1.0 \
-        --adam-beta1 0.9 \
-        --adam-beta2 0.95 \
-        --init-method-std 0.01 \
-        --num-workers 0\
+        --seq-length ${SEQ_LEN} \
+        --max-position-embeddings ${SEQ_LEN} \
         --log-interval 1 \
-        --eval-interval 1000 \
+        --eval-interval 100 \
         --eval-iters 10 \
-        --save-interval 1000000 \
+        --save-interval ${SAVE_INTERVAL} \
         --tensorboard-queue-size 1 \
         --tensorboard-dir ${TENSORBOARD_DIR} \
         --log-timers-to-tensorboard \
@@ -146,20 +156,19 @@ megatron_options="  \
         --log-validation-ppl-to-tensorboard \
         --tensor-model-parallel-size ${TP} \
         --pipeline-model-parallel-size ${PP} \
-        --finetune \
         --DDP-impl local \
         --no-load-optim \
         --no-load-rng \
+        --num-workers 8 \
         --seed 1234 \
         --max-padding-length ${PAD_LEN} \
-        --cache-dir cache_dir \
         --position-embedding-type rotary \
         --swiglu \
         --patch-tokenizer-type AlpacaTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_alpaca.py
- ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
+run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_alpaca.py
+ ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 
 echo ${run_cmd}
