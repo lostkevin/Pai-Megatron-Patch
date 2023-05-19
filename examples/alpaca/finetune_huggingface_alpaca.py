@@ -60,7 +60,10 @@ def get_tasks_args(parser):
                        type=str,
                        help='patch-tokenizer-type')
 
-    group.add_argument('--cache-dir', type=str, help='cache-dir')
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
 
     group.add_argument('--max-padding-length',
                        type=int,
@@ -91,15 +94,17 @@ def train_valid_datasets_provider():
 
 
 def forward_step(data_iterator, model):
+    tokenizer = get_tokenizer()
+
     try:
         data_iterator = next(data_iterator)
     except BaseException:
         data_iterator = data_iterator
 
-    tokens = data_iterator['input_ids'].cuda()
+    input_ids = data_iterator['input_ids'].cuda()
     labels = data_iterator['labels'].cuda()
-    attention_mask = data_iterator['attention_mask'].cuda()
-    output_tensor = model(input_ids=tokens,
+    attention_mask = input_ids.ne(tokenizer.pad_token_id)
+    output_tensor = model(input_ids=input_ids,
                           labels=labels,
                           attention_mask=attention_mask)
     return output_tensor.loss

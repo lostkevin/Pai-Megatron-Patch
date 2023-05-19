@@ -303,12 +303,13 @@ class AlpacaDataset_Ori(torch.utils.data.Dataset):
 
     def gpt_convert_example_to_feature(self, sample):
         input_ids, labels = sample
-        attention_mask = np.ones(input_ids.shape, dtype=np.int64)
-        attention_mask[attention_mask == self.tokenizer.pad_token_id] = 0
+        loss_mask = np.ones(labels.shape, dtype=np.int64)
+        loss_mask[labels == self.IGNORE_INDEX] = 0
+        loss_mask[labels == self.tokenizer.pad_token_id] = 0
         train_sample = {
             'input_ids': input_ids,
             'labels': labels,
-            'attention_mask': attention_mask
+            'loss_mask': loss_mask
         }
 
         return train_sample

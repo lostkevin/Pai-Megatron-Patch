@@ -26,7 +26,7 @@ from megatron.model import Float16Module
 from megatron.utils import unwrap_model
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
-from megatron_patch.tokenizer import build_tokenizer
+from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import get_model
 from transformers import AutoModelForCausalLM
 
@@ -78,7 +78,10 @@ def get_tasks_args(parser):
                        default=None,
                        help='path(s) to the validation data.')
 
-    group.add_argument('--cache-dir', type=str, help='cache-dir')
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
 
     group.add_argument('--patch-tokenizer-type',
                        type=str,
@@ -103,11 +106,11 @@ def get_model_provider():
 
 def forward_step(batch, model):
     """Forward step."""
-
+    tokenizer = get_tokenizer()
     # Get the batch.
     input_ids = batch['input_ids'].long().cuda()
     labels = batch['labels'].long().cuda()
-    attention_mask = batch['attention_mask'].cuda()
+    attention_mask = input_ids.ne(tokenizer.pad_token_id)
 
     # Tell the model what our actual batch size will be
     args = get_args()

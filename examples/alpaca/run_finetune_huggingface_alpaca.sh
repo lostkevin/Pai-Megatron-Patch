@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_huggingface_alpaca.sh dsw /workspace/PAI-Megatron-Patch/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 4 1e-4 1e-5 100 fp16 true /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf/ 2 /mnt/output_alpach
+#sh run_finetune_huggingface_alpaca.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-5 1e-6 2048 80 1 fp16 true /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf/ 2 /mnt/output_alpach
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -28,21 +28,30 @@ MODEL_SIZE=$4
 BATCH_SIZE=$5
 LR=$6
 MIN_LR=$7
-PAD_LEN=$8
-PR=$9
-DO=${10}
-TRAIN_DATASET_PATH=${11}
-VALID_DATASET_PATH=${12}
-PRETRAIN_CHECKPOINT_PATH=${13}
-EPOCH=${14}
-OUTPUT_BASEPATH=${15}
+SEQ_LEN=$8
+PAD_LEN=$9
+EXTRA_VOCAB_SIZE=${10}
+PR=${11}
+DO=${12}
+TRAIN_DATASET_PATH=${13}
+VALID_DATASET_PATH=${14}
+PRETRAIN_CHECKPOINT_PATH=${15}
+EPOCH=${16}
+OUTPUT_BASEPATH=${17}
 
 if [ $MODEL_SIZE = 7B ]; then
 
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
-SEQ_LEN=2048
+INTERMEDIATE_SIZE=11008
+
+elif [ $MODEL_SIZE = 13B ]; then
+
+NUM_LAYERS=40
+HIDDEN_SIZE=5120
+NUM_ATTN_HEADS=40
+INTERMEDIATE_SIZE=13824
 
 fi
 
@@ -109,7 +118,7 @@ megatron_options="  \
         --max-padding-length ${PAD_LEN} \
         --no-load-optim \
         --DDP-impl local\
-        --cache-dir cache_dir \
+        --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --patch-tokenizer-type AlpacaTokenizer
         "
 
