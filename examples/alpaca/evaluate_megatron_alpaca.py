@@ -16,7 +16,7 @@ import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
 from megatron import get_args, print_rank_0
-from megatron.core import parallel_state
+from megatron.core import parallel_state, tensor_parallel
 from megatron.core.pipeline_parallel.p2p_communication import (recv_forward,
                                                                send_forward)
 from megatron.initialize import initialize_megatron
@@ -27,7 +27,7 @@ from megatron_patch.checkpointing import load_checkpoint
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
 from megatron_patch.model.alpaca.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer
+from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import get_model
 
 try:
@@ -67,6 +67,11 @@ def get_tasks_args(parser):
                        default=None,
                        help='--intermediate-size')
 
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
+
     group.add_argument('--keep-last',
                        action='store_true',
                        help='Keep the last batch (maybe incomplete) in'
@@ -82,8 +87,6 @@ def get_tasks_args(parser):
     group.add_argument('--valid-data',
                        default=None,
                        help='path(s) to the validation data.')
-
-    group.add_argument('--cache-dir', type=str, help='cache-dir')
 
     group.add_argument('--position-embedding-type',
                        type=str,
@@ -116,11 +119,12 @@ def get_model_provider():
 
 def forward_step(batch, model):
     """Forward step."""
-
+    tokenizer = get_tokenizer()
     # Get the batch.
     input_ids = batch['input_ids'].long().cuda()
     labels = batch['labels'].long().cuda()
-    attention_mask = batch['attention_mask'].cuda()
+    loss_mask = batch['loss_mask'].long().cuda()
+    attention_mask = input_ids.ne(tokenizer.pad_token_id)
 
     # Tell the model what our actual batch size will be
     args = get_args()
@@ -130,15 +134,26 @@ def forward_step(batch, model):
     # Forward pass through the model.
     unwrapped_model = unwrap_model(model, (torchDDP, LocalDDP, Float16Module))
     unwrapped_model.set_input_tensor(input_tensor)
-    output = unwrapped_model(input_ids=input_ids,
+    logits = unwrapped_model(input_ids=input_ids,
                              attention_mask=attention_mask)
-    shift_logits = output[..., :-1, :].contiguous()
+    shift_logits = logits[..., :-1, :].contiguous()
     shift_labels = labels[..., 1:].contiguous()
-    send_forward(output)
+    loss_mask = loss_mask[..., 1:].contiguous()
+    send_forward(shift_logits)
+    """
     loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
     if parallel_state.is_pipeline_last_stage():
         loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)),
                         shift_labels.view(-1))
+        print_rank_0(loss)
+        return loss
+    """
+    if parallel_state.is_pipeline_last_stage():
+        losses = tensor_parallel.vocab_parallel_cross_entropy(
+            shift_logits.contiguous().float(), shift_labels.contiguous())
+        loss = torch.sum(
+            losses.view(-1) *
+            loss_mask.contiguous().view(-1).float()) / loss_mask.sum()
         print_rank_0(loss)
         return loss
 

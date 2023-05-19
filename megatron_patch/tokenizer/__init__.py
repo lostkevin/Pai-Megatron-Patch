@@ -48,7 +48,6 @@ def build_tokenizer(args):
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(
             args.load,
-            cache_dir=args.cache_dir,
             model_max_length=args.seq_length,
             padding_side='right',
             use_fast=False,
@@ -68,7 +67,7 @@ def build_tokenizer(args):
         if not tokenizer.unk_token:
             special_tokens_dict['unk_token'] = DEFAULT_UNK_TOKEN
         tokenizer.add_special_tokens(special_tokens_dict)
-        args.padded_vocab_size = tokenizer.vocab_size + 1
+        args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(

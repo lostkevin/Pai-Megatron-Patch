@@ -26,6 +26,8 @@ from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.module import MegatronModule
 from megatron.model.utils import attention_mask_func, erf_gelu, openai_gelu
 
+# from megatron.model.rotary_pos_embedding import apply_rotary_pos_emb
+# from megatron.model.rotary_pos_embedding import RotaryEmbedding
 from .positional_embeddings import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 try:
@@ -51,6 +53,19 @@ except ImportError:
     tensor of the same size. We use the following arguments:
         hyperparameters: transformer hyperparameters
 """
+
+
+def _args_to_kwargs():
+    args = get_args()
+
+    common_kwargs = {
+        'params_dtype': args.params_dtype,
+        'use_cpu_initialization': args.use_cpu_initialization,
+        'perform_initialization': args.perform_initialization,
+        'gradient_accumulation_fusion': args.gradient_accumulation_fusion,
+        'sequence_parallel_enabled': args.sequence_parallel,
+    }
+    return common_kwargs
 
 
 class LlamaRMSNorm(torch.nn.Module):
@@ -347,6 +362,7 @@ class ParallelAttention(MegatronModule):
         self.hidden_size = args.hidden_size
         self.num_heads = args.num_attention_heads
         self.head_dim = self.hidden_size // self.num_heads
+        self.seq_length = args.seq_length
         if self.use_flash_attn:
             if flash_attn_unpadded_func is None:
                 raise ImportError(
@@ -370,7 +386,7 @@ class ParallelAttention(MegatronModule):
             projection_size, args.num_attention_heads)
         self.num_attention_heads_per_partition = core.utils.divide(
             args.num_attention_heads, world_size)
-
+        """
         self.query = tensor_parallel.ColumnParallelLinear(
             args.hidden_size,
             projection_size,
@@ -391,6 +407,17 @@ class ParallelAttention(MegatronModule):
             gather_output=False,
             bias=False,
             init_method=init_method)
+        """
+
+        self.query_key_value = tensor_parallel.ColumnParallelLinear(
+            args.hidden_size,
+            3 * projection_size,
+            gather_output=False,
+            init_method=init_method,
+            bias=False,
+            async_tensor_model_parallel_allreduce=args.
+            async_tensor_model_parallel_allreduce,
+            **_args_to_kwargs())
 
         self.core_attention = CoreAttention(self.layer_number,
                                             self.attn_mask_type)
@@ -413,6 +440,7 @@ class ParallelAttention(MegatronModule):
             dim = self.hidden_size_per_attention_head
             self.rotary_emb = LlamaRotaryEmbedding(
                 dim, args.max_position_embeddings)
+            # self.rotary_emb = RotaryEmbedding(dim)
         else:
             self.rotary_emb = None
 
@@ -452,7 +480,6 @@ class ParallelAttention(MegatronModule):
         # =====================
         # Query, Key, and Value
         # =====================
-        """
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer, _ = self.query_key_value(hidden_states)
 
@@ -465,8 +492,8 @@ class ParallelAttention(MegatronModule):
 
         # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
         # torch.Size([128, 1, 32, 128])
-        (query_layer, key_layer, value_layer) =
-         tensor_parallel.split_tensor_along_last_dim(
+        (query_layer, key_layer,
+         value_layer) = tensor_parallel.split_tensor_along_last_dim(
              mixed_x_layer, 3)
 
         query_layer = query_layer.permute(1, 2, 0, 3)
@@ -477,17 +504,31 @@ class ParallelAttention(MegatronModule):
         query_layer = self.query(hidden_states)[0].view(
             q_len, bsz, self.num_heads,
             self.head_dim).transpose(0, 1).transpose(1, 2)
+
         key_layer = self.key(hidden_states)[0].view(q_len, bsz, self.num_heads,
                                                     self.head_dim).transpose(
                                                         0, 1).transpose(1, 2)
         value_layer = self.value(hidden_states)[0].view(
             q_len, bsz, self.num_heads,
             self.head_dim).transpose(0, 1).transpose(1, 2)
-
+        """
+        q_len, bsz, _ = hidden_states.size()
+        # single: key_layer: torch.Size([1, 32, 80, 128])
         kv_seq_len = key_layer.shape[-2]
+
         cos, sin = self.rotary_emb(value_layer, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(
             query_layer, key_layer, cos, sin, position_ids)
+        """
+        rotary_pos_emb = self.rotary_emb(self.seq_length)
+        if isinstance(rotary_pos_emb, tuple):
+            rotary_pos_emb = rotary_pos_emb
+        else:
+            rotary_pos_emb = ((rotary_pos_emb,) * 2)
+        q_pos_emb, k_pos_emb = rotary_pos_emb
+        query_states = apply_rotary_pos_emb(query_layer, q_pos_emb)
+        key_states = apply_rotary_pos_emb(key_layer, k_pos_emb)
+        """
         attn_weights = torch.matmul(query_states, key_states.transpose(
             2, 3)) / math.sqrt(self.hidden_size_per_attention_head)
         attn_weights = attn_weights + attention_mask
@@ -501,7 +542,11 @@ class ParallelAttention(MegatronModule):
         attn_output = torch.matmul(attn_weights, value_layer)
 
         attn_output = attn_output.transpose(1, 2)
-        attn_output = attn_output.reshape(bsz, kv_seq_len, self.hidden_size)
+        world_size = mpu.get_tensor_model_parallel_world_size()
+        hidden_size_per_partition = core.utils.divide(self.hidden_size,
+                                                      world_size)
+        attn_output = attn_output.reshape(bsz, kv_seq_len,
+                                          hidden_size_per_partition)
         attn_output = attn_output.transpose(1, 0)
         output, bias = self.dense(attn_output)
         """
@@ -533,11 +578,10 @@ class ParallelAttention(MegatronModule):
         # =================
         # Output. [sq, b, h]
         # =================
-        import pdb;pdb.set_trace()
         #context_layer: torch.Size([80, 1, 4096])
         output, bias = self.dense(context_layer)
-
         """
+
         return output, bias
 
 

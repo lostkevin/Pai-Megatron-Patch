@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from functools import partial
 
 import torch
@@ -21,7 +22,7 @@ from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.pretrain_dataset import \
     build_pretrain_alpaca_datasets_from_original
 from megatron_patch.model.alpaca.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer
+from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import pretrain
 
 try:
@@ -31,7 +32,6 @@ except ImportError:
 
 
 def get_tasks_args(parser):
-    """Provide extra arguments required for tasks."""
     group = parser.add_argument_group(title='alpaca')
 
     group.add_argument('--transformer-type',
@@ -71,7 +71,10 @@ def get_tasks_args(parser):
                        default=None,
                        help='path(s) to the validation data.')
 
-    group.add_argument('--cache-dir', type=str, help='cache-dir')
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
 
     group.add_argument('--max-padding-length',
                        type=int,
@@ -113,9 +116,9 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
 
 def forward_step(data_iterator, model):
-    keys = ['input_ids', 'labels', 'attention_mask']
+    tokenizer = get_tokenizer()
+    keys = ['input_ids', 'labels', 'loss_mask']
     datatype = torch.int64
-    # Broadcast data.
     if data_iterator is not None:
         data = next(data_iterator)
     else:
@@ -125,19 +128,21 @@ def forward_step(data_iterator, model):
 
     input_ids = batch['input_ids'].long().cuda().contiguous()
     labels = batch['labels'].long().cuda().contiguous()
-    attention_mask = batch['attention_mask'].cuda().contiguous()
-    attention_mask = attention_mask < 0.5
-    attention_mask = attention_mask.to(torch.bool)
+    loss_mask = batch['loss_mask'].long().cuda()
+    loss_mask = loss_mask[..., 1:].contiguous()
+    attention_mask = input_ids.ne(tokenizer.pad_token_id)
     output_tensor = model(input_ids=input_ids,
                           attention_mask=attention_mask,
                           labels=labels)
 
-    def loss_func(output_tensor):
-        loss = output_tensor.float()
+    def loss_func(loss_mask, output_tensor):
+        losses = output_tensor.float()
+        loss_mask = loss_mask.view(-1).float()
+        loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
         averaged_loss = average_losses_across_data_parallel_group([loss])
         return loss, {'lm loss': averaged_loss[0]}
 
-    return output_tensor, partial(loss_func)
+    return output_tensor, partial(loss_func, loss_mask)
 
 
 if __name__ == '__main__':

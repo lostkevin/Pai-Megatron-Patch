@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_huggingface_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 fp16 1 1 /mnt/alpaca-ckpts/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf/
+# sh run_evaluate_huggingface_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 /mnt/alpaca-ckpts/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf/
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -7,7 +7,7 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=6
+export CUDA_VISIBLE_DEVICES=7
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
@@ -28,11 +28,10 @@ MODEL_SIZE=$4
 BATCH_SIZE=$5
 SEQ_LEN=$6
 PAD_LEN=$7
-PR=$8
-TP=$9
-PP=${10}
-DATASET_PATH=${11}
-PRETRAIN_CHECKPOINT_PATH=${12}
+EXTRA_VOCAB_SIZE=$8
+PR=$9
+DATASET_PATH=${10}
+PRETRAIN_CHECKPOINT_PATH=${11}
 
 
 if [ $MODEL_SIZE = 7B ]; then
@@ -40,7 +39,14 @@ if [ $MODEL_SIZE = 7B ]; then
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
-SEQ_LEN=2048
+INTERMEDIATE_SIZE=11008
+
+elif [ $MODEL_SIZE = 13B ]; then
+
+NUM_LAYERS=40
+HIDDEN_SIZE=5120
+NUM_ATTN_HEADS=40
+INTERMEDIATE_SIZE=13824
 
 fi
 
@@ -70,15 +76,15 @@ megatron_options=" \
         --log-interval 1 \
         --eval-interval 100 \
         --eval-iters 10 \
-        --tensor-model-parallel-size ${TP} \
-        --pipeline-model-parallel-size ${PP} \
+        --tensor-model-parallel-size 1 \
+        --pipeline-model-parallel-size 1 \
         --DDP-impl local \
         --no-load-optim \
         --num-workers 0 \
         --task Alpaca-7B \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
-        --cache-dir cache_dir \
+        --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --patch-tokenizer-type AlpacaTokenizer
         "
 

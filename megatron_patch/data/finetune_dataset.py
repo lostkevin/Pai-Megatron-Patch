@@ -522,7 +522,7 @@ class AlpacaDataset(GPTDataset):
 
     def __getitem__(self, idx):
         raw_sample = self.samples[idx]
-        return self.gpt_convert_example_to_feature(raw_sample, self.tokenizer)
+        return self.gpt_convert_example_to_feature(raw_sample)
 
     def preprocess(self, sources, targets, tokenizer):
         """Preprocess the data by tokenizing."""
@@ -563,14 +563,15 @@ class AlpacaDataset(GPTDataset):
             labels_lens=labels_lens,
         )
 
-    def gpt_convert_example_to_feature(self, sample, tokenizer):
+    def gpt_convert_example_to_feature(self, sample):
         input_ids, labels = sample
-        attention_mask = input_ids != self.tokenizer.pad_token_id
-        labels[labels == 32000] = -100
+        loss_mask = np.ones(labels.shape, dtype=np.int64)
+        loss_mask[labels == self.IGNORE_INDEX] = 0
+        loss_mask[labels == self.tokenizer.pad_token_id] = 0
         train_sample = {
             'input_ids': input_ids,
             'labels': labels,
-            'attention_mask': attention_mask
+            'loss_mask': loss_mask
         }
 
         return train_sample
