@@ -13,7 +13,9 @@
 # limitations under the License.
 
 from functools import partial
+
 import torch
+
 from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
@@ -141,6 +143,7 @@ def forward_step(data_iterator, model):
         return loss, {'lm loss': averaged_loss[0]}
 
     return output_tensor, partial(loss_func, loss_mask)
+
 
 if __name__ == '__main__':
     pretrain(train_valid_test_datasets_provider,

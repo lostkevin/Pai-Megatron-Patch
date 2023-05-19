@@ -25,8 +25,10 @@ from megatron.model.enums import AttnMaskType, AttnType, LayerType, ModelType
 from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.module import MegatronModule
 from megatron.model.utils import attention_mask_func, erf_gelu, openai_gelu
+
+# from megatron.model.rotary_pos_embedding import apply_rotary_pos_emb
+# from megatron.model.rotary_pos_embedding import RotaryEmbedding
 from .positional_embeddings import LlamaRotaryEmbedding, apply_rotary_pos_emb
-# from megatron.model.rotary_pos_embedding import apply_rotary_pos_emb, RotaryEmbedding
 
 try:
     from einops import rearrange
@@ -64,6 +66,7 @@ def _args_to_kwargs():
         'sequence_parallel_enabled': args.sequence_parallel,
     }
     return common_kwargs
+
 
 class LlamaRMSNorm(torch.nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
@@ -383,7 +386,6 @@ class ParallelAttention(MegatronModule):
             projection_size, args.num_attention_heads)
         self.num_attention_heads_per_partition = core.utils.divide(
             args.num_attention_heads, world_size)
-
         """
         self.query = tensor_parallel.ColumnParallelLinear(
             args.hidden_size,
@@ -438,7 +440,7 @@ class ParallelAttention(MegatronModule):
             dim = self.hidden_size_per_attention_head
             self.rotary_emb = LlamaRotaryEmbedding(
                 dim, args.max_position_embeddings)
-            #self.rotary_emb = RotaryEmbedding(dim)
+            # self.rotary_emb = RotaryEmbedding(dim)
         else:
             self.rotary_emb = None
 
@@ -490,13 +492,13 @@ class ParallelAttention(MegatronModule):
 
         # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
         # torch.Size([128, 1, 32, 128])
-        (query_layer, key_layer, value_layer) =tensor_parallel.split_tensor_along_last_dim(
+        (query_layer, key_layer,
+         value_layer) = tensor_parallel.split_tensor_along_last_dim(
              mixed_x_layer, 3)
 
         query_layer = query_layer.permute(1, 2, 0, 3)
         key_layer = key_layer.permute(1, 2, 0, 3)
         value_layer = value_layer.permute(1, 2, 0, 3)
-
         """
         q_len, bsz, _ = hidden_states.size()
         query_layer = self.query(hidden_states)[0].view(
@@ -541,8 +543,10 @@ class ParallelAttention(MegatronModule):
 
         attn_output = attn_output.transpose(1, 2)
         world_size = mpu.get_tensor_model_parallel_world_size()
-        hidden_size_per_partition = core.utils.divide(self.hidden_size, world_size)
-        attn_output = attn_output.reshape(bsz, kv_seq_len, hidden_size_per_partition)
+        hidden_size_per_partition = core.utils.divide(self.hidden_size,
+                                                      world_size)
+        attn_output = attn_output.reshape(bsz, kv_seq_len,
+                                          hidden_size_per_partition)
         attn_output = attn_output.transpose(1, 0)
         output, bias = self.dense(attn_output)
         """

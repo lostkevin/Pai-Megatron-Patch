@@ -21,7 +21,6 @@ from megatron.model.enums import AttnMaskType, LayerType
 from megatron.model.module import MegatronModule
 from megatron.model.utils import (get_linear_layer, init_method_normal,
                                   scaled_init_method_normal)
-from megatron_patch.tokenizer import get_tokenizer
 
 from .transformer import ParallelTransformer
 
@@ -40,7 +39,8 @@ def parallel_lm_logits(input_,
         async_grad_allreduce = args.async_tensor_model_parallel_allreduce and \
             model_parallel and not args.sequence_parallel
     else:
-        input_parallel = tensor_parallel.copy_to_tensor_model_parallel_region(input_)
+        input_parallel = tensor_parallel.copy_to_tensor_model_parallel_region(
+            input_)
         async_grad_allreduce = False
 
     # Matrix multiply.
@@ -57,7 +57,8 @@ def parallel_lm_logits(input_,
     if parallel_output:
         return logits_parallel
 
-    return tensor_parallel.gather_from_tensor_model_parallel_region(logits_parallel)
+    return tensor_parallel.gather_from_tensor_model_parallel_region(
+        logits_parallel)
 
 
 def get_language_model(num_tokentypes,
@@ -122,8 +123,9 @@ class Pooler(MegatronModule):
         # gather data along sequence dimensions
         # same pooler is run on all tensor parallel nodes
         if self.sequence_parallel:
-            hidden_states = tensor_parallel.gather_from_sequence_parallel_region(
-                hidden_states, tensor_parallel_output_grad=False)
+            tpg = tensor_parallel.gather_from_sequence_parallel_region
+            hidden_states = tpg(hidden_states,
+                                tensor_parallel_output_grad=False)
 
         pooled = hidden_states[sequence_index, :, :]
         pooled = self.dense(pooled)
@@ -237,7 +239,8 @@ class Embedding(MegatronModule):
 
         # Dropout.
         if self.sequence_parallel:
-            embeddings = tensor_parallel.scatter_to_sequence_parallel_region(embeddings)
+            embeddings = tensor_parallel.scatter_to_sequence_parallel_region(
+                embeddings)
             with tensor_parallel.get_cuda_rng_tracker().fork():
                 embeddings = self.embedding_dropout(embeddings)
         else:
@@ -336,9 +339,13 @@ class TransformerLanguageModel(MegatronModule):
                  pre_process=True,
                  post_process=True):
         args = get_args()
-        # TODO: passing share_word_embeddings=False will not work correctly for T5 and embeddings will not be synced. Fix later for T5.
-        if args.untie_embeddings_and_output_weights: assert not add_decoder
-        super(TransformerLanguageModel, self).__init__(share_word_embeddings=not args.untie_embeddings_and_output_weights)
+        # TODO: passing share_word_embeddings=False
+        #  will not work correctly for T5 and embeddings
+        #  will not be synced. Fix later for T5.
+        if args.untie_embeddings_and_output_weights:
+            assert not add_decoder
+        super(TransformerLanguageModel, self).__init__(
+            share_word_embeddings=not args.untie_embeddings_and_output_weights)
 
         self.pre_process = pre_process
         self.post_process = post_process
@@ -351,7 +358,8 @@ class TransformerLanguageModel(MegatronModule):
         self.decoder_attn_mask_type = decoder_attn_mask_type
         self.add_pooler = add_pooler
         self.encoder_hidden_state = None
-        self.untie_embeddings_and_output_weights = args.untie_embeddings_and_output_weights
+        self.untie_embeddings_and_output_weights =\
+            args.untie_embeddings_and_output_weights
         self.seq_length = args.max_padding_length
         # Embeddings.
         if self.pre_process:
@@ -397,11 +405,11 @@ class TransformerLanguageModel(MegatronModule):
                 self._pooler_key = 'pooler'
 
             if self.untie_embeddings_and_output_weights:
-                self.output_layer = tensor_parallel.ColumnParallelLinear(
-                    args.hidden_size,
-                    args.padded_vocab_size,
-                    bias=False, # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
-                    init_method=self.init_method)
+                tpc = tensor_parallel.ColumnParallelLinear
+                self.output_layer = tpc(args.hidden_size,
+                                        args.padded_vocab_size,
+                                        bias=False,
+                                        init_method=self.init_method)
                 self._output_layer_key = 'output_layer'
 
     def set_input_tensor(self, input_tensor):
@@ -606,12 +614,14 @@ class TransformerLanguageModel(MegatronModule):
 
         if self.post_process:
             if self.add_pooler:
-                state_dict_[self._pooler_key] \
-                    = self.pooler.state_dict_for_save_checkpoint(prefix=prefix,
-                                                                 keep_vars=keep_vars)
+                state_dict_[self._pooler_key] =\
+                    self.pooler.\
+                    state_dict_for_save_checkpoint(prefix=prefix,
+                                                   keep_vars=keep_vars)
             if self.untie_embeddings_and_output_weights:
-                state_dict_[self._output_layer_key] \
-                    = self.output_layer.state_dict(prefix=prefix, keep_vars=keep_vars)
+                state_dict_[self._output_layer_key] =\
+                    self.output_layer.state_dict(prefix=prefix,
+                                                 keep_vars=keep_vars)
 
         if self.add_decoder:
             state_dict_[self._decoder_key] \
@@ -672,8 +682,8 @@ class TransformerLanguageModel(MegatronModule):
             if self.untie_embeddings_and_output_weights:
                 assert 'output_layer' in state_dict, \
                     'could not find data for output_layer in the checkpoint'
-                self.output_layer.load_state_dict(state_dict[self._output_layer_key],
-                                                  strict=strict)
+                self.output_layer.load_state_dict(
+                    state_dict[self._output_layer_key], strict=strict)
         # Decoder.
         if self.add_decoder:
             assert 'decoder' in state_dict, \

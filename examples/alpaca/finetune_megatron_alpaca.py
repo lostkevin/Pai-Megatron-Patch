@@ -13,14 +13,17 @@
 # limitations under the License.
 
 from functools import partial
+
 import torch
+
 from megatron import get_args
 from megatron.initialize import initialize_megatron
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.finetune_dataset import AlpacaDataset
 from megatron_patch.finetune_utils import finetune
 from megatron_patch.model.alpaca.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer,get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+
 
 def get_tasks_args(parser):
     group = parser.add_argument_group(title='alpaca')

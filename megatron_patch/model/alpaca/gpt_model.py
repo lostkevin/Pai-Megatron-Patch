@@ -14,8 +14,9 @@
 """GPT-2 model."""
 
 import torch
-from megatron.core import mpu, tensor_parallel
+
 from megatron import get_args
+from megatron.core import tensor_parallel
 from megatron.model.enums import AttnMaskType
 from megatron.model.module import MegatronModule
 from megatron.model.utils import init_method_normal, scaled_init_method_normal
@@ -24,14 +25,10 @@ from .language_model import get_language_model, parallel_lm_logits
 
 
 def post_language_model_processing(lm_output, labels, logit_weights,
-                                   parallel_output,
-                                   fp16_lm_cross_entropy):
+                                   parallel_output, fp16_lm_cross_entropy):
 
     # Output. Format [s b h]
-    output = parallel_lm_logits(
-        lm_output,
-        logit_weights,
-        parallel_output)
+    output = parallel_lm_logits(lm_output, logit_weights, parallel_output)
 
     if labels is None:
         # [s b h] => [b s h]
@@ -39,20 +36,15 @@ def post_language_model_processing(lm_output, labels, logit_weights,
     else:
         # [b s] => [s b]
         labels = labels.transpose(0, 1).contiguous()
-        """
-        if fp16_lm_cross_entropy:
-            assert output.dtype == torch.half
-            loss = tensor_parallel.vocab_parallel_cross_entropy(output, labels)
-        else:
-            loss = tensor_parallel.vocab_parallel_cross_entropy(output.float(), labels)
-        """
         shift_logits = output[:-1, ..., :].contiguous()
         shift_labels = labels[1:, ...].contiguous()
         if fp16_lm_cross_entropy:
             assert output.dtype == torch.half
-            loss = tensor_parallel.vocab_parallel_cross_entropy(shift_logits, shift_labels)
+            loss = tensor_parallel.vocab_parallel_cross_entropy(
+                shift_logits, shift_labels)
         else:
-            loss = tensor_parallel.vocab_parallel_cross_entropy(shift_logits.float(), shift_labels)
+            loss = tensor_parallel.vocab_parallel_cross_entropy(
+                shift_logits.float(), shift_labels)
 
         # [s b] => [b, s]
         loss = loss.transpose(0, 1).contiguous()
@@ -61,20 +53,21 @@ def post_language_model_processing(lm_output, labels, logit_weights,
 
 class GPTModel(MegatronModule):
     """GPT-2 Language model."""
-
     def __init__(self,
                  num_tokentypes=0,
                  parallel_output=True,
                  pre_process=True,
                  post_process=True):
         args = get_args()
-        super(GPTModel, self).__init__(share_word_embeddings=not args.untie_embeddings_and_output_weights)
+        super(GPTModel, self).__init__(
+            share_word_embeddings=not args.untie_embeddings_and_output_weights)
 
         self.parallel_output = parallel_output
         self.pre_process = pre_process
         self.post_process = post_process
         self.fp16_lm_cross_entropy = args.fp16_lm_cross_entropy
-        self.untie_embeddings_and_output_weights = args.untie_embeddings_and_output_weights
+        self.untie_embeddings_and_output_weights =\
+            args.untie_embeddings_and_output_weights
 
         self.language_model, self._language_model_key = get_language_model(
             num_tokentypes=num_tokentypes,
@@ -107,9 +100,9 @@ class GPTModel(MegatronModule):
 
         if self.post_process:
             return post_language_model_processing(
-                lm_output, labels,
-                self.language_model.output_layer.weight if self.untie_embeddings_and_output_weights else self.word_embeddings_weight(),
-                self.parallel_output,
+                lm_output, labels, self.language_model.output_layer.weight
+                if self.untie_embeddings_and_output_weights else
+                self.word_embeddings_weight(), self.parallel_output,
                 self.fp16_lm_cross_entropy)
         else:
             return lm_output
@@ -121,7 +114,9 @@ class GPTModel(MegatronModule):
             = self.language_model.state_dict_for_save_checkpoint(
                 prefix=prefix, keep_vars=keep_vars)
         # Save word_embeddings.
-        if self.post_process and not self.pre_process and not self.untie_embeddings_and_output_weights:
+        if self.post_process and not\
+                self.pre_process and not\
+                self.untie_embeddings_and_output_weights:
             state_dict_[self._word_embeddings_for_head_key] \
                 = self.word_embeddings.state_dict(prefix=prefix,
                                                   keep_vars=keep_vars)
@@ -131,7 +126,9 @@ class GPTModel(MegatronModule):
         """Customized load."""
 
         # Load word_embeddings.
-        if self.post_process and not self.pre_process and not self.untie_embeddings_and_output_weights:
+        if self.post_process and not\
+                self.pre_process and not\
+                self.untie_embeddings_and_output_weights:
             self.word_embeddings.load_state_dict(
                 state_dict[self._word_embeddings_for_head_key], strict=strict)
         if self._language_model_key in state_dict:
