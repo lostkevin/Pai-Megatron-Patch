@@ -44,6 +44,30 @@ def build_tokenizer(args):
         from .icetk_glm130b_tokenizer import _IceTokenizer
         tokenizer = _IceTokenizer()
         args.padded_vocab_size = 150528
+    elif args.patch_tokenizer_type == 'OPTTokenizer':
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.load,
+            model_max_length=args.seq_length,
+            padding_side='right',
+            use_fast=False,
+        )
+        DEFAULT_PAD_TOKEN = '<pad>'
+        DEFAULT_EOS_TOKEN = '</s>'
+        DEFAULT_BOS_TOKEN = '<s>'
+        DEFAULT_UNK_TOKEN = '<unk>'
+
+        special_tokens_dict = dict()
+        if not tokenizer.pad_token:
+            special_tokens_dict['pad_token'] = DEFAULT_PAD_TOKEN
+        if not tokenizer.eos_token:
+            special_tokens_dict['eos_token'] = DEFAULT_EOS_TOKEN
+        if not tokenizer.bos_token:
+            special_tokens_dict['bos_token'] = DEFAULT_BOS_TOKEN
+        if not tokenizer.unk_token:
+            special_tokens_dict['unk_token'] = DEFAULT_UNK_TOKEN
+        tokenizer.add_special_tokens(special_tokens_dict)
+        args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
     elif args.patch_tokenizer_type == 'AlpacaTokenizer':
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(
@@ -78,7 +102,8 @@ def build_tokenizer(args):
             'ChatGLMTokenizerFromHF' and\
             args.patch_tokenizer_type != 'GLM10BZHTokenizerFromHF'\
             and args.patch_tokenizer_type != 'IcetkGLM130BTokenizer' and\
-            args.patch_tokenizer_type != 'AlpacaTokenizer':
+            args.patch_tokenizer_type != 'AlpacaTokenizer' and\
+            args.patch_tokenizer_type != 'OPTTokenizer':
 
         args.padded_vocab_size = _vocab_size_with_padding(
             tokenizer.vocab_size, args)

@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_megatron_alpaca.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false  /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron-tp1-pp1 2 /mnt/output_alpach
+#sh run_finetune_megatron_galactica.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 6.7B 1 1e-5 1e-6 2048 80 0 fp16 1 1 sel true false false  /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/galactica-ckpts/galactica-6.7b-to-megatron-tp1-pp1 2 /mnt/output_galatica
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -45,19 +45,11 @@ EPOCH=${21}
 OUTPUT_BASEPATH=${22}
 
 
-if [ $MODEL_SIZE = 7B ]; then
+if [ $MODEL_SIZE = 6.7B ]; then
 
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
-INTERMEDIATE_SIZE=11008
-
-elif [ $MODEL_SIZE = 13B ]; then
-
-NUM_LAYERS=40
-HIDDEN_SIZE=5120
-NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13824
 
 fi
 
@@ -108,7 +100,7 @@ elif [ $SP = false ]; then
                     "
 fi
 
-FT_NAME="${ENV}-finetune-megatron-alpaca-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
+FT_NAME="${ENV}-finetune-megatron-galactica-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
 OUTPUT_BASEPATH=/mnt/output_megatron_chatglm
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
@@ -118,7 +110,6 @@ TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${FT_NAME}_${current_time}"
 mkdir -p ${TENSORBOARD_DIR}
 
 FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${FT_NAME}"
-LOGGING_PATH="${OUTPUT_BASEPATH}/log/${FT_NAME}_${current_time}"
 
 megatron_options="  \
         --load ${PRETRAIN_CHECKPOINT_PATH} \
@@ -130,7 +121,6 @@ megatron_options="  \
         --num-attention-heads ${NUM_ATTN_HEADS} \
         --seq-length ${SEQ_LEN} \
         --max-position-embeddings ${SEQ_LEN}  \
-        --intermediate-size ${INTERMEDIATE_SIZE} \
         --keep-last \
         --micro-batch-size ${BATCH_SIZE} \
         --epochs ${EPOCH} \
@@ -161,13 +151,10 @@ megatron_options="  \
         --seed 1234 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --position-embedding-type rotary \
-        --swiglu \
-        --untie-embeddings-and-output-weights \
-        --patch-tokenizer-type AlpacaTokenizer
+        --patch-tokenizer-type OPTTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_alpaca.py
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_galactica.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
 
 
