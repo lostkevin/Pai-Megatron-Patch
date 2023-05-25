@@ -18,7 +18,7 @@ from contextlib import nullcontext
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-
+from megatron.model import LayerNorm
 from megatron import core, get_args
 from megatron.core import mpu, tensor_parallel
 from megatron.model.enums import AttnMaskType, AttnType, LayerType, ModelType
@@ -568,7 +568,7 @@ class ParallelTransformerLayer(MegatronModule):
 
         self.bf16 = args.bf16
         self.fp32_residual_connection = args.fp32_residual_connection
-        """
+
         # Layernorm on the input data.
         self.input_layernorm = LayerNorm(
             args.hidden_size,
@@ -587,7 +587,7 @@ class ParallelTransformerLayer(MegatronModule):
                                                   elementwise_affine=True)
         self.post_attention_layernorm = torch.nn.LayerNorm(
             args.hidden_size, elementwise_affine=True)
-
+        """
         # Self attention.
         self.self_attention = ParallelAttention(
             init_method,
@@ -790,7 +790,6 @@ class ParallelTransformer(MegatronModule):
 
         if self.post_process and self.post_layer_norm:
             # Final layer norm before output.
-            """
             self.final_layernorm = LayerNorm(
                 args.hidden_size,
                 eps=args.layernorm_epsilon,
@@ -799,6 +798,7 @@ class ParallelTransformer(MegatronModule):
             """
             self.final_layernorm = torch.nn.LayerNorm(args.hidden_size,
                                                       elementwise_affine=True)
+            """
 
     def _get_layer(self, layer_number):
         return self.layers[layer_number]
