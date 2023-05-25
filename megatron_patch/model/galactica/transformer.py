@@ -18,7 +18,6 @@ from contextlib import nullcontext
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from typing import Optional
 from megatron.model import LayerNorm
 from megatron import core, get_args
 from megatron.core import mpu, tensor_parallel
@@ -26,10 +25,6 @@ from megatron.model.enums import AttnMaskType, AttnType, LayerType, ModelType
 from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.module import MegatronModule
 from megatron.model.utils import attention_mask_func, erf_gelu, openai_gelu
-
-# from megatron.model.rotary_pos_embedding import apply_rotary_pos_emb
-# from megatron.model.rotary_pos_embedding import RotaryEmbedding
-from .positional_embeddings import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 try:
     from einops import rearrange
@@ -68,27 +63,6 @@ def _args_to_kwargs():
     }
     return common_kwargs
 
-class LlamaRMSNorm(torch.nn.Module):
-    def __init__(self, hidden_size, eps=1e-6):
-        """
-        LlamaRMSNorm is equivalent to T5LayerNorm
-        """
-        super().__init__()
-        self.weight = torch.nn.Parameter(torch.ones(hidden_size))
-        self.variance_epsilon = eps
-
-    def forward(self, hidden_states):
-        variance = hidden_states.to(torch.float32).pow(2).mean(-1,
-                                                               keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance +
-                                                    self.variance_epsilon)
-
-        # convert into half-precision if necessary
-        if self.weight.dtype in [torch.float16, torch.bfloat16]:
-            hidden_states = hidden_states.to(self.weight.dtype)
-
-        return self.weight * hidden_states
-
 
 class ParallelMLP(MegatronModule):
     """MLP.
@@ -101,25 +75,18 @@ class ParallelMLP(MegatronModule):
         super(ParallelMLP, self).__init__()
         args = get_args()
 
-        # Project to 4h.
-        self.dense_h_to_4h_1 = tensor_parallel.ColumnParallelLinear(
+        self.add_bias = args.add_bias_linear
+        # Project to 4h. If using swiglu double
+        # the output width, see https://arxiv.org/pdf/2002.05202.pdf
+        self.dense_h_to_4h = tensor_parallel.ColumnParallelLinear(
             args.hidden_size,
-            args.intermediate_size,
-            gather_output=False,
-            bias=False,
-            init_method=init_method,
-            skip_bias_add=True,
-            async_tensor_model_parallel_allreduce=args.async_tensor_model_parallel_allreduce,
-            **_args_to_kwargs())
-
-        self.dense_h_to_4h_2 = tensor_parallel.ColumnParallelLinear(
-            args.hidden_size,
-            args.intermediate_size,
+            args.ffn_hidden_size * 2 if args.swiglu else args.ffn_hidden_size,
+            bias=self.add_bias,
             gather_output=False,
             init_method=init_method,
-            bias=False,
             skip_bias_add=True,
-            async_tensor_model_parallel_allreduce=args.async_tensor_model_parallel_allreduce,
+            async_tensor_model_parallel_allreduce=args.
+            async_tensor_model_parallel_allreduce,
             **_args_to_kwargs())
 
         self.bias_gelu_fusion = args.bias_gelu_fusion
@@ -133,9 +100,9 @@ class ParallelMLP(MegatronModule):
 
         # Project back to h.
         self.dense_4h_to_h = tensor_parallel.RowParallelLinear(
-            args.intermediate_size,
+            args.ffn_hidden_size,
             args.hidden_size,
-            bias=False,
+            bias=self.add_bias,
             input_is_parallel=True,
             init_method=output_layer_init_method,
             skip_bias_add=True,
@@ -144,16 +111,12 @@ class ParallelMLP(MegatronModule):
     def forward(self, hidden_states):
 
         # [s, b, 4hp]
-        intermediate_parallel_1, _ = self.dense_h_to_4h_1(hidden_states)
-
-        intermediate_parallel_1 = self.activation_func(intermediate_parallel_1)
-
-        intermediate_parallel_2, _ = self.dense_h_to_4h_2(hidden_states)
-
+        intermediate_parallel, bias_parallel = self.dense_h_to_4h(
+            hidden_states)
+        intermediate_parallel = self.activation_func(intermediate_parallel)
         # [s, b, h]
-        output, output_bias = self.dense_4h_to_h(intermediate_parallel_1 *
-                                                 intermediate_parallel_2)
-        return output, None
+        output, output_bias = self.dense_4h_to_h(intermediate_parallel)
+        return output, output_bias
 
 
 class CoreAttention(MegatronModule):
@@ -391,6 +354,7 @@ class ParallelAttention(MegatronModule):
             projection_size, args.num_attention_heads)
         self.num_attention_heads_per_partition = core.utils.divide(
             args.num_attention_heads, world_size)
+        self.attention_dropout = torch.nn.Dropout(args.attention_dropout)
         """
         self.query = tensor_parallel.ColumnParallelLinear(
             args.hidden_size,
@@ -419,7 +383,7 @@ class ParallelAttention(MegatronModule):
             3 * projection_size,
             gather_output=False,
             init_method=init_method,
-            bias=False,
+            bias=True,
             async_tensor_model_parallel_allreduce=args.
             async_tensor_model_parallel_allreduce,
             **_args_to_kwargs())
@@ -437,18 +401,10 @@ class ParallelAttention(MegatronModule):
             projection_size,
             args.hidden_size,
             input_is_parallel=True,
-            bias=False,
-            init_method=output_layer_init_method,
+            bias=True,
             skip_bias_add=True,
+            init_method=output_layer_init_method,
             **_args_to_kwargs())
-
-        if self.position_embedding_type == 'rotary':
-            dim = self.hidden_size_per_attention_head
-            self.rotary_emb = LlamaRotaryEmbedding(
-                dim, args.max_position_embeddings)
-            # self.rotary_emb = RotaryEmbedding(dim)
-        else:
-            self.rotary_emb = None
 
     def _checkpointed_attention_forward(self, query_layer, key_layer,
                                         value_layer, attention_mask):
@@ -505,38 +461,14 @@ class ParallelAttention(MegatronModule):
         query_layer = query_layer.permute(1, 2, 0, 3)
         key_layer = key_layer.permute(1, 2, 0, 3)
         value_layer = value_layer.permute(1, 2, 0, 3)
-        """
-        q_len, bsz, _ = hidden_states.size()
-        query_layer = self.query(hidden_states)[0].view(
-            q_len, bsz, self.num_heads,
-            self.head_dim).transpose(0, 1).transpose(1, 2)
 
-        key_layer = self.key(hidden_states)[0].view(q_len, bsz, self.num_heads,
-                                                    self.head_dim).transpose(
-                                                        0, 1).transpose(1, 2)
-        value_layer = self.value(hidden_states)[0].view(
-            q_len, bsz, self.num_heads,
-            self.head_dim).transpose(0, 1).transpose(1, 2)
-        """
         q_len, bsz, _ = hidden_states.size()
         # single: key_layer: torch.Size([1, 32, 80, 128])
         kv_seq_len = key_layer.shape[-2]
 
-        cos, sin = self.rotary_emb(value_layer, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(
-            query_layer, key_layer, cos, sin, position_ids)
-        """
-        rotary_pos_emb = self.rotary_emb(self.seq_length)
-        if isinstance(rotary_pos_emb, tuple):
-            rotary_pos_emb = rotary_pos_emb
-        else:
-            rotary_pos_emb = ((rotary_pos_emb,) * 2)
-        q_pos_emb, k_pos_emb = rotary_pos_emb
-        query_states = apply_rotary_pos_emb(query_layer, q_pos_emb)
-        key_states = apply_rotary_pos_emb(key_layer, k_pos_emb)
-        """
-        attn_weights = torch.matmul(query_states, key_states.transpose(
-            2, 3)) / math.sqrt(self.hidden_size_per_attention_head)
+        query_layer = query_layer * (self.hidden_size_per_attention_head**-0.5)
+        attn_weights = torch.matmul(query_layer, key_layer.transpose(2, 3))
+
         attn_weights = attn_weights + attention_mask
         attn_weights = torch.max(
             attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
@@ -544,7 +476,14 @@ class ParallelAttention(MegatronModule):
         attn_weights = torch.nn.functional.softmax(attn_weights,
                                                    dim=-1,
                                                    dtype=torch.float32).to(
-                                                       query_states.dtype)
+                                                       query_layer.dtype)
+
+        if not self.sequence_parallel:
+            with tensor_parallel.get_cuda_rng_tracker().fork():
+                attn_weights = self.attention_dropout(attn_weights)
+        else:
+            attn_weights = self.attention_dropout(attn_weights)
+
         attn_output = torch.matmul(attn_weights, value_layer)
 
         attn_output = attn_output.transpose(1, 2)
@@ -554,6 +493,7 @@ class ParallelAttention(MegatronModule):
         attn_output = attn_output.reshape(bsz, kv_seq_len,
                                           hidden_size_per_partition)
         attn_output = attn_output.transpose(1, 0)
+
         output, bias = self.dense(attn_output)
         """
         # ==================================
@@ -587,15 +527,12 @@ class ParallelAttention(MegatronModule):
         #context_layer: torch.Size([80, 1, 4096])
         output, bias = self.dense(context_layer)
         """
-
         return output, bias
 
 
 def bias_dropout_add(x, bias, residual, prob, training):
-    # type: (Tensor, Optional[Tensor], Tensor, float, bool) -> Tensor
-    if bias is not None:
-        x = x + bias
-    out = torch.nn.functional.dropout(x, p=prob, training=training)
+    # type: (Tensor, Tensor, Tensor, float, bool) -> Tensor
+    out = torch.nn.functional.dropout(x + bias, p=prob, training=training)
     out = residual + out
     return out
 
@@ -603,23 +540,8 @@ def bias_dropout_add(x, bias, residual, prob, training):
 def get_bias_dropout_add(training):
     def _bias_dropout_add(x, bias, residual, prob):
         return bias_dropout_add(x, bias, residual, prob, training)
+
     return _bias_dropout_add
-
-
-@torch.jit.script
-def bias_dropout_add_fused_train(x: torch.Tensor,
-                                 bias: Optional[torch.Tensor],
-                                 residual: torch.Tensor,
-                                 prob: float) -> torch.Tensor:
-    return bias_dropout_add(x, bias, residual, prob, True)
-
-
-@torch.jit.script
-def bias_dropout_add_fused_inference(x: torch.Tensor,
-                                     bias: Optional[torch.Tensor],
-                                     residual: torch.Tensor,
-                                     prob: float) -> torch.Tensor:
-    return bias_dropout_add(x, bias, residual, prob, False)
 
 
 class ParallelTransformerLayer(MegatronModule):
@@ -661,12 +583,11 @@ class ParallelTransformerLayer(MegatronModule):
             no_persist_layer_norm=args.no_persist_layer_norm,
             sequence_parallel=args.sequence_parallel)
         """
-
-        self.input_layernorm = LlamaRMSNorm(args.hidden_size, eps=1e-06)
-        self.post_attention_layernorm = LlamaRMSNorm(args.hidden_size,
-                                                     eps=1e-06)
+        self.input_layernorm = torch.nn.LayerNorm(args.hidden_size,
+                                                  elementwise_affine=True)
+        self.post_attention_layernorm = torch.nn.LayerNorm(
+            args.hidden_size, elementwise_affine=True)
         """
-
         # Self attention.
         self.self_attention = ParallelAttention(
             init_method,
@@ -695,88 +616,11 @@ class ParallelTransformerLayer(MegatronModule):
                 encoder_output=None,
                 enc_dec_attn_mask=None,
                 inference_params=None):
-
-        # hidden_states: [s, b, h]
-
-        # Layer norm at the beginning of the transformer layer.
-        layernorm_output = self.input_layernorm(hidden_states)
-        # Self attention.
-        attention_output, attention_bias = \
-            self.self_attention(
-                layernorm_output,
-                position_ids,
-                attention_mask,
-                inference_params=inference_params)
-        # Residual connection.
-        if self.apply_residual_connection_post_layernorm:
-            residual = layernorm_output
-        else:
-            residual = hidden_states
-
-        # jit scripting for a nn.module (with dropout) is not
-        # trigerring the fusion kernel. For now, we use two
-        # different nn.functional routines to account for varying
-        # dropout semantics during training and inference phases.
-        if self.bias_dropout_fusion:
-            if self.training:
-                bias_dropout_add_func = bias_dropout_add_fused_train
-            else:
-                bias_dropout_add_func = bias_dropout_add_fused_inference
-        else:
-            bias_dropout_add_func = get_bias_dropout_add(self.training)
-
-        if attention_bias is not None:
-            attention_bias = attention_bias.expand_as(residual)
-        with self.bias_dropout_add_exec_handler():
-            layernorm_input = bias_dropout_add_func(
-                attention_output,
-                attention_bias,
-                residual,
-                self.hidden_dropout)
-
-        # Layer norm post the self attention.
-        layernorm_output = self.post_attention_layernorm(layernorm_input)
-
-        # MLP.
-        mlp_output, mlp_bias = self.mlp(layernorm_output)
-
-        # Second residual connection.
-        if self.apply_residual_connection_post_layernorm:
-            residual = layernorm_output
-        else:
-            residual = layernorm_input
-
-        if mlp_bias is not None:
-            mlp_bias = mlp_bias.expand_as(residual)
-        with self.bias_dropout_add_exec_handler():
-            output = bias_dropout_add_func(
-                mlp_output,
-                mlp_bias,
-                residual,
-                self.hidden_dropout)
-
-        # Jit compiled function creates 'view' tensor. This tensor
-        # potentially gets saved in the MPU checkpoint function context,
-        # which rejects view tensors. While making a viewless tensor here
-        # won't result in memory savings (like the data loader, or
-        # p2p_communication), it serves to document the origin of this
-        # 'view' tensor.
-        output = core.utils.make_viewless_tensor(inp=output,
-                                                 requires_grad=output.requires_grad,
-                                                 keep_graph=True)
-        return output
-
-    def forward_bak(self,
-                hidden_states,
-                position_ids,
-                attention_mask,
-                encoder_output=None,
-                enc_dec_attn_mask=None,
-                inference_params=None):
         # hidden_states: [s, b, h]
         # Layer norm at the beginning of the transformer layer.
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
+
         # Self attention.
         hidden_states, _ = \
             self.self_attention(
@@ -785,12 +629,21 @@ class ParallelTransformerLayer(MegatronModule):
                 attention_mask,
                 inference_params=inference_params)
 
+        hidden_states = torch.nn.functional.dropout(hidden_states,
+                                                    p=self.hidden_dropout,
+                                                    training=self.training)
+
         hidden_states = residual + hidden_states
 
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states, _ = self.mlp(hidden_states)
+
+        hidden_states = torch.nn.functional.dropout(hidden_states,
+                                                    p=self.hidden_dropout,
+                                                    training=self.training)
+
         output = residual + hidden_states
 
         # Jit compiled function creates 'view' tensor. This tensor
@@ -942,8 +795,10 @@ class ParallelTransformer(MegatronModule):
                 eps=args.layernorm_epsilon,
                 no_persist_layer_norm=args.no_persist_layer_norm,
                 sequence_parallel=args.sequence_parallel)
-
-            #self.final_layernorm = LlamaRMSNorm(args.hidden_size, eps=1e-06)
+            """
+            self.final_layernorm = torch.nn.LayerNorm(args.hidden_size,
+                                                      elementwise_affine=True)
+            """
 
     def _get_layer(self, layer_number):
         return self.layers[layer_number]

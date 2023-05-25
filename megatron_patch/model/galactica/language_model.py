@@ -133,6 +133,35 @@ class Pooler(MegatronModule):
         return pooled
 
 
+class OPTLearnedPositionalEmbedding(torch.nn.Embedding):
+    """
+    This module learns positional embeddings up to a fixed maximum size.
+    """
+    def __init__(self, num_embeddings: int, embedding_dim: int):
+        # OPT is set up so that if padding_idx
+        # is specified then offset the embedding ids by 2
+        # and adjust num_embeddings appropriately.
+        # Other models don't have this hack
+        self.offset = 2
+        super().__init__(num_embeddings + self.offset, embedding_dim)
+
+    def forward(self,
+                attention_mask: torch.LongTensor,
+                past_key_values_length: int = 0):
+        """`input_ids_shape` is expected to be [bsz x seqlen]."""
+        attention_mask = attention_mask.long()
+
+        # create positions depending on attention_mask
+        positions = (
+            torch.cumsum(attention_mask, dim=1).type_as(attention_mask) *
+            attention_mask).long() - 1
+
+        # cut positions if `past_key_values_length` is > 0
+        positions = positions[:, past_key_values_length:]
+
+        return super().forward(positions + self.offset)
+
+
 class Embedding(MegatronModule):
     """Language model embeddings.
 
@@ -175,9 +204,11 @@ class Embedding(MegatronModule):
         self.position_embedding_type = args.position_embedding_type
         if self.position_embedding_type == 'absolute':
             # Position embedding (serial).
-            self.position_embeddings = torch.nn.Embedding(
-                max_sequence_length, self.hidden_size)
+            self.position_embeddings =\
+                OPTLearnedPositionalEmbedding(max_sequence_length,
+                                              self.hidden_size)
             self._position_embeddings_key = 'position_embeddings'
+
             # Initialize the position embeddings.
             if args.perform_initialization:
                 self.init_method(self.position_embeddings.weight)
@@ -213,13 +244,13 @@ class Embedding(MegatronModule):
             self.tokentype_embeddings.weight.data.fill_(0)
             self.tokentype_embeddings.weight.shared = True
 
-    def forward(self, input_ids, position_ids, tokentype_ids=None):
+    def forward(self, input_ids, enc_attn_mask, tokentype_ids=None):
         # Embeddings.
         words_embeddings = self.word_embeddings(input_ids)
         embeddings = words_embeddings
         if self.position_embedding_type == 'absolute':
             assert self.position_embeddings is not None
-            embeddings = embeddings + self.position_embeddings(position_ids)
+            embeddings = embeddings + self.position_embeddings(enc_attn_mask)
         else:
             assert self.position_embeddings is None
 
@@ -536,8 +567,9 @@ class TransformerLanguageModel(MegatronModule):
         # Encoder embedding.
         if self.pre_process:
             encoder_input = self.embedding(enc_input_ids,
-                                           enc_position_ids,
+                                           enc_attn_mask,
                                            tokentype_ids=tokentype_ids)
+
         else:
             encoder_input = None
 
