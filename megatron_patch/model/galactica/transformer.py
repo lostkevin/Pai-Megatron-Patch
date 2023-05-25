@@ -403,7 +403,8 @@ class ParallelAttention(MegatronModule):
             input_is_parallel=True,
             bias=True,
             skip_bias_add=True,
-            init_method=output_layer_init_method)
+            init_method=output_layer_init_method,
+            **_args_to_kwargs())
 
     def _checkpointed_attention_forward(self, query_layer, key_layer,
                                         value_layer, attention_mask):
