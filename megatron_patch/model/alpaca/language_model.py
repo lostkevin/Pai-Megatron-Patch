@@ -492,7 +492,8 @@ class TransformerLanguageModel(MegatronModule):
     def _prepare_decoder_attention_mask(self,
                                         attention_mask,
                                         input_shape,
-                                        inputs_embeds,
+                                        dtype,
+                                        device,
                                         past_key_values_length=0):
         # create causal mask
         # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
@@ -500,17 +501,16 @@ class TransformerLanguageModel(MegatronModule):
         if input_shape[-1] > 1:
             combined_attention_mask = self._make_causal_mask(
                 input_shape,
-                inputs_embeds.dtype,
-                device=inputs_embeds.device,
+                dtype,
+                device=device,
                 past_key_values_length=past_key_values_length,
             )
 
         if attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
             expanded_attn_mask = self._expand_mask(attention_mask,
-                                                   inputs_embeds.dtype,
-                                                   tgt_len=input_shape[-1]).to(
-                                                       inputs_embeds.device)
+                                                   dtype,
+                                                   tgt_len=input_shape[-1]).to(device)
             combined_attention_mask = (expanded_attn_mask
                                        if combined_attention_mask is None else
                                        expanded_attn_mask +
@@ -532,18 +532,18 @@ class TransformerLanguageModel(MegatronModule):
                 enc_hidden_states=None,
                 output_enc_hidden=False):
 
+        args = get_args()
         # Encoder embedding.
         if self.pre_process:
             encoder_input = self.embedding(enc_input_ids,
                                            enc_position_ids,
                                            tokentype_ids=tokentype_ids)
-
-            batch_size = enc_input_ids.shape[0]
-            enc_attn_mask = self._prepare_decoder_attention_mask(
-                enc_attn_mask, (batch_size, self.seq_length), encoder_input)
-
         else:
             encoder_input = None
+
+        batch_size = enc_input_ids.shape[0]
+        enc_attn_mask = self._prepare_decoder_attention_mask(
+            enc_attn_mask, (batch_size, self.seq_length), args.params_dtype, enc_input_ids.device)
 
         if enc_position_ids is None:
             past_key_values_length = 0
