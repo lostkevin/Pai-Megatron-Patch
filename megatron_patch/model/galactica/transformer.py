@@ -18,9 +18,10 @@ from contextlib import nullcontext
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from megatron.model import LayerNorm
+
 from megatron import core, get_args
 from megatron.core import mpu, tensor_parallel
+from megatron.model import LayerNorm
 from megatron.model.enums import AttnMaskType, AttnType, LayerType, ModelType
 from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.module import MegatronModule
