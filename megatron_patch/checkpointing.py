@@ -234,10 +234,6 @@ def load_checkpoint(model,
                              'iteration from checkpoint {}')
                 sys.exit()
 
-    # Check arguments.
-    # assert args.consumed_train_samples == 0
-    # assert args.consumed_valid_samples == 0
-
     if 'args' in model_state_dict:
         checkpoint_args = model_state_dict['args']
         # check_checkpoint_args(checkpoint_args)
