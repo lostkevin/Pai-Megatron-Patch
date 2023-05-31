@@ -109,7 +109,6 @@ elif [ $SP = false ]; then
 fi
 
 FT_NAME="${ENV}-finetune-megatron-alpaca-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
-OUTPUT_BASEPATH=/mnt/output_megatron_chatglm
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
@@ -118,7 +117,6 @@ TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${FT_NAME}_${current_time}"
 mkdir -p ${TENSORBOARD_DIR}
 
 FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${FT_NAME}"
-LOGGING_PATH="${OUTPUT_BASEPATH}/log/${FT_NAME}_${current_time}"
 
 megatron_options="  \
         --load ${PRETRAIN_CHECKPOINT_PATH} \

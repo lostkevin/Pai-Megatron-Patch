@@ -38,7 +38,7 @@ def ensure_directory_exists(filename):
     """Build filename's path if it does not already exists."""
     dirname = os.path.dirname(filename)
     if not os.path.exists(dirname):
-        os.system(f'mkdir {dirname}')
+        os.system(f'mkdir -p {dirname}')
 
 
 def check_checkpoint_args(checkpoint_args):
@@ -234,12 +234,8 @@ def load_checkpoint(model,
                              'iteration from checkpoint {}')
                 sys.exit()
 
-    # Check arguments.
-    assert args.consumed_train_samples == 0
-    assert args.consumed_valid_samples == 0
     if 'args' in model_state_dict:
         checkpoint_args = model_state_dict['args']
-        # check_checkpoint_args(checkpoint_args)
         args.consumed_train_samples = getattr(checkpoint_args,
                                               'consumed_train_samples', 0)
         update_num_microbatches(consumed_samples=args.consumed_train_samples)

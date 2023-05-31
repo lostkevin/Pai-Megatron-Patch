@@ -539,9 +539,8 @@ class TransformerLanguageModel(MegatronModule):
 
         if attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            expanded_attn_mask = self._expand_mask(attention_mask,
-                                                   dtype,
-                                                   tgt_len=input_shape[-1]).to(device)
+            expanded_attn_mask = self._expand_mask(
+                attention_mask, dtype, tgt_len=input_shape[-1]).to(device)
             combined_attention_mask = (expanded_attn_mask
                                        if combined_attention_mask is None else
                                        expanded_attn_mask +
@@ -575,7 +574,8 @@ class TransformerLanguageModel(MegatronModule):
 
         batch_size = enc_input_ids.shape[0]
         enc_attn_mask = self._prepare_decoder_attention_mask(
-            enc_attn_mask, (batch_size, self.seq_length), args.params_dtype, enc_input_ids.device)
+            enc_attn_mask, (batch_size, self.seq_length), args.params_dtype,
+            enc_input_ids.device)
 
         if enc_position_ids is None:
             past_key_values_length = 0
