@@ -45,7 +45,7 @@ def get_tasks_args(parser):
                        default=None,
                        help='generation-seq-len')
 
-    group.add_argument('--task', type=str, default=None, help='task')
+    group.add_argument('--dataset', type=str, default=None, help='dataset')
 
     group.add_argument('--pretrained-checkpoint',
                        type=str,
@@ -240,13 +240,14 @@ def main():
               ' is not yet supported for text generation.')
         exit()
 
-    if args.task == 'LAMBADA':
+    if args.dataset == 'LAMBADA':
         eval_metric = 'accuracy'
-    elif args.task == 'WIKITEXT103' or args.task == 'WIKITEXT103-GLM130B':
+    elif args.dataset == 'WIKITEXT103' or\
+            args.dataset == 'WIKITEXT103-GLM130B':
         eval_metric = 'loss'
     else:
         raise NotImplementedError('{} task is not implemented.'.format(
-            args.task))
+            args.dataset))
 
     # Set up model and load checkpoint.
     model = get_model(get_model_provider(eval_metric), wrap_with_ddp=False)
@@ -257,14 +258,14 @@ def main():
     model = model[0]
 
     # Data stuff.
-    dataset = build_evaluation_dataset(args.task)
+    dataset = build_evaluation_dataset(args.dataset)
     dataloader = build_data_loader(dataset,
                                    args.micro_batch_size,
                                    args.num_workers,
                                    drop_last=False)
 
     # Run evaluation.
-    evaluate_and_print_results(args.task, dataloader, model, eval_metric)
+    evaluate_and_print_results(args.dataset, dataloader, model, eval_metric)
 
     print_rank_0('done :-)')
 

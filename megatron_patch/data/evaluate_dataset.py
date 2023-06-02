@@ -103,6 +103,62 @@ class GLM130BDataset(torch.utils.data.Dataset):
         }
 
 
+class BloomDataset(torch.utils.data.Dataset):
+    def __init__(self, datapaths, tokenizer, max_seq_length):
+        self.tokenizer = tokenizer
+        self.max_seq_length = max_seq_length
+        self.prompt = ''
+        self.samples = []
+        for datapath in datapaths:
+            self.samples.extend(
+                self.process_samples_from_single_path(datapath))
+        print('  >> total number of samples: {}'.format(len(self.samples)))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        idx = 0
+        raw_sample = self.samples[idx]
+        return self.gpt_convert_example_to_feature(raw_sample, self.tokenizer,
+                                                   self.max_seq_length)
+
+    def truncate(self, tokenizer, array, max_length):
+        if len(array) < max_length:
+            return np.pad(array, (0, max_length - len(array)),
+                          constant_values=tokenizer.eod)
+        else:
+            return array[:max_length]
+
+    def process_samples_from_single_path(self, filename):
+        print(' > Processing {} ...'.format(filename))
+        samples = []
+        total = 0
+        with open(filename, encoding='utf-8-sig') as f:
+            for example in f:
+                text = json.loads(example)['text']
+                # prompt = text.split("\n")[0]
+                # answer = text.replace(prompt, "").strip()
+                sample = {
+                    'prompt':
+                    text + '</s>' if not text.endswith('</s>') else text,
+                    'answer': text,
+                }
+                total += 1
+                samples.append(sample)
+
+        print(' >> processed {} samples.'.format(len(samples)))
+        return samples
+
+    def gpt_convert_example_to_feature(self, sample, tokenizer,
+                                       max_seq_length):
+        tokens = tokenizer(sample['prompt'])
+        input_ids = tokens['input_ids']
+        input_ids = self.truncate(tokenizer, input_ids, max_seq_length + 1)
+        train_sample = {'input_ids': np.array(input_ids)}
+        return train_sample
+
+
 class AlpacaDataset(torch.utils.data.Dataset):
     def __init__(self, path, tokenizer, max_padding_length):
         self.IGNORE_INDEX = -100
@@ -218,20 +274,25 @@ class AlpacaDataset(torch.utils.data.Dataset):
         return train_sample
 
 
-def build_evaluation_dataset(task):
+def build_evaluation_dataset(dataset):
     """Helper function to select and build dataset."""
     args = get_args()
     tokenizer = get_tokenizer()
 
-    if task == 'WIKITEXT103-GLM130B':
+    if dataset == 'WIKITEXT103-GLM130B':
         val_dataset = GLM130BDataset(args.data_path[0], tokenizer,
                                      args.seq_length, args.generation_length)
         return val_dataset
 
-    elif task == 'Alpaca-7B':
+    elif dataset == 'Alpaca-SFT':
         val_dataset = AlpacaDataset(args.data_path[0], tokenizer,
                                     args.max_padding_length)
         return val_dataset
 
-    raise NotImplementedError('dataset for {} task is not '
-                              'implemented.'.format(task))
+    elif dataset == 'Bloom-SFT':
+        val_dataset = BloomDataset(args.data_path, tokenizer,
+                                   args.max_padding_length)
+
+        return val_dataset
+
+    raise NotImplementedError('dataset {} is not implemented.'.format(dataset))

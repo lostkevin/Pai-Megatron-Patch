@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Transformer based language model."""
 
 import torch
 
@@ -32,12 +33,11 @@ def parallel_lm_logits(input_,
     """LM logits using word embedding weights."""
     args = get_args()
     # Parallel logits.
-    if args.async_tensor_model_parallel_allreduce or \
+    if args.async_tensor_model_parallel_allreduce or\
             args.sequence_parallel:
         input_parallel = input_
         model_parallel = mpu.get_tensor_model_parallel_world_size() > 1
-        async_grad_allreduce =\
-            args.async_tensor_model_parallel_allreduce and\
+        async_grad_allreduce = args.async_tensor_model_parallel_allreduce and \
             model_parallel and not args.sequence_parallel
     else:
         input_parallel = tensor_parallel.copy_to_tensor_model_parallel_region(

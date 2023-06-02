@@ -228,14 +228,12 @@ class GPTDataset(AbstractDataset):
 
 
 class BloomDataset(GPTDataset):
-    def __init__(self, datapaths, tokenizer, max_seq_length):
+    def __init__(self, datapath, tokenizer, max_seq_length):
         self.tokenizer = tokenizer
         self.max_seq_length = max_seq_length
         self.prompt = ''
         self.samples = []
-        for datapath in datapaths:
-            self.samples.extend(
-                self.process_samples_from_single_path(datapath))
+        self.samples.extend(self.process_samples_from_single_path(datapath))
         print('  >> total number of samples: {}'.format(len(self.samples)))
 
     def __len__(self):

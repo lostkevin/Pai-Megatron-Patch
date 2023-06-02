@@ -177,7 +177,7 @@ megatron_options="  \
         --patch-tokenizer-type AlpacaTokenizer
         "
 
-run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_alpaca.py
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_alpaca.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 

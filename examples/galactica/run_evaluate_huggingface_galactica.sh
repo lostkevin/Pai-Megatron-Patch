@@ -73,7 +73,7 @@ megatron_options=" \
         --DDP-impl local \
         --no-load-optim \
         --num-workers 0 \
-        --task Alpaca-7B \
+        --dataset Alpaca-SFT \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \

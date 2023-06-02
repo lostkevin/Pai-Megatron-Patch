@@ -1,4 +1,5 @@
 #!/bin/bash
+#sh run_pretrain_megatron_bloom.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 1.7B 1 8 1e-5 1e-6 2048 0 fp16 1 1 sel true false false 100000 /mnt/wudao/wudao_bloombpe_text_document /mnt/bloom-ckpts/bloomz-1b7-to-megatron-tp1-pp1 100000000 10000 /mnt/output_bloom
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -6,12 +7,12 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=2
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=8
+GPUS_PER_NODE=1
 
 elif [ $ENV = dlc ]; then
 
@@ -26,21 +27,24 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 MODEL_SIZE=$4
 BATCH_SIZE=$5
 GLOBAL_BATCH_SIZE=$6
-SEQ_LEN=$7
-LR=$8
-MIN_LR=$9
-PR=${10}
-TP=${11}
-PP=${12}
-AC=${13}
-DO=${14}
-SP=${15}
-SAVE_INTERVAL=${16}
-DATASET_PATH=${17}
-PRETRAIN_CHECKPOINT_PATH=${18}
-TRAIN_TOKENS=${19}
-WARMUP_TOKENS=${20}
-OUTPUT_BASEPATH=${21}
+LR=$7
+MIN_LR=$8
+SEQ_LEN=$9
+EXTRA_VOCAB_SIZE=${10}
+PR=${11}
+TP=${12}
+PP=${13}
+AC=${14}
+DO=${15}
+FL=${16}
+SP=${17}
+SAVE_INTERVAL=${18}
+DATASET_PATH=${19}
+PRETRAIN_CHECKPOINT_PATH=${20}
+TRAIN_TOKENS=${21}
+WARMUP_TOKENS=${22}
+OUTPUT_BASEPATH=${23}
+
 
 if [ $MODEL_SIZE = 1.1B ]; then
 
@@ -60,6 +64,11 @@ NUM_LAYERS=30
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
 
+fi
+
+if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
+    load_options=" \
+		    --load $PRETRAIN_CHECKPOINT_PATH"
 fi
 
 if [ $AC = full ]; then
@@ -91,6 +100,15 @@ elif [ $DO = false ]; then
                     "
 fi
 
+if [ $FL = true ]; then
+    flash_options=" \
+		    --use-flash-attn"
+
+elif [ $FL = false ]; then
+    flash_options=" \
+                    "
+fi
+
 if [ $SP = true ] && [ $TP -gt 1 ]; then
     sp_options=" \
 		    --sequence-parallel"
@@ -114,8 +132,7 @@ mkdir -p ${TENSORBOARD_DIR}
 
 SAVED_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 
-megatron_options=" \
-        --load ${PRETRAIN_CHECKPOINT_PATH} \
+megatron_options="  \
         --save ${SAVED_PRETRAIN_CHECKPOINT_PATH} \
         --split 98,2,0 \
         --data-impl mmap \
@@ -152,15 +169,16 @@ megatron_options=" \
         --DDP-impl local \
         --no-load-optim \
         --no-load-rng \
-        --finetune \
+        --num-workers 8 \
+        --seed 1234 \
+        --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --embed-layernorm \
-        --glu-activation geglu \
         --position-embedding-type alibi \
         --patch-tokenizer-type BloomTokenizerFromHF
         "
 
 run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_bloom.py
- ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options}"
+ ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 echo ${run_cmd}
 eval ${run_cmd}

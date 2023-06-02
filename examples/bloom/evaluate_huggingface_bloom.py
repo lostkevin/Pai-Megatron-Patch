@@ -12,12 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-
 import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
-from megatron import get_args, is_last_rank, print_rank_0
+from megatron import get_args, print_rank_0
 from megatron.core import parallel_state
 from megatron.core.pipeline_parallel.p2p_communication import send_forward
 from megatron.initialize import initialize_megatron
@@ -26,9 +24,9 @@ from megatron.model import Float16Module
 from megatron.utils import unwrap_model
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer
 from megatron_patch.training import get_model
-from transformers import OPTForCausalLM
+from transformers import AutoModelForCausalLM
 
 try:
     from megatron.model import ModelType
@@ -37,7 +35,7 @@ except ImportError:
 
 
 def get_tasks_args(parser):
-    group = parser.add_argument_group(title='alpaca')
+    group = parser.add_argument_group(title='bloom')
 
     group.add_argument('--transformer-type',
                        type=str,
@@ -49,7 +47,7 @@ def get_tasks_args(parser):
                        default=None,
                        help='max-padding-length')
 
-    group.add_argument('--dataset', type=str, default=None, help='dataset')
+    group.add_argument('--dataset', type=str, default=None, help='task')
 
     group.add_argument('--pretrained-checkpoint',
                        type=str,
@@ -61,6 +59,15 @@ def get_tasks_args(parser):
                        default=None,
                        help='Number of finetunning epochs. Zero results in '
                        'evaluation only.')
+
+    group.add_argument('--embed-layernorm',
+                       action='store_true',
+                       help='use layernorm for embedding')
+
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
 
     group.add_argument('--keep-last',
                        action='store_true',
@@ -78,10 +85,15 @@ def get_tasks_args(parser):
                        default=None,
                        help='path(s) to the validation data.')
 
-    group.add_argument('--extra-vocab-size',
-                       type=int,
-                       default=1,
-                       help='--extra-vocab-size')
+    group.add_argument('--position-embedding-type',
+                       type=str,
+                       default='absolute',
+                       help='Define position embedding type '
+                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
+
+    group.add_argument('--glu-activation',
+                       type=str,
+                       help='GLU activations to use.')
 
     group.add_argument('--patch-tokenizer-type',
                        type=str,
@@ -96,8 +108,8 @@ def get_model_provider():
     def model_provider(pre_process=True, post_process=True):
         args = get_args()
         build_tokenizer(args)
-        model = OPTForCausalLM.from_pretrained(args.load,
-                                               trust_remote_code=False)
+        model = AutoModelForCausalLM.from_pretrained(args.load,
+                                                     trust_remote_code=False)
         return model
 
     return model_provider
@@ -105,21 +117,16 @@ def get_model_provider():
 
 def forward_step(batch, model):
     """Forward step."""
-    tokenizer = get_tokenizer()
     # Get the batch.
-    input_ids = batch['input_ids'].long().cuda()
-    labels = batch['labels'].long().cuda()
-    attention_mask = input_ids.ne(tokenizer.pad_token_id)
+    tokens_ = batch['input_ids'].long().cuda()
+    input_ids = tokens_[:, :-1].contiguous()
 
     # Tell the model what our actual batch size will be
     args = get_args()
-    args.micro_batch_size = len(labels)
-
+    args.micro_batch_size = len(input_ids)
     # Forward pass through the model.
     unwrapped_model = unwrap_model(model, (torchDDP, LocalDDP, Float16Module))
-    output = unwrapped_model(input_ids=input_ids,
-                             labels=labels,
-                             attention_mask=attention_mask)
+    output = unwrapped_model(input_ids=input_ids, labels=input_ids)
     send_forward(output)
     if parallel_state.is_pipeline_last_stage():
         print_rank_0(output.loss)
@@ -152,44 +159,6 @@ def evaluate(data_loader, model):
                 total_output += output
 
     return total_output
-
-
-def evaluate_and_print_results(task, data_loader, model, eval_metric):
-    """Evaluate and print results on screen."""
-
-    # Evaluate and get results.
-    output = evaluate(data_loader, model, eval_metric)
-
-    string = ' validation results on {} | '.format(task)
-    if is_last_rank():
-        if eval_metric == 'loss':
-            num_tokenized_tokens = data_loader.dataset.num_tokenized_tokens
-            num_original_tokens = data_loader.dataset.num_original_tokens
-            val_loss = output / (num_tokenized_tokens - 1)
-            ppl = math.exp(min(20, val_loss))
-            token_ratio = (num_tokenized_tokens - 1) / (num_original_tokens -
-                                                        1)
-            adjusted_ppl = math.exp(min(20, val_loss * token_ratio))
-            string += 'avg loss: {:.4E} | '.format(val_loss)
-            string += 'ppl: {:.4E} | '.format(ppl)
-            string += 'adjusted ppl: {:.4E} | '.format(adjusted_ppl)
-            string += 'token ratio: {} |'.format(token_ratio)
-
-        elif eval_metric == 'accuracy':
-            num_examples = len(data_loader.dataset)
-            acc = output / num_examples
-            string += 'number correct: {:.4E} | '.format(output)
-            string += 'total examples: {:.4E} | '.format(num_examples)
-            string += 'avg accuracy: {:.4E}'.format(acc)
-
-        else:
-            raise NotImplementedError('evaluation method for {} metric is not '
-                                      'implemented yet.'.format(eval_metric))
-
-        length = len(string) + 1
-        print('-' * length)
-        print(string)
-        print('-' * length)
 
 
 def main():

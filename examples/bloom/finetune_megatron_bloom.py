@@ -34,6 +34,13 @@ def get_tasks_args(parser):
                        default='megatron',
                        help='transformer-type')
 
+    group.add_argument('--max-padding-length',
+                       type=int,
+                       default=None,
+                       help='max-padding-length')
+
+    group.add_argument('--dataset', type=str, default=None, help='task')
+
     group.add_argument('--pretrained-checkpoint',
                        type=str,
                        default=None,
@@ -45,25 +52,30 @@ def get_tasks_args(parser):
                        help='Number of finetunning epochs. Zero results in '
                        'evaluation only.')
 
+    group.add_argument('--embed-layernorm',
+                       action='store_true',
+                       help='use layernorm for embedding')
+
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
+
     group.add_argument('--keep-last',
                        action='store_true',
                        help='Keep the last batch (maybe incomplete) in'
                        'the data loader')
 
+    group.add_argument('--data-dir', default=None, help='data-dir')
+
     group.add_argument('--train-data',
-                       nargs='+',
                        default=None,
                        help='Whitespace separated paths or corpora names '
                        'for training.')
 
     group.add_argument('--valid-data',
-                       nargs='*',
                        default=None,
                        help='path(s) to the validation data.')
-
-    group.add_argument('--embed-layernorm',
-                       action='store_true',
-                       help='use layernorm for embedding')
 
     group.add_argument('--position-embedding-type',
                        type=str,
@@ -93,8 +105,10 @@ def model_provider(pre_process=True, post_process=True):
 def train_valid_datasets_provider():
     args = get_args()
     tokenizer = build_tokenizer(args)
-    train_dataset = BloomDataset(args.train_data, tokenizer, args.seq_length)
-    valid_dataset = BloomDataset(args.valid_data, tokenizer, args.seq_length)
+    train_dataset = BloomDataset(args.train_data, tokenizer,
+                                 args.max_padding_length)
+    valid_dataset = BloomDataset(args.valid_data, tokenizer,
+                                 args.max_padding_length)
     return train_dataset, valid_dataset
 
 

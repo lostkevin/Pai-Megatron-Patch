@@ -54,13 +54,14 @@ def get_tasks_args(parser):
                        help='Define position embedding type '
                        '("absolute"|"rotary"|"alibi"). "absolute" by default.')
 
-    group.add_argument('--glu-activation',
-                       type=str,
-                       help='GLU activations to use.')
-
     group.add_argument('--patch-tokenizer-type',
                        type=str,
                        help='patch-tokenizer-type')
+
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
 
     return parser
 
