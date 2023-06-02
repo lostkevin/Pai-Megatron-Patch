@@ -49,7 +49,7 @@ def get_tasks_args(parser):
                        default=None,
                        help='max-padding-length')
 
-    group.add_argument('--task', type=str, default=None, help='task')
+    group.add_argument('--dataset', type=str, default=None, help='dataset')
 
     group.add_argument('--pretrained-checkpoint',
                        type=str,
@@ -206,7 +206,7 @@ def main():
     model = model[0]
 
     # Data stuff.
-    dataset = build_evaluation_dataset(args.task)
+    dataset = build_evaluation_dataset(args.dataset)
     dataloader = build_data_loader(dataset,
                                    args.micro_batch_size,
                                    args.num_workers,

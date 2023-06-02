@@ -44,7 +44,7 @@ def get_tasks_args(parser):
                        default=None,
                        help='--generation-length')
 
-    group.add_argument('--task', type=str, default=None, help='task')
+    group.add_argument('--dataset', type=str, default=None, help='dataset')
 
     group.add_argument('--pretrained-checkpoint',
                        type=str,

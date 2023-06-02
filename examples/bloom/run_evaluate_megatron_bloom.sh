@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_huggingface_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 /mnt/alpaca-ckpts/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf/
+# sh run_evaluate_megatron_bloom.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 1.7B 1 2048 128 0 fp16 1 1 /mnt/bloom-datasets/instruct_latest.json /mnt/bloom-ckpts/bloomz-1b7-to-megatron-tp1-pp1
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -7,7 +7,7 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=7
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
@@ -30,23 +30,29 @@ SEQ_LEN=$6
 PAD_LEN=$7
 EXTRA_VOCAB_SIZE=$8
 PR=$9
-DATASET_PATH=${10}
-PRETRAIN_CHECKPOINT_PATH=${11}
+TP=${10}
+PP=${11}
+DATASET_PATH=${12}
+PRETRAIN_CHECKPOINT_PATH=${13}
 
 
-if [ $MODEL_SIZE = 7B ]; then
+if [ $MODEL_SIZE = 1.1B ]; then
 
-NUM_LAYERS=32
+NUM_LAYERS=24
+HIDDEN_SIZE=1536
+NUM_ATTN_HEADS=16
+
+elif [ $MODEL_SIZE = 1.7B ]; then
+
+NUM_LAYERS=24
+HIDDEN_SIZE=2048
+NUM_ATTN_HEADS=16
+
+elif [ $MODEL_SIZE = 7.1B ]; then
+
+NUM_LAYERS=30
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
-INTERMEDIATE_SIZE=11008
-
-elif [ $MODEL_SIZE = 13B ]; then
-
-NUM_LAYERS=40
-HIDDEN_SIZE=5120
-NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13824
 
 fi
 
@@ -65,7 +71,6 @@ fi
 
 
 megatron_options=" \
-        --transformer-type huggingface \
         --data-path ${DATASET_PATH}
         --micro-batch-size ${BATCH_SIZE} \
         --num-layers ${NUM_LAYERS} \
@@ -76,19 +81,23 @@ megatron_options=" \
         --log-interval 1 \
         --eval-interval 100 \
         --eval-iters 10 \
-        --tensor-model-parallel-size 1 \
-        --pipeline-model-parallel-size 1 \
+        --tensor-model-parallel-size ${TP} \
+        --pipeline-model-parallel-size ${PP} \
         --DDP-impl local \
         --no-load-optim \
+        --no-load-rng \
+        --seed 1234 \
         --num-workers 0 \
-        --dataset Alpaca-SFT \
+        --dataset Bloom-SFT \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --patch-tokenizer-type AlpacaTokenizer
+        --patch-tokenizer-type BloomTokenizerFromHF \
+        --embed-layernorm \
+        --position-embedding-type alibi
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_alpaca.py
+run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_bloom.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}

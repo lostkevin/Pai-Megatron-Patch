@@ -128,7 +128,7 @@ megatron_options=" \
         --no-load-rng \
         --seed 1234 \
         --num-workers 0 \
-        --task WIKITEXT103-GLM130B \
+        --dataset WIKITEXT103-GLM130B \
         --use-distributed-optimizer \
         --generation-length ${GEN_LEN} \
         --position-embedding-type rotary \
