@@ -100,7 +100,6 @@ rapidformer_options="  \
        --min-lr 0.1 \
        --no-load-optim \
        --DDP-impl local\
-       --finetune \
        --top-p ${TOP_P} \
        --temperature ${TEMPERATURE}  \
        --top-k ${TOP_K} \
@@ -109,7 +108,6 @@ rapidformer_options="  \
        --tensor-model-parallel-size ${TP} \
        --pipeline-model-parallel-size 1 \
        --embed-layernorm \
-       --glu-activation geglu \
        --position-embedding-type alibi \
         --repetition-penalty ${REPETITION_PENALTY} \
         --use-distributed-optimizer 

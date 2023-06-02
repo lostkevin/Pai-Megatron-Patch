@@ -30,12 +30,12 @@ from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import setup_model_and_optimizer
 
 class GPTPredictor():
-    """A Trainer for model finetuning."""
+    """A Predictor for model."""
     def __init__(self):
         super().__init__()
 
     def predict(self):
-        """Run finetune process """
+        """Run predict process """
 
         args = get_args()
         tokenizer = build_tokenizer(args)

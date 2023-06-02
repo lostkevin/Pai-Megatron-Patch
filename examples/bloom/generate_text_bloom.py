@@ -75,7 +75,7 @@ def get_tasks_args(parser):
     return parser
 
 
-class MegatronGPTMoEPredictor(GPTPredictor):
+class MegatronGPTPredictor(GPTPredictor):
     def model_optimizer_lr_scheduler_provider(self,
                                               pre_process=True,
                                               post_process=True):
@@ -92,5 +92,5 @@ class MegatronGPTMoEPredictor(GPTPredictor):
 if __name__ == '__main__':
     initialize_megatron(extra_args_provider=get_tasks_args,
                         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
-    predictor = MegatronGPTMoEPredictor()
+    predictor = MegatronGPTPredictor()
     predictor.predict()
