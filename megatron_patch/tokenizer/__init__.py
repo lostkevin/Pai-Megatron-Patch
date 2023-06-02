@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from megatron.tokenizer.tokenizer import _vocab_size_with_padding
+from megatron import print_rank_0
 
 _GLOBAL_TOKENIZER = None
 
@@ -92,6 +93,16 @@ def build_tokenizer(args):
             special_tokens_dict['unk_token'] = DEFAULT_UNK_TOKEN
         tokenizer.add_special_tokens(special_tokens_dict)
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
+    elif args.patch_tokenizer_type == 'BloomTokenizerFromCustom':
+        print_rank_0('Using Customized Bloom tokenizer.')
+        from transformers import BloomTokenizerFast as BloomTokenizer
+        tokenizer = BloomTokenizer.from_pretrained(args.load)
+        tokenizer.eod = tokenizer.eos_token_id
+        if 'mg' not in args.load:
+            args.padded_vocab_size = 134298
+        else:
+            args.padded_vocab_size = _vocab_size_with_padding(
+                tokenizer.vocab_size, args)
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(
@@ -103,6 +114,7 @@ def build_tokenizer(args):
             args.patch_tokenizer_type != 'GLM10BZHTokenizerFromHF'\
             and args.patch_tokenizer_type != 'IcetkGLM130BTokenizer' and\
             args.patch_tokenizer_type != 'AlpacaTokenizer' and\
+            args.patch_tokenizer_type != 'BloomTokenizerFromCustom' and\
             args.patch_tokenizer_type != 'OPTTokenizer':
 
         args.padded_vocab_size = _vocab_size_with_padding(
