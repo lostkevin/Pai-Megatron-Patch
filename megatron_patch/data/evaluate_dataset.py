@@ -159,7 +159,7 @@ class BloomDataset(torch.utils.data.Dataset):
         return train_sample
 
 
-class AlpacaDataset(torch.utils.data.Dataset):
+class LLamaDataset(torch.utils.data.Dataset):
     def __init__(self, path, tokenizer, max_padding_length):
         self.IGNORE_INDEX = -100
         self.tokenizer = tokenizer
@@ -284,8 +284,8 @@ def build_evaluation_dataset(dataset):
                                      args.seq_length, args.generation_length)
         return val_dataset
 
-    elif dataset == 'Alpaca-SFT':
-        val_dataset = AlpacaDataset(args.data_path[0], tokenizer,
+    elif dataset == 'LLama-SFT':
+        val_dataset = LLamaDataset(args.data_path[0], tokenizer,
                                     args.max_padding_length)
         return val_dataset
 

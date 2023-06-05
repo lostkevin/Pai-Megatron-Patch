@@ -14,7 +14,7 @@
 
 from megatron import get_args
 from megatron.initialize import initialize_megatron
-from megatron_patch.data.finetune_dataset import AlpacaDataset
+from megatron_patch.data.finetune_dataset import LLamaDataset
 from megatron_patch.finetune_utils import finetune
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from transformers import AutoModelForCausalLM
@@ -86,9 +86,9 @@ def train_valid_datasets_provider():
     """Build train and validation dataset."""
     args = get_args()
     tokenizer = build_tokenizer(args)
-    train_dataset = AlpacaDataset(args.train_data, tokenizer,
+    train_dataset = LLamaDataset(args.train_data, tokenizer,
                                   args.max_padding_length)
-    valid_dataset = AlpacaDataset(args.valid_data, tokenizer,
+    valid_dataset = LLamaDataset(args.valid_data, tokenizer,
                                   args.max_padding_length)
     return train_dataset, valid_dataset
 
@@ -111,8 +111,7 @@ def forward_step(data_iterator, model):
 
 
 if __name__ == '__main__':
-    initialize_megatron(extra_args_provider=get_tasks_args,
-                        args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
+    initialize_megatron(extra_args_provider=get_tasks_args)
 
     finetune(train_valid_datasets_provider=train_valid_datasets_provider,
              model_provider=model_provider,

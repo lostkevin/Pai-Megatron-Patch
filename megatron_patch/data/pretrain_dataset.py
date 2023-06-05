@@ -30,7 +30,7 @@ from megatron.data.gpt_dataset import (_build_index_mappings,
 from megatron_patch.tokenizer import get_tokenizer
 
 
-class GLM130BDataset_Ori(torch.utils.data.Dataset):
+class GLM130BDataset(torch.utils.data.Dataset):
     def __init__(self, path, max_seq_length, generation_length):
         self.path = path
         self.max_seq_length = max_seq_length
@@ -103,7 +103,7 @@ class GLM130BDataset_Ori(torch.utils.data.Dataset):
         }
 
 
-class GLM130BDataset_IdxMap(torch.utils.data.Dataset):
+class GLM130BIdxMapDataset(torch.utils.data.Dataset):
     def __init__(self,
                  name,
                  data_prefix,
@@ -203,7 +203,7 @@ class GLM130BDataset_IdxMap(torch.utils.data.Dataset):
         }
 
 
-class AlpacaDataset_Ori(torch.utils.data.Dataset):
+class LLamaDataset(torch.utils.data.Dataset):
     def __init__(self, datapath, max_padding_length):
         self.IGNORE_INDEX = -100
         self.tokenizer = get_tokenizer()
@@ -352,7 +352,7 @@ def build_pretrain_glm130b_datasets_from_idxmap(data_prefix,
                                   stop=splits[index + 1],
                                   step=1,
                                   dtype=np.int32)
-            dataset = GLM130BDataset_IdxMap(
+            dataset = GLM130BIdxMapDataset(
                 name, data_prefix, documents, indexed_dataset,
                 train_valid_test_num_samples[index], seq_length,
                 generation_length, seed, return_doc_ids)
@@ -369,7 +369,7 @@ def build_pretrain_glm130b_datasets_from_original(data_prefix, max_seq_length,
                                                   generation_length):
     def build_dataset():
 
-        dataset = GLM130BDataset_Ori(data_prefix[0], max_seq_length,
+        dataset = GLM130BDataset(data_prefix[0], max_seq_length,
                                      generation_length)
 
         return dataset
@@ -381,11 +381,11 @@ def build_pretrain_glm130b_datasets_from_original(data_prefix, max_seq_length,
     return (train_dataset, valid_dataset, test_dataset)
 
 
-def build_pretrain_alpaca_datasets_from_original(data_prefix,
+def build_pretrain_llama_datasets_from_original(data_prefix,
                                                  max_padding_length):
     def build_dataset():
 
-        dataset = AlpacaDataset_Ori(data_prefix[0], max_padding_length)
+        dataset = LLamaDataset(data_prefix[0], max_padding_length)
 
         return dataset
 

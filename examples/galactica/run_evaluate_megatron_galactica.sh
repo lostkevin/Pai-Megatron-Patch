@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_megatron_galactica.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 6.7B 1 2048 80 0 fp16 1 1 /mnt/alpaca-ckpts/alpaca_data.json /mnt/galactica-ckpts/galactica-6.7b-to-megatron-tp1-pp1
+# sh run_evaluate_megatron_galactica.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 6.7B 1 2048 80 0 fp16 1 1 /mnt/llama-datasets/alpaca_data.json /mnt/galactica-ckpts/galactica-6.7b-to-megatron-tp1-pp1
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -76,7 +76,7 @@ megatron_options=" \
         --no-load-rng \
         --seed 1234 \
         --num-workers 0 \
-        --dataset Alpaca-SFT \
+        --dataset LLama-SFT \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \

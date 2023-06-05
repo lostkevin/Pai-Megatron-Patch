@@ -238,7 +238,7 @@ class CoreAttention(MegatronModule):
         # ===========================
         # Attention probs and dropout
         # ===========================
-
+        attention_mask = attention_mask.to(torch.bool)
         # attention scores and attention mask [b, np, sq, sk]
         attention_probs = self.scale_mask_softmax(attention_scores,
                                                   attention_mask)
@@ -487,31 +487,110 @@ class ParallelAttention(MegatronModule):
                 encoder_output=None,
                 inference_params=None):
         # hidden_states: [sq, b, h]
+
+        # =================================================
+        # Pre-allocate memory for key-values for inference.
+        # =================================================
+        if inference_params:
+            if self.layer_number not in inference_params.key_value_memory_dict:
+                inf_max_seq_len = inference_params.max_sequence_len
+                inf_max_batch_size = inference_params.max_batch_size
+                inference_key_memory = self._allocate_memory(
+                    inf_max_seq_len, inf_max_batch_size)
+                inference_value_memory = self._allocate_memory(
+                    inf_max_seq_len, inf_max_batch_size)
+                inference_params.key_value_memory_dict[self.layer_number] = (
+                    inference_key_memory, inference_value_memory)
+            else:
+                inference_key_memory, inference_value_memory = \
+                    inference_params.key_value_memory_dict[self.layer_number]
+
         # =====================
         # Query, Key, and Value
         # =====================
-        # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
-        mixed_x_layer, _ = self.query_key_value(hidden_states)
 
-        # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
-        new_tensor_shape =\
-            mixed_x_layer.size()[:-1] + (
-                self.num_attention_heads_per_partition,
-                3 * self.hidden_size_per_attention_head)
-        mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
+        if self.attention_type == AttnType.self_attn:
+            # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
+            mixed_x_layer, _ = self.query_key_value(hidden_states)
 
-        # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
-        # torch.Size([128, 1, 32, 128])
-        (query_layer, key_layer,
-         value_layer) = tensor_parallel.split_tensor_along_last_dim(
-             mixed_x_layer, 3)
+            # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
+            new_tensor_shape = mixed_x_layer.size()[:-1] + \
+                (self.num_attention_heads_per_partition,
+                 3 * self.hidden_size_per_attention_head)
+            mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
 
-        position_ids = position_ids.transpose(0, 1)
-        cos, sin = self.rotary_emb(value_layer, self.seq_length)
-        # [seq_len, batch, num_attention_heads,
-        # hidden_size_per_attention_head]
-        query_layer, key_layer = apply_rotary_pos_emb(query_layer, key_layer,
-                                                      cos, sin, position_ids)
+            # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
+            (query_layer, key_layer,
+             value_layer) = tensor_parallel.split_tensor_along_last_dim(
+                 mixed_x_layer, 3)
+        else:
+            # Attention heads [sk, b, h] --> [sk, b, (np * 2 * hn)]
+            mixed_kv_layer, _ = self.key_value(encoder_output)
+
+            # [sk, b, (np * 2 * hn)] --> [sk, b, np, 2 * hn]
+            new_tensor_shape = mixed_kv_layer.size()[:-1] + \
+                (self.num_attention_heads_per_partition,
+                 2 * self.hidden_size_per_attention_head)
+            mixed_kv_layer = mixed_kv_layer.view(*new_tensor_shape)
+
+            # [sk, b, np, 2 * hn] --> 2 [sk, b, np, hn]
+            (key_layer,
+             value_layer) = tensor_parallel.split_tensor_along_last_dim(
+                 mixed_kv_layer, 2)
+
+            # Attention head [sq, b, h] --> [sq, b, hp]
+            query_layer, _ = self.query(hidden_states)
+            # [sq, b, hp] --> [sq, b, np, hn]
+            new_tensor_shape = query_layer.size()[:-1] + \
+                (self.num_attention_heads_per_partition,
+                 self.hidden_size_per_attention_head)
+            query_layer = query_layer.view(*new_tensor_shape)
+
+        # ==================================
+        # Adjust key and value for inference
+        # ==================================
+        kv_seq_len = key_layer.shape[0]
+        if inference_params:
+            kv_seq_len += inference_params.sequence_len_offset
+            # torch.Size([20, 1, 40, 128]) --> torch.Size([1, 40, 20, 128])
+            value_layer = value_layer.transpose(0, 1).transpose(1, 2)
+            query_layer = query_layer.transpose(0, 1).transpose(1, 2)
+            key_layer = key_layer.transpose(0, 1).transpose(1, 2)
+            cos, sin = self.rotary_emb(value_layer, kv_seq_len)
+            query_layer, key_layer = apply_rotary_pos_emb(
+                query_layer, key_layer, cos, sin, position_ids)
+
+            value_layer = value_layer.transpose(1, 2).transpose(0, 1)
+            query_layer = query_layer.transpose(1, 2).transpose(0, 1)
+            key_layer = key_layer.transpose(1, 2).transpose(0, 1)
+
+            batch_start = inference_params.batch_size_offset
+            batch_end = batch_start + key_layer.size(1)
+            assert batch_end <= inference_key_memory.size(1)
+            sequence_start = inference_params.sequence_len_offset
+            sequence_end = sequence_start + key_layer.size(0)
+            assert sequence_end <= inference_key_memory.size(0)
+            # Copy key and values.
+            inference_key_memory[sequence_start:sequence_end,
+                                 batch_start:batch_end, ...] = key_layer
+            inference_value_memory[sequence_start:sequence_end,
+                                   batch_start:batch_end, ...] = value_layer
+            key_layer = inference_key_memory[:sequence_end,
+                                             batch_start:batch_end, ...]
+            value_layer = inference_value_memory[:sequence_end,
+                                                 batch_start:batch_end, ...]
+
+        else:
+            value_layer = value_layer.transpose(0, 1).transpose(1, 2)
+            query_layer = query_layer.transpose(0, 1).transpose(1, 2)
+            key_layer = key_layer.transpose(0, 1).transpose(1, 2)
+            cos, sin = self.rotary_emb(value_layer, kv_seq_len)
+            query_layer, key_layer = apply_rotary_pos_emb(
+                query_layer, key_layer, cos, sin, position_ids)
+
+            value_layer = value_layer.transpose(1, 2).transpose(0, 1)
+            query_layer = query_layer.transpose(1, 2).transpose(0, 1)
+            key_layer = key_layer.transpose(1, 2).transpose(0, 1)
 
         # ==================================
         # core attention computation
@@ -653,7 +732,6 @@ class ParallelTransformerLayer(MegatronModule):
                 inference_params=None):
 
         # hidden_states: [s, b, h]
-
         # Layer norm at the beginning of the transformer layer.
         layernorm_output = self.input_layernorm(hidden_states)
         # Self attention.
@@ -973,8 +1051,15 @@ class ParallelTransformer(MegatronModule):
                 position_ids,
                 attention_mask,
                 encoder_output=None,
-                enc_dec_attn_mask=None):
+                enc_dec_attn_mask=None,
+                inference_params=None):
         # hidden_states: [s, b, h]
+        args = get_args()
+        # Checks.
+        if inference_params and not args.finetune:
+            assert self.recompute_granularity is None, \
+                'inference does not work with activation checkpointing'
+
         if not self.pre_process:
             # See set_input_tensor()
             hidden_states = self.input_tensor
@@ -1018,7 +1103,8 @@ class ParallelTransformer(MegatronModule):
                                           position_ids,
                                           attention_mask,
                                           encoder_output=encoder_output,
-                                          enc_dec_attn_mask=enc_dec_attn_mask)
+                                          enc_dec_attn_mask=enc_dec_attn_mask,
+                                          inference_params=inference_params)
 
         # Final layer norm.
         if self.post_process and self.post_layer_norm:

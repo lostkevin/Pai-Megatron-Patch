@@ -15,7 +15,7 @@
 from megatron import get_args
 from megatron.initialize import initialize_megatron
 from megatron_patch.generation.gpt_predictor import GPTPredictor
-from megatron_patch.model.bloom.gpt_model import GPTModel
+from megatron_patch.model.llama.gpt_model import GPTModel
 
 try:
     from megatron.model import ModelType
@@ -54,11 +54,11 @@ def get_tasks_args(parser):
 
     group.add_argument('--temperature',
                        type=float,
-                       default=1.2,
+                       default=1.0,
                        help='Sampling temperature.')
-    group.add_argument('--repetition-penalty',
+    group.add_argument('--repetition_penalty',
                        type=float,
-                       default=1.2,
+                       default=1.1,
                        help='Repetition_penalty.')
     group.add_argument('--embed-layernorm',
                        action='store_true',
@@ -73,6 +73,25 @@ def get_tasks_args(parser):
     group.add_argument('--glu-activation',
                        type=str,
                        help='GLU activations to use.')
+
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
+    group.add_argument('--max-padding-length',
+                       type=int,
+                       default=None,
+                       help='max-padding-length')
+    group.add_argument('--intermediate-size',
+                       type=int,
+                       default=None,
+                       help='--intermediate-size')
+
+    group.add_argument('--repetition-penalty',
+                       type=float,
+                       default=1.2,
+                       help='Repetition_penalty.')
+
     return parser
 
 
