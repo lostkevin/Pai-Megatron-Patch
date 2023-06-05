@@ -69,14 +69,30 @@ def build_tokenizer(args):
             special_tokens_dict['unk_token'] = DEFAULT_UNK_TOKEN
         tokenizer.add_special_tokens(special_tokens_dict)
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
-    elif args.patch_tokenizer_type == 'AlpacaTokenizer':
+
+    elif args.patch_tokenizer_type == 'AlpacaTokenizer-ziya':
         from transformers import AutoTokenizer
-        tokenizer = AutoTokenizer.from_pretrained(
-            args.load,
-            model_max_length=args.seq_length,
-            padding_side='right',
-            use_fast=False,
-        )
+        tokenizer = AutoTokenizer.from_pretrained(args.load,
+                                                  use_fast=True)
+        args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
+
+    elif args.patch_tokenizer_type == 'AlpacaTokenizer':
+        if args.load is None:
+            import transformers
+            tokenizer = transformers.LlamaTokenizer.from_pretrained(
+                'decapoda-research/llama-7b-hf',
+                model_max_length=args.seq_length,
+                padding_side='right',
+                use_fast=False,
+            )
+        else:
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(
+                args.load,
+                model_max_length=args.seq_length,
+                padding_side='right',
+                use_fast=False,
+            )
         DEFAULT_PAD_TOKEN = '[PAD]'
         DEFAULT_EOS_TOKEN = '</s>'
         DEFAULT_BOS_TOKEN = '<s>'
@@ -113,7 +129,8 @@ def build_tokenizer(args):
             'ChatGLMTokenizerFromHF' and\
             args.patch_tokenizer_type != 'GLM10BZHTokenizerFromHF'\
             and args.patch_tokenizer_type != 'IcetkGLM130BTokenizer' and\
-            args.patch_tokenizer_type != 'AlpacaTokenizer' and\
+            args.patch_tokenizer_type != 'AlpacaTokenizer' and \
+            args.patch_tokenizer_type != 'AlpacaTokenizer-ziya' and \
             args.patch_tokenizer_type != 'BloomTokenizerFromCustom' and\
             args.patch_tokenizer_type != 'OPTTokenizer':
 

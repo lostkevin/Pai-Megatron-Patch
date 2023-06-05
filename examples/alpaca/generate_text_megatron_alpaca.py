@@ -19,7 +19,7 @@ try:
 except ImportError:
     from megatron.core.enums import ModelType
 from megatron_patch.generation.gpt_predictor import GPTPredictor
-from megatron_patch.model.bloom.gpt_model import GPTModel
+from megatron_patch.model.alpaca.gpt_model import GPTModel
 
 
 def get_tasks_args(parser):
@@ -53,11 +53,11 @@ def get_tasks_args(parser):
 
     group.add_argument('--temperature',
                        type=float,
-                       default=1.2,
+                       default=1.0,
                        help='Sampling temperature.')
-    group.add_argument('--repetition-penalty',
+    group.add_argument('--repetition_penalty',
                        type=float,
-                       default=1.2,
+                       default=1.1,
                        help='Repetition_penalty.')
     group.add_argument('--embed-layernorm',
                        action='store_true',
@@ -68,15 +68,35 @@ def get_tasks_args(parser):
                        default='absolute',
                        help='Define position embedding type '
                        '("absolute"|"rotary"|"alibi"). "absolute" by default.')
-
+    
     group.add_argument('--glu-activation',
                        type=str,
                        help='GLU activations to use.')
+
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
+    group.add_argument('--max-padding-length',
+                       type=int,
+                       default=None,
+                       help='max-padding-length')
+    group.add_argument('--intermediate-size',
+                       type=int,
+                       default=None,
+                       help='--intermediate-size')
+
+    group.add_argument('--repetition-penalty',
+                       type=float,
+                       default=1.2,
+                       help='Repetition_penalty.')
+
     return parser
 
 
 class MegatronGPTPredictor(GPTPredictor):
-    def model_provider(self, pre_process=True, post_process=True):
+
+    def model_provider(self,pre_process=True, post_process=True):
         args = get_args()
         args.model_type = ModelType.encoder_or_decoder
         model = GPTModel(num_tokentypes=0,

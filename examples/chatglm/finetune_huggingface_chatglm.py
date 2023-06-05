@@ -104,8 +104,7 @@ def forward_step(data_iterator, model):
 
 
 if __name__ == '__main__':
-    initialize_megatron(extra_args_provider=get_tasks_args,
-                        args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
+    initialize_megatron(extra_args_provider=get_tasks_args)
 
     finetune(train_valid_datasets_provider=train_valid_datasets_provider,
              model_provider=model_provider,

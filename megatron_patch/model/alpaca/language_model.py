@@ -478,11 +478,15 @@ class TransformerLanguageModel(MegatronModule):
         Expands attention_mask from
          `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
         """
-        bsz, src_len = mask.size()
-        tgt_len = tgt_len if tgt_len is not None else src_len
 
-        expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len,
-                                                      src_len).to(dtype)
+        if len(mask.size()) == 2:
+            bsz, src_len = mask.size()
+            tgt_len = tgt_len if tgt_len is not None else src_len
+            expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len,
+                                                          src_len).to(dtype)
+        elif len(mask.size()) == 4:
+            mask[mask == False] = True
+            expanded_mask = mask.to(dtype)
 
         inverted_mask = 1.0 - expanded_mask
 
@@ -540,10 +544,16 @@ class TransformerLanguageModel(MegatronModule):
         else:
             encoder_input = None
 
-        batch_size = enc_input_ids.shape[0]
-        enc_attn_mask = self._prepare_decoder_attention_mask(
-            enc_attn_mask, (batch_size, self.seq_length), args.params_dtype,
-            enc_input_ids.device)
+        if inference_params is None:
+            batch_size = enc_input_ids.shape[0]
+            enc_attn_mask = self._prepare_decoder_attention_mask(
+                enc_attn_mask, (batch_size, self.seq_length), args.params_dtype,
+                enc_input_ids.device)
+        else:
+            batch_size = enc_input_ids.shape[0]
+            enc_attn_mask = self._prepare_decoder_attention_mask(
+                enc_attn_mask, (batch_size, enc_attn_mask.size()[-2]), args.params_dtype,
+                enc_input_ids.device)
 
         if enc_position_ids is None:
             past_key_values_length = 0
@@ -560,7 +570,7 @@ class TransformerLanguageModel(MegatronModule):
         if enc_hidden_states is None:
             if self.encoder is not None:
                 encoder_output = self.encoder(encoder_input, enc_position_ids,
-                                              enc_attn_mask)
+                                              enc_attn_mask, inference_params=inference_params)
             else:
                 encoder_output = self.encoder_hidden_state
         else:

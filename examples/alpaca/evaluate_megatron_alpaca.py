@@ -125,7 +125,6 @@ def forward_step(batch, model):
     labels = batch['labels'].long().cuda()
     loss_mask = batch['loss_mask'].long().cuda()
     attention_mask = input_ids.ne(tokenizer.pad_token_id)
-
     # Tell the model what our actual batch size will be
     args = get_args()
     args.micro_batch_size = len(labels)
@@ -198,6 +197,7 @@ def main():
     model = get_model(get_model_provider(),
                       model_type=ModelType.encoder_or_decoder,
                       wrap_with_ddp=False)
+
     if args.load is not None:
         load_checkpoint(model, None, None)
 

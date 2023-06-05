@@ -207,8 +207,8 @@ def generate_tokens_probs_and_return_on_first_stage(
                 assert logits is not None
 
                 # Sample.
-                
-                last_token_logits = logits[:, -1, :]
+
+                last_token_logits = logits[:, -1, :].to(torch.float32)
                 repetition_penalty_value = args.repetition_penalty if 'repetition_penalty' in args else 1.0
                 last_token_logits = repetition_penalty(last_token_logits.unsqueeze(1),  repetition_penalty_value, all_generated_indices).squeeze(1)
                 new_sample = sample(last_token_logits,
@@ -224,9 +224,6 @@ def generate_tokens_probs_and_return_on_first_stage(
                 # If a prompt length is smaller or equal th current context
                 # length, it means we have started generating tokens
                 started = lengths <= context_length
-
-                # import pdb
-                # pdb.set_trace()
 
                 # Update the tokens.
                 tokens[started, context_length] = new_sample[started]

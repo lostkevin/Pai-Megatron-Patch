@@ -1,8 +1,8 @@
 #!/bin/bash
-# bash run_text_generation_bloom.sh dsw /mnt/workspace/latest/Megatron-LM /mnt/workspace/latest/PAI-Megatron-Patch bloombpe ../../../bloomwcp-shrink_mg_test 7.1B 1 2 1024 10 512 512 /mnt/workspace/cn.preds.txt /mnt/workspace/bloom_pred.txt 0 1.0 1.2
+# bash run_text_generation_megatron_bloom.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch bloombpe-c /mnt/bloom-ckpts/bloomwcp-shrink_mg_test 7.1B 1 1 1024 fp16 10 512 512 /mnt/bloom-datasets/cn.preds.txt /mnt/bloom-datasets/bloom_pred.txt 0 1.0 1.2
 set -e
 ENV=$1
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=7
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 GPUS_PER_NODE=1
@@ -21,15 +21,16 @@ MODEL_SIZE=$6
 TP=$7
 BS=$8
 SEQ_LEN=$9
-TOP_K=${10}
-INPUT_SEQ_LEN=${11}
-OUTPUT_SEQ_LEN=${12}
-INPUT_FILE=${13}
-OUTPUT_FILE=${14}
-TOP_P=${15}
-TEMPERATURE=${16}
+PR=${10}
+TOP_K=${11}
+INPUT_SEQ_LEN=${12}
+OUTPUT_SEQ_LEN=${13}
+INPUT_FILE=${14}
+OUTPUT_FILE=${15}
+TOP_P=${16}
+TEMPERATURE=${17}
 # set this penalty between 1.1 and 1.5 to reduce repetition, default is 1.2
-REPETITION_PENALTY=${17}
+REPETITION_PENALTY=${18}
 
 if [ $TOKENIZER = jiebabpe ]; then
 
@@ -42,12 +43,15 @@ fi
         --vocab-file tokenizer.json
         "
 
-elif [ $TOKENIZER = bloombpe ]; then
-
+elif [ $TOKENIZER = bloombpe-c ]; then
     tokenizer_options=" \
 		    --patch-tokenizer-type BloomTokenizerFromCustom
 		    "
 
+elif [ $TOKENIZER = bloombpe-h ]; then
+    tokenizer_options=" \
+		    --patch-tokenizer-type BloomTokenizerFromHF
+		    "
 fi
 
 if [ $MODEL_SIZE = 1.1B ]; then
@@ -70,6 +74,11 @@ NUM_ATTN_HEADS=32
 
 fi
 
+if [ $CHECKPOINT_PATH != none ]; then
+    load_options=" \
+		    --load $CHECKPOINT_PATH"
+fi
+
 if [ $INPUT_FILE = none ]; then
     input_options=" \
 		               "
@@ -89,15 +98,13 @@ elif [ $PR = bf16 ]; then
 fi
 
 rapidformer_options="  \
-       --load ${CHECKPOINT_PATH} \
        --micro-batch-size ${BS} \
        --num-layers ${NUM_LAYERS}  \
        --hidden-size ${HIDDEN_SIZE}  \
        --num-attention-heads ${NUM_ATTN_HEADS}  \
+       --use-distributed-optimizer \
        --seq-length ${SEQ_LEN} \
-       --max-position-embeddings 1024 \
-       --lr 0.1 \
-       --min-lr 0.1 \
+       --max-position-embeddings ${SEQ_LEN} \
        --no-load-optim \
        --DDP-impl local\
        --top-p ${TOP_P} \
@@ -109,12 +116,11 @@ rapidformer_options="  \
        --pipeline-model-parallel-size 1 \
        --embed-layernorm \
        --position-embedding-type alibi \
-        --repetition-penalty ${REPETITION_PENALTY} \
-        --use-distributed-optimizer 
+       --repetition-penalty ${REPETITION_PENALTY} \
     "
 
 run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS generate_text_bloom.py ${tokenizer_options}
- ${rapidformer_options} ${moe_options} ${time_options} ${input_options} ${pr_options} ${gt_input_options}"
+ ${rapidformer_options} ${load_options} ${input_options} ${pr_options} "
 
 
 echo ${run_cmd}

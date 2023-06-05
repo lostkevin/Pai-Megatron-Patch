@@ -1,5 +1,7 @@
 #!/bin/bash
-# sh run_evaluate_megatron_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 1 1 /mnt/alpaca-ckpts/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron-tp1-pp1
+# sh run_evaluate_megatron_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 1 1 /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron-tp1-pp1
+# sh run_evaluate_megatron_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 16 fp16 1 1 /mnt/alpaca-datasets/wudao_train.jsonl /mnt/alpaca-ckpts/Ziya-LLaMA-13B-to-megatron-tp1-pp1
+
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -94,7 +96,6 @@ megatron_options=" \
         --untie-embeddings-and-output-weights \
         --patch-tokenizer-type AlpacaTokenizer \
         --recompute-activations \
-        --use-flash-attn \
         --sequence-parallel
         "
 
