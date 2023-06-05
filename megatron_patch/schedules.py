@@ -9,12 +9,16 @@ from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
 from megatron import get_args
 from megatron.core import parallel_state
-from megatron.core.enums import ModelType
 from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.pipeline_parallel.schedules import (
     forward_backward_pipelining_with_interleaving, get_tensor_shapes)
 from megatron.core.utils import get_attr_wrapped_model, get_model_type
 from megatron.utils import average_losses_across_data_parallel_group
+
+try:
+    from megatron.model import ModelType
+except ImportError:
+    from megatron.core.enums import ModelType
 
 # Types
 Shape = Union[List[int], torch.Size]
