@@ -520,9 +520,9 @@ class ParallelAttention(MegatronModule):
             mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
 
             # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
-            (query_layer,
-             key_layer,
-             value_layer) = tensor_parallel.split_tensor_along_last_dim(mixed_x_layer, 3)
+            (query_layer, key_layer,
+             value_layer) = tensor_parallel.split_tensor_along_last_dim(
+                 mixed_x_layer, 3)
         else:
             # Attention heads [sk, b, h] --> [sk, b, (np * 2 * hn)]
             mixed_kv_layer, _ = self.key_value(encoder_output)
@@ -535,7 +535,8 @@ class ParallelAttention(MegatronModule):
 
             # [sk, b, np, 2 * hn] --> 2 [sk, b, np, hn]
             (key_layer,
-             value_layer) = tensor_parallel.split_tensor_along_last_dim(mixed_kv_layer, 2)
+             value_layer) = tensor_parallel.split_tensor_along_last_dim(
+                 mixed_kv_layer, 2)
 
             # Attention head [sq, b, h] --> [sq, b, hp]
             query_layer, _ = self.query(hidden_states)
@@ -552,13 +553,12 @@ class ParallelAttention(MegatronModule):
         if inference_params:
             kv_seq_len += inference_params.sequence_len_offset
             # torch.Size([20, 1, 40, 128]) --> torch.Size([1, 40, 20, 128])
-            value_layer = value_layer.transpose(0, 1).transpose(1,2)
+            value_layer = value_layer.transpose(0, 1).transpose(1, 2)
             query_layer = query_layer.transpose(0, 1).transpose(1, 2)
             key_layer = key_layer.transpose(0, 1).transpose(1, 2)
             cos, sin = self.rotary_emb(value_layer, kv_seq_len)
-            query_layer, key_layer = apply_rotary_pos_emb(query_layer,
-                                                          key_layer,
-                                                          cos, sin, position_ids)
+            query_layer, key_layer = apply_rotary_pos_emb(
+                query_layer, key_layer, cos, sin, position_ids)
 
             value_layer = value_layer.transpose(1, 2).transpose(0, 1)
             query_layer = query_layer.transpose(1, 2).transpose(0, 1)
@@ -575,19 +575,18 @@ class ParallelAttention(MegatronModule):
                                  batch_start:batch_end, ...] = key_layer
             inference_value_memory[sequence_start:sequence_end,
                                    batch_start:batch_end, ...] = value_layer
-            key_layer = inference_key_memory[
-                :sequence_end, batch_start:batch_end, ...]
-            value_layer = inference_value_memory[
-                :sequence_end, batch_start:batch_end, ...]
+            key_layer = inference_key_memory[:sequence_end,
+                                             batch_start:batch_end, ...]
+            value_layer = inference_value_memory[:sequence_end,
+                                                 batch_start:batch_end, ...]
 
         else:
-            value_layer = value_layer.transpose(0, 1).transpose(1,2)
+            value_layer = value_layer.transpose(0, 1).transpose(1, 2)
             query_layer = query_layer.transpose(0, 1).transpose(1, 2)
             key_layer = key_layer.transpose(0, 1).transpose(1, 2)
             cos, sin = self.rotary_emb(value_layer, kv_seq_len)
-            query_layer, key_layer = apply_rotary_pos_emb(query_layer,
-                                                          key_layer,
-                                                          cos, sin, position_ids)
+            query_layer, key_layer = apply_rotary_pos_emb(
+                query_layer, key_layer, cos, sin, position_ids)
 
             value_layer = value_layer.transpose(1, 2).transpose(0, 1)
             query_layer = query_layer.transpose(1, 2).transpose(0, 1)

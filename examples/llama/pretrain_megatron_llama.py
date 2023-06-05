@@ -20,8 +20,8 @@ from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.pretrain_dataset import \
-    build_pretrain_alpaca_datasets_from_original
-from megatron_patch.model.alpaca.gpt_model import GPTModel
+    build_pretrain_llama_datasets_from_original
+from megatron_patch.model.llama.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import pretrain
 
@@ -32,7 +32,7 @@ except ImportError:
 
 
 def get_tasks_args(parser):
-    group = parser.add_argument_group(title='alpaca')
+    group = parser.add_argument_group(title='llama')
 
     group.add_argument('--transformer-type',
                        type=str,
@@ -108,7 +108,7 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     args = get_args()
 
     train_ds, valid_ds, test_ds = \
-        build_pretrain_alpaca_datasets_from_original(
+        build_pretrain_llama_datasets_from_original(
             data_prefix=args.data_path,
             max_padding_length=args.max_padding_length)
 

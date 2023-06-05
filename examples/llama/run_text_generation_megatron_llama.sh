@@ -1,5 +1,5 @@
 #!/bin/bash
-# bash run_text_generation_megatron_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch /mnt/alpaca-ckpts/Ziya-LLaMA-13B-to-megatron-tp1-pp1 13B 1 1 1024 80 16 fp16 0 512 512 /mnt/alpaca-datasets/cn_input.txt /mnt/alpaca-datasets/cn_output.txt 0.85 1 1
+# bash run_text_generation_megatron_llama.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch /mnt/llama-ckpts/Ziya-LLaMA-13B-to-megatron-tp1-pp1 13B 1 1 1024 80 16 fp16 0 512 512 /mnt/llama-datasets/cn_input.txt /mnt/llama-datasets/cn_output.txt 0.85 1 1
 set -e
 ENV=$1
 export CUDA_VISIBLE_DEVICES=6
@@ -96,11 +96,11 @@ rapidformer_options="  \
         --swiglu \
         --position-embedding-type rotary \
         --untie-embeddings-and-output-weights \
-        --patch-tokenizer-type AlpacaTokenizer-ziya \
+        --patch-tokenizer-type LLamaTokenizer-ziya \
         --repetition-penalty ${REPETITION_PENALTY} \
     "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS generate_text_megatron_alpaca.py
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS generate_text_megatron_llama.py
  ${rapidformer_options} ${load_options} ${input_options} ${pr_options}"
 
 echo ${run_cmd}

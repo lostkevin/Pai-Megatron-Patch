@@ -1,6 +1,6 @@
 #!/bin/bash
-# sh run_evaluate_megatron_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 1 1 /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron-tp1-pp1
-# sh run_evaluate_megatron_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 16 fp16 1 1 /mnt/alpaca-datasets/wudao_train.jsonl /mnt/alpaca-ckpts/Ziya-LLaMA-13B-to-megatron-tp1-pp1
+# sh run_evaluate_megatron_llama.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 1 1 /mnt/llama-datasets/alpaca_data.json /mnt/llama-ckpts/llama-7b-hf-to-megatron-tp1-pp1
+# sh run_evaluate_megatron_llama.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 16 fp16 1 1 /mnt/llama-datasets/wudao_train.jsonl /mnt/llama-ckpts/Ziya-LLaMA-13B-to-megatron-tp1-pp1
 
 set -e
 ENV=$1
@@ -87,19 +87,19 @@ megatron_options=" \
         --no-load-rng \
         --seed 1234 \
         --num-workers 0 \
-        --dataset Alpaca-SFT \
+        --dataset LLama-SFT \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --swiglu \
         --position-embedding-type rotary \
         --untie-embeddings-and-output-weights \
-        --patch-tokenizer-type AlpacaTokenizer \
+        --patch-tokenizer-type LLamaTokenizer \
         --recompute-activations \
         --sequence-parallel
         "
 
-run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_alpaca.py
+run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_llama.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}

@@ -11,8 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from megatron.tokenizer.tokenizer import _vocab_size_with_padding
 from megatron import print_rank_0
+from megatron.tokenizer.tokenizer import _vocab_size_with_padding
 
 _GLOBAL_TOKENIZER = None
 
@@ -70,13 +70,12 @@ def build_tokenizer(args):
         tokenizer.add_special_tokens(special_tokens_dict)
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
 
-    elif args.patch_tokenizer_type == 'AlpacaTokenizer-ziya':
+    elif args.patch_tokenizer_type == 'LLamaTokenizer-ziya':
         from transformers import AutoTokenizer
-        tokenizer = AutoTokenizer.from_pretrained(args.load,
-                                                  use_fast=True)
+        tokenizer = AutoTokenizer.from_pretrained(args.load, use_fast=True)
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
 
-    elif args.patch_tokenizer_type == 'AlpacaTokenizer':
+    elif args.patch_tokenizer_type == 'LLamaTokenizer':
         if args.load is None:
             import transformers
             tokenizer = transformers.LlamaTokenizer.from_pretrained(
@@ -129,8 +128,8 @@ def build_tokenizer(args):
             'ChatGLMTokenizerFromHF' and\
             args.patch_tokenizer_type != 'GLM10BZHTokenizerFromHF'\
             and args.patch_tokenizer_type != 'IcetkGLM130BTokenizer' and\
-            args.patch_tokenizer_type != 'AlpacaTokenizer' and \
-            args.patch_tokenizer_type != 'AlpacaTokenizer-ziya' and \
+            args.patch_tokenizer_type != 'LLamaTokenizer' and \
+            args.patch_tokenizer_type != 'LLamaTokenizer-ziya' and \
             args.patch_tokenizer_type != 'BloomTokenizerFromCustom' and\
             args.patch_tokenizer_type != 'OPTTokenizer':
 

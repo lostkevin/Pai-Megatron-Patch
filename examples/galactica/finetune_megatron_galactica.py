@@ -19,14 +19,14 @@ import torch
 from megatron import get_args
 from megatron.initialize import initialize_megatron
 from megatron.utils import average_losses_across_data_parallel_group
-from megatron_patch.data.finetune_dataset import AlpacaDataset
+from megatron_patch.data.finetune_dataset import LLamaDataset
 from megatron_patch.finetune_utils import finetune
 from megatron_patch.model.galactica.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 
 
 def get_tasks_args(parser):
-    group = parser.add_argument_group(title='alpaca')
+    group = parser.add_argument_group(title='llama')
 
     group.add_argument('--transformer-type',
                        type=str,
@@ -99,9 +99,9 @@ def model_provider(pre_process=True, post_process=True):
 def train_valid_datasets_provider():
     args = get_args()
     tokenizer = build_tokenizer(args)
-    train_dataset = AlpacaDataset(args.train_data, tokenizer,
+    train_dataset = LLamaDataset(args.train_data, tokenizer,
                                   args.max_padding_length)
-    valid_dataset = AlpacaDataset(args.valid_data, tokenizer,
+    valid_dataset = LLamaDataset(args.valid_data, tokenizer,
                                   args.max_padding_length)
     return train_dataset, valid_dataset
 

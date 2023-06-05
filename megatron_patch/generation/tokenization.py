@@ -1,18 +1,15 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
-
 """Tokenization utilities."""
-
 
 import torch
 
-
 from megatron import get_args
+from megatron.text_generation.communication import (broadcast_int_list,
+                                                    broadcast_tensor)
 from megatron_patch.tokenizer import get_tokenizer
-from megatron.text_generation.communication import broadcast_int_list, broadcast_tensor
 
 
-def detokenize_generations(tokens_gpu_tensor,
-                           lengths_gpu_tensor,
+def detokenize_generations(tokens_gpu_tensor, lengths_gpu_tensor,
                            return_segments):
     """Detokenize the generated tokens."""
 
@@ -26,18 +23,16 @@ def detokenize_generations(tokens_gpu_tensor,
     lengths = lengths_gpu_tensor.cpu().numpy().tolist()
     for sequence_tokens, length in zip(tokens, lengths):
         sequence_tokens = sequence_tokens[:length]
-        prompts_plus_generations.append(
-            tokenizer.decode(sequence_tokens))
+        prompts_plus_generations.append(tokenizer.decode(sequence_tokens))
         if return_segments:
             words = []
             for token in sequence_tokens:
-                if args.tokenizer_type in ['SentencePieceTokenizer', 'GPTSentencePieceTokenizer']:
+                if args.tokenizer_type in [
+                        'SentencePieceTokenizer', 'GPTSentencePieceTokenizer'
+                ]:
                     word = tokenizer.decoder[token]
                 else:
                     word = tokenizer.decode(token)
-                    # word = bytearray(
-                    #     [tokenizer.tokenizer.byte_decoder[c] for c in word]).decode(
-                    #         'utf-8', errors='replace')
                 words.append(word)
             prompts_plus_generations_segments.append(words)
 
@@ -48,8 +43,10 @@ def detokenize_generations(tokens_gpu_tensor,
     return tokens, prompts_plus_generations
 
 
-def tokenize_prompts(prompts=None, tokens_to_generate=None,
-                     add_BOS=None, rank=0):
+def tokenize_prompts(prompts=None,
+                     tokens_to_generate=None,
+                     add_BOS=None,
+                     rank=0):
     """Tokenize prompts and make them avaiable on all ranks."""
 
     # On all ranks set to None so we can pass them to functions
@@ -65,8 +62,10 @@ def tokenize_prompts(prompts=None, tokens_to_generate=None,
         prompts_tokens_cuda_long_tensor, prompts_length_cuda_long_tensor = \
             _tokenize_prompts_and_batch(prompts, tokens_to_generate, add_BOS)
         # We need the sizes of these tensors for the boradcast
-        sizes_list = [prompts_tokens_cuda_long_tensor.size(0), # Batch size
-                      prompts_tokens_cuda_long_tensor.size(1)] # Sequence lenght
+        sizes_list = [
+            prompts_tokens_cuda_long_tensor.size(0),  # Batch size
+            prompts_tokens_cuda_long_tensor.size(1)
+        ]  # Sequence lenght
 
     # First, broadcast the sizes.
     sizes_tensor = broadcast_int_list(2, int_list=sizes_list, rank=rank)
@@ -77,7 +76,9 @@ def tokenize_prompts(prompts=None, tokens_to_generate=None,
     prompts_tokens_cuda_long_tensor = broadcast_tensor(
         sizes, torch.int64, tensor=prompts_tokens_cuda_long_tensor, rank=rank)
     prompts_length_cuda_long_tensor = broadcast_tensor(
-        sizes[0], torch.int64, tensor=prompts_length_cuda_long_tensor,
+        sizes[0],
+        torch.int64,
+        tensor=prompts_length_cuda_long_tensor,
         rank=rank)
 
     return prompts_tokens_cuda_long_tensor, prompts_length_cuda_long_tensor

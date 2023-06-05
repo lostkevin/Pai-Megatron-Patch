@@ -37,7 +37,7 @@ except ImportError:
 
 
 def get_tasks_args(parser):
-    group = parser.add_argument_group(title='alpaca')
+    group = parser.add_argument_group(title='galactica')
 
     group.add_argument('--transformer-type',
                        type=str,

@@ -13,19 +13,20 @@
 # limitations under the License.
 
 import json
+
 import torch
+
 from megatron import get_args, get_timers
 from megatron.training import get_model
+from megatron_patch.checkpointing import load_checkpoint
+from megatron_patch.generation.api import generate_and_post_process
+from megatron_patch.tokenizer import build_tokenizer
 
 try:
     from megatron.model import ModelType
 except ImportError:
     from megatron.core.enums import ModelType
-from megatron.text_generation_server import MegatronServer
-from megatron_patch.generation.api import generate_and_post_process
-from megatron_patch.generation.api import beam_search_and_post_process
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
-from megatron_patch.checkpointing import load_checkpoint
+
 
 class GPTPredictor():
     """A Predictor for model."""
@@ -38,11 +39,12 @@ class GPTPredictor():
         args = get_args()
         build_tokenizer(args)
         timers = get_timers()
-        
+
         args.train_iters = 1
         # Model, optimizer, and learning rate.
         timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
-        model = get_model(self.model_provider, model_type=ModelType.encoder_or_decoder,
+        model = get_model(self.model_provider,
+                          model_type=ModelType.encoder_or_decoder,
                           wrap_with_ddp=False)
         assert args.load is not None
         if args.load is not None and args.no_load_optim:

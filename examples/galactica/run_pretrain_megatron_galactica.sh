@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_pretrain_megatron_galactica.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 6.7B 1 8 1e-5 1e-6 2048 80 0 fp16 1 1 sel true false false 100000 /mnt/alpaca-datasets/alpaca_data.json /mnt/galactica-ckpts/galactica-6.7b-to-megatron-tp1-pp1 100000000 10000 /mnt/output_galatica
+#sh run_pretrain_megatron_galactica.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 6.7B 1 8 1e-5 1e-6 2048 80 0 fp16 1 1 sel true false false 100000 /mnt/llama-datasets/alpaca_data.json /mnt/galactica-ckpts/galactica-6.7b-to-megatron-tp1-pp1 100000000 10000 /mnt/output_galatica
 set -e
 ENV=$1
 MEGATRON_PATH=$2

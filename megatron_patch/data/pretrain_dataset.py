@@ -203,7 +203,7 @@ class GLM130BDataset_IdxMap(torch.utils.data.Dataset):
         }
 
 
-class AlpacaDataset_Ori(torch.utils.data.Dataset):
+class LLamaDataset_Ori(torch.utils.data.Dataset):
     def __init__(self, datapath, max_padding_length):
         self.IGNORE_INDEX = -100
         self.tokenizer = get_tokenizer()
@@ -381,11 +381,11 @@ def build_pretrain_glm130b_datasets_from_original(data_prefix, max_seq_length,
     return (train_dataset, valid_dataset, test_dataset)
 
 
-def build_pretrain_alpaca_datasets_from_original(data_prefix,
+def build_pretrain_llama_datasets_from_original(data_prefix,
                                                  max_padding_length):
     def build_dataset():
 
-        dataset = AlpacaDataset_Ori(data_prefix[0], max_padding_length)
+        dataset = LLamaDataset_Ori(data_prefix[0], max_padding_length)
 
         return dataset
 

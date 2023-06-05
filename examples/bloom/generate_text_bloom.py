@@ -14,12 +14,13 @@
 
 from megatron import get_args
 from megatron.initialize import initialize_megatron
+from megatron_patch.generation.gpt_predictor import GPTPredictor
+from megatron_patch.model.bloom.gpt_model import GPTModel
+
 try:
     from megatron.model import ModelType
 except ImportError:
     from megatron.core.enums import ModelType
-from megatron_patch.generation.gpt_predictor import GPTPredictor
-from megatron_patch.model.bloom.gpt_model import GPTModel
 
 
 def get_tasks_args(parser):

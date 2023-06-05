@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_huggingface_alpaca.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-5 1e-6 2048 80 1 fp16 true /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf/ 2 /mnt/output_alpach
+#sh run_finetune_huggingface_llama.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-5 1e-6 2048 80 1 fp16 true /mnt/llama-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf/ 2 /mnt/output_llama
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -72,7 +72,7 @@ elif [ $DO = false ]; then
                     "
 fi
 
-NAME="${ENV}-finetune-huggingface-alpaca-${MODEL_SIZE}-ep-${EPOCH}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-do-${DO}"
+NAME="${ENV}-finetune-huggingface-llama-${MODEL_SIZE}-ep-${EPOCH}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-do-${DO}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
@@ -119,10 +119,10 @@ megatron_options="  \
         --no-load-optim \
         --DDP-impl local\
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --patch-tokenizer-type AlpacaTokenizer
+        --patch-tokenizer-type LLamaTokenizer
         "
 
-run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_huggingface_alpaca.py
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_huggingface_llama.py
 ${megatron_options} ${do_options} ${pr_options}"
 
 

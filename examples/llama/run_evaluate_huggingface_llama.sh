@@ -1,6 +1,6 @@
 #!/bin/bash
-# sh run_evaluate_huggingface_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 /mnt/alpaca-ckpts/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf/
-# sh run_evaluate_huggingface_alpaca.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 0 fp16 /mnt/alpaca-datasets/wudao_train.jsonl /mnt/alpaca-ckpts/Ziya-LLaMA-13B/
+# sh run_evaluate_huggingface_llama.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 /mnt/llama-datasets/alpaca_data.json /mnt/llama-ckpts/llama-7b-hf/
+# sh run_evaluate_huggingface_llama.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 0 fp16 /mnt/llama-datasets/wudao_train.jsonl /mnt/llama-ckpts/Ziya-LLaMA-13B/
 
 set -e
 ENV=$1
@@ -83,14 +83,14 @@ megatron_options=" \
         --DDP-impl local \
         --no-load-optim \
         --num-workers 0 \
-        --dataset Alpaca-SFT \
+        --dataset LLama-SFT \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --patch-tokenizer-type AlpacaTokenizer
+        --patch-tokenizer-type LLamaTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_alpaca.py
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_llama.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}
