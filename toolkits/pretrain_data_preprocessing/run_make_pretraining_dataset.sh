@@ -6,8 +6,9 @@ export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 input_data_dir=$3
 tokenizer=$4
 output_data_dir=$5
+load_dir=$6
 
-INPUT="${input_data_dir}/00.jsonl.zst"
+INPUT="${input_data_dir}"
 
 
 
@@ -57,6 +58,18 @@ elif [ $tokenizer = "glm130bbpe" ]; then
   --output-prefix ${output_data_dir}/wudao_glm130bbpe \
   --dataset-impl mmap \
   --patch-tokenizer-type IcetkGLM130BTokenizer \
+  --workers 16 \
+  --append-eod
+
+elif [ $tokenizer = "llamabpe" ]; then
+
+  python preprocess_data.py \
+  --input ${INPUT} \
+  --language zh \
+  --output-prefix ${output_data_dir}/wudao_llamabpe \
+  --dataset-impl mmap \
+  --patch-tokenizer-type LLamaTokenizer \
+  --load ${load_dir} \
   --workers 16 \
   --append-eod
 

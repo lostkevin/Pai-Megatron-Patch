@@ -46,9 +46,7 @@ class Encoder(object):
         ids = {}
         for key in self.args.jsonl_keys:
             doc_ids = []
-            if self.args.patch_tokenizer_type == 'BloomTokenizerFromHF' or \
-                    self.args.patch_tokenizer_type ==\
-                    'GLM10BZHTokenizerFromHF':
+            if self.args.patch_tokenizer_type in ['BloomTokenizerFromHF','GLM10BZHTokenizerFromHF', 'LLamaTokenizer']:
                 text_ids = Encoder.tokenizer(text)['input_ids']
             else:
                 text_ids = Encoder.tokenizer.tokenize(text)
@@ -62,8 +60,8 @@ class Encoder(object):
                         self.args.patch_tokenizer_type ==\
                         'BloomTokenizerFromHF':
                     doc_ids[-1].append(Encoder.tokenizer.eod)
-                elif self.args.patch_tokenizer_type == \
-                        'GLM10BZHTokenizerFromHF':
+                elif self.args.patch_tokenizer_type in \
+                        ['GLM10BZHTokenizerFromHF', 'LLamaTokenizer']:
                     doc_ids[-1].append(Encoder.tokenizer.eos_token_id)
                 elif self.args.patch_tokenizer_type == \
                         'IcetkGLM130BTokenizer':
@@ -97,7 +95,8 @@ def get_args():
         choices=[
             'JiebaBPETokenizer', 'BloomTokenizerFromHF',
             'ChatGLMTokenizerFromHF', 'GPT2BPETokenizer',
-            'GLM10BZHTokenizerFromHF', 'IcetkGLM130BTokenizer'
+            'GLM10BZHTokenizerFromHF', 'IcetkGLM130BTokenizer',
+            'LLamaTokenizer'
         ],
         help='What type of tokenizer to use.',
     )
@@ -150,6 +149,18 @@ def get_args():
         default=100,
         help='Interval between progress updates',
     )
+    group.add_argument('--load',
+                       type=str,
+                       default=None,
+                       help='path to tokenizer config file')
+    group.add_argument('--seq-length',
+                       type=int,
+                       default=2048,
+                       help='sequence length')
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='extra_vocab_size')
     args = parser.parse_args()
     args.keep_empty = False
 
@@ -187,7 +198,9 @@ def main():
     semaphore = Semaphore(10000 + args.workers)
 
     # use multiprocessing to iterate over input documents
-    fin = yield_from_files(args.input.split(','), semaphore)
+    file_list = os.listdir(args.input)
+    path_list = [args.input + file for file in file_list]
+    fin = yield_from_files(path_list, semaphore)
 
     if args.workers > 1:
         pool = multiprocessing.Pool(args.workers,
