@@ -308,6 +308,94 @@ class LLamaDataset(torch.utils.data.Dataset):
 
         return train_sample
 
+class LLamaIdxMapDataset(torch.utils.data.Dataset):
+    def __init__(self,
+                 name,
+                 data_prefix,
+                 documents,
+                 indexed_dataset,
+                 num_samples,
+                 seed,
+                 max_padding_length,
+                 return_doc_ids=False):
+
+        self.IGNORE_INDEX = -100
+        self.tokenizer = get_tokenizer()
+        self.max_padding_length = max_padding_length
+
+        self.name = name
+        self.indexed_dataset = indexed_dataset
+        self.return_doc_ids = return_doc_ids
+
+        # Checks
+        assert np.min(documents) >= 0
+        assert np.max(documents) < indexed_dataset.sizes.shape[0]
+
+        # Build index mappings.
+        self.doc_idx, self.sample_idx, self.shuffle_idx, self.index_prefix = \
+            _build_index_mappings(self.name, data_prefix,
+                                  documents, self.indexed_dataset.sizes,
+                                  num_samples, self.max_padding_length, seed)
+
+    def __len__(self):
+        # -1 is due to data structure used to retieve the index:
+        #    sample i --> [sample_idx[i], sample_idx[i+1])
+        return self.sample_idx.shape[0] - 1
+
+    def __getitem__(self, idx):
+        # Get the shuffled index.
+        idx = self.shuffle_idx[idx]
+        # Start and end documents and offsets.
+        doc_index_f = self.sample_idx[idx][0]
+        doc_index_l = self.sample_idx[idx + 1][0]
+        offset_f = self.sample_idx[idx][1]
+        offset_l = self.sample_idx[idx + 1][1]
+        # If we are within the same document, just extract the chunk.
+        doc_ids = []
+
+        if doc_index_f == doc_index_l:
+            doc_ids.append(self.doc_idx[doc_index_f])
+            sample = self.indexed_dataset.get(self.doc_idx[doc_index_f],
+                                              offset=offset_f,
+                                              length=offset_l - offset_f + 1)
+        else:
+            # Otherwise, get the rest of the initial document.
+            doc_ids.append(self.doc_idx[doc_index_f])
+            sample_list = [
+                self.indexed_dataset.get(self.doc_idx[doc_index_f],
+                                         offset=offset_f)
+            ]
+            # Loop over all in between documents and add the entire document.
+            for i in range(doc_index_f + 1, doc_index_l):
+                doc_ids.append(self.doc_idx[i])
+                sample_list.append(self.indexed_dataset.get(self.doc_idx[i]))
+            # And finally add the relevant portion of last document.
+            doc_ids.append(self.doc_idx[doc_index_l])
+            sample_list.append(
+                self.indexed_dataset.get(self.doc_idx[doc_index_l],
+                                         length=offset_l + 1))
+            sample = np.concatenate(sample_list)
+
+        tokens = sample[:-2].tolist()
+        sample = []
+        sample.append(np.array([1] + tokens + [1] * (self.max_padding_length - 1 - len(tokens))))
+        sample.append(np.array([self.IGNORE_INDEX] + tokens + [self.tokenizer.pad_token_id] * (self.max_padding_length - 1 - len(tokens))))
+
+        return self.gpt_convert_example_to_feature(sample)
+
+    def gpt_convert_example_to_feature(self, sample):
+        input_ids, labels = sample
+        loss_mask = np.ones(labels.shape, dtype=np.int64)
+        loss_mask[labels == self.IGNORE_INDEX] = 0
+        loss_mask[labels == self.tokenizer.pad_token_id] = 0
+        train_sample = {
+            'input_ids': input_ids,
+            'labels': labels,
+            'loss_mask': loss_mask
+        }
+
+        return train_sample
+
 
 def build_pretrain_glm130b_datasets_from_idxmap(data_prefix,
                                                 data_impl,
