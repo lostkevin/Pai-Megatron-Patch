@@ -319,7 +319,7 @@ class LLamaIdxMapDataset(torch.utils.data.Dataset):
                  max_padding_length,
                  return_doc_ids=False):
 
-        self.IGNORE_INDEX = -100
+        # self.IGNORE_INDEX = -100
         self.tokenizer = get_tokenizer()
         self.max_padding_length = max_padding_length
 
@@ -335,7 +335,7 @@ class LLamaIdxMapDataset(torch.utils.data.Dataset):
         self.doc_idx, self.sample_idx, self.shuffle_idx, self.index_prefix = \
             _build_index_mappings(self.name, data_prefix,
                                   documents, self.indexed_dataset.sizes,
-                                  num_samples, self.max_padding_length, seed)
+                                  num_samples, self.max_padding_length-1, seed)
 
     def __len__(self):
         # -1 is due to data structure used to retieve the index:
@@ -376,17 +376,17 @@ class LLamaIdxMapDataset(torch.utils.data.Dataset):
                                          length=offset_l + 1))
             sample = np.concatenate(sample_list)
 
-        tokens = sample[:-2].tolist()
+        tokens = sample.tolist()
         sample = []
-        sample.append(np.array([1] + tokens + [1] * (self.max_padding_length - 1 - len(tokens))))
-        sample.append(np.array([self.IGNORE_INDEX] + tokens + [self.tokenizer.pad_token_id] * (self.max_padding_length - 1 - len(tokens))))
+        sample.append(np.array(tokens + [self.tokenizer.pad_token_id] * (self.max_padding_length - 1 - len(tokens))))
+        sample.append(np.array(tokens + [self.tokenizer.pad_token_id] * (self.max_padding_length - 1 - len(tokens))))
 
         return self.gpt_convert_example_to_feature(sample)
 
     def gpt_convert_example_to_feature(self, sample):
         input_ids, labels = sample
         loss_mask = np.ones(labels.shape, dtype=np.int64)
-        loss_mask[labels == self.IGNORE_INDEX] = 0
+        loss_mask[labels == self.tokenizer.bos_token_id] = 0
         loss_mask[labels == self.tokenizer.pad_token_id] = 0
         train_sample = {
             'input_ids': input_ids,
