@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_huggingface_falcon.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-5 1e-6 2048 80 1 fp16 true /mnt/llama-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf/ 2 /mnt/output_llama
+#sh run_finetune_huggingface_falcon.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-5 1e-6 2048 80 1 fp16 true /mnt/llama-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/falcon-ckpts/falcon-7b-hf/ 2 /mnt/output_falcon
 set -e
 ENV=$1
 MEGATRON_PATH=$2
