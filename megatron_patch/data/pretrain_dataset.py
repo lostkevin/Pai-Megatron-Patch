@@ -521,3 +521,64 @@ def build_pretrain_llama_datasets_from_original(data_prefix,
     test_dataset = build_dataset()
 
     return (train_dataset, valid_dataset, test_dataset)
+
+
+def build_pretrain_falcon_datasets_from_idxmap(data_prefix,
+                                                max_padding_length,
+                                                data_impl,
+                                                splits_string,
+                                                train_valid_test_num_samples,
+                                                seed,
+                                                skip_warmup,
+                                                return_doc_ids=False):
+    """Build train, valid, and test datasets."""
+    data_prefix = data_prefix[0]
+    # Indexed dataset.
+    indexed_dataset = get_indexed_dataset_(data_prefix, data_impl, skip_warmup)
+    total_num_of_documents = indexed_dataset.sizes.shape[0]
+    splits = get_train_valid_test_split_(splits_string, total_num_of_documents)
+    # Print stats about the splits.
+    print_rank_0(' > dataset split:')
+
+    def print_split_stats(name, index):
+        print_rank_0('    {}:'.format(name))
+        print_rank_0('     document indices in [{}, {}) total of {} '
+                     'documents'.format(splits[index], splits[index + 1],
+                                        splits[index + 1] - splits[index]))
+
+    print_split_stats('train', 0)
+    print_split_stats('validation', 1)
+    print_split_stats('test', 2)
+
+    def build_dataset(index, name):
+        dataset = None
+        if splits[index + 1] > splits[index]:
+            documents = np.arange(start=splits[index],
+                                  stop=splits[index + 1],
+                                  step=1,
+                                  dtype=np.int32)
+            dataset = LLamaIdxMapDataset(
+                name, data_prefix, documents, indexed_dataset,
+                train_valid_test_num_samples[index],
+                seed, max_padding_length, return_doc_ids)
+        return dataset
+
+    train_dataset = build_dataset(0, 'train')
+    valid_dataset = build_dataset(1, 'valid')
+    test_dataset = build_dataset(2, 'test')
+
+    return (train_dataset, valid_dataset, test_dataset)
+
+def build_pretrain_falcon_datasets_from_original(data_prefix,
+                                                 max_padding_length):
+    def build_dataset():
+
+        dataset = LLamaDataset(data_prefix[0], max_padding_length)
+
+        return dataset
+
+    train_dataset = build_dataset()
+    valid_dataset = build_dataset()
+    test_dataset = build_dataset()
+
+    return (train_dataset, valid_dataset, test_dataset)
