@@ -50,16 +50,8 @@ OUTPUT_BASEPATH=${24}
 if [ $MODEL_SIZE = 7B ]; then
 
 NUM_LAYERS=32
-HIDDEN_SIZE=4096
-NUM_ATTN_HEADS=32
-INTERMEDIATE_SIZE=11008
-
-elif [ $MODEL_SIZE = 13B ]; then
-
-NUM_LAYERS=40
-HIDDEN_SIZE=5120
-NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13824
+HIDDEN_SIZE=4544
+NUM_ATTN_HEADS=71
 
 fi
 
@@ -150,7 +142,6 @@ megatron_options="  \
         --num-layers ${NUM_LAYERS} \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
-        --intermediate-size ${INTERMEDIATE_SIZE} \
         --seq-length ${SEQ_LEN} \
         --max-position-embeddings ${SEQ_LEN} \
         --log-interval 1 \
@@ -172,8 +163,10 @@ megatron_options="  \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --position-embedding-type rotary \
-        --swiglu \
         --untie-embeddings-and-output-weights \
+        --disable-bias-linear \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type FalconTokenizer
         "
 
