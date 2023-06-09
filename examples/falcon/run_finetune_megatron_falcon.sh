@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_megatron_falcon.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false  /mnt/llama-datasets/alpaca_data.json /mnt/alpaca-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron-tp1-pp1 2 /mnt/output_alpach
+#sh run_finetune_megatron_falcon.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-5 1e-6 2048 80 0 fp16 1 1 sel true false false  /mnt/llama-datasets/alpaca_data.json /mnt/llama-datasets/alpaca_data.json /mnt/falcon-ckpts/falcon-7b-hf-to-megatron-tp1-pp1 2 /mnt/output_falcon
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -7,12 +7,12 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=7
+export CUDA_VISIBLE_DEVICES=6,7
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=1
+GPUS_PER_NODE=2
 
 elif [ $ENV = dlc ]; then
 
