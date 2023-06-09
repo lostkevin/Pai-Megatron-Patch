@@ -76,8 +76,7 @@ def get_tasks_args(parser):
 def model_provider(pre_process=True, post_process=True):
     args = get_args()
     tokenizer = get_tokenizer()
-    model = AutoModelForCausalLM.from_pretrained(args.load,
-                                                 trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(args.load, trust_remote_code=True)
     model.resize_token_embeddings(len(tokenizer))
     return model
 

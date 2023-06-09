@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_huggingface_falcon.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 /mnt/llama-datasets/alpaca_data.json /mnt/falcon-ckpts/falcon-7b
+# sh run_evaluate_huggingface_falcon.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 /mnt/llama-datasets/alpaca_data.json /mnt/falcon-ckpts/falcon-7b-hf
 
 set -e
 ENV=$1

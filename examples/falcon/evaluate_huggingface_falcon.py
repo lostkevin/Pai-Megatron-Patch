@@ -28,8 +28,8 @@ from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import get_model
-#from transformers import AutoModelForCausalLM
-from megatron_patch.model.falcon.modelling_RW import RWForCausalLM
+from transformers import AutoModelForCausalLM
+
 
 try:
     from megatron.model import ModelType
@@ -100,8 +100,7 @@ def get_model_provider():
     def model_provider(pre_process=True, post_process=True):
         args = get_args()
         build_tokenizer(args)
-        model = RWForCausalLM.from_pretrained(args.load, trust_remote_code=False)
-        #model.resize_token_embeddings(len(tokenizer))
+        model = AutoModelForCausalLM.from_pretrained(args.load, trust_remote_code=True)
         return model
 
     return model_provider
