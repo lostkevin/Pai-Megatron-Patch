@@ -42,16 +42,8 @@ OUTPUT_BASEPATH=${17}
 if [ $MODEL_SIZE = 7B ]; then
 
 NUM_LAYERS=32
-HIDDEN_SIZE=4096
-NUM_ATTN_HEADS=32
-INTERMEDIATE_SIZE=11008
-
-elif [ $MODEL_SIZE = 13B ]; then
-
-NUM_LAYERS=40
-HIDDEN_SIZE=5120
-NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13824
+HIDDEN_SIZE=4544
+NUM_ATTN_HEADS=71
 
 fi
 
@@ -119,6 +111,8 @@ megatron_options="  \
         --no-load-optim \
         --DDP-impl local\
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type FalconTokenizer
         "
 
