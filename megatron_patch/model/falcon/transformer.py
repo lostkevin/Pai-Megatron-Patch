@@ -26,7 +26,7 @@ from megatron.model import LayerNorm
 from megatron.model.enums import AttnMaskType, AttnType, LayerType, ModelType
 from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.module import MegatronModule
-from megatron.model.utils import attention_mask_func, erf_gelu, openai_gelu
+from megatron.model.utils import attention_mask_func, erf_gelu, openai_gelu, get_linear_layer
 
 try:
     from einops import rearrange
@@ -294,11 +294,117 @@ class CoreAttention(MegatronModule):
         context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
 
         # [sq, b, np, hn] --> [sq, b, hp]
-        new_context_layer_shape = context_layer.size()[:-2] + (
-            self.hidden_size_per_partition, )
+        new_context_layer_shape = context_layer.size()[:-2] + \
+                                  (self.hidden_size_per_partition,)
         context_layer = context_layer.view(*new_context_layer_shape)
 
         return context_layer
+
+
+class MultiQueryCoreAttention(CoreAttention):
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.num_kv =1
+        super().__init__(*args, **kwargs)
+
+    def forward(self, query_layer, key_layer, value_layer, attention_mask):
+        # ===================================
+        # Raw attention scores. [b, np, s, s]
+        # ===================================
+
+        """
+        sq = query_layer.size(0)
+        bs = query_layer.size(1)
+        np = query_layer.size(2)
+
+        sk = key_layer.size(0)
+        # Only one head for key and values
+        assert key_layer.size(2) == 1 and value_layer.size(2) == 1
+
+        # [sq, b, np, hn] -> [b, np * sq, hn]
+        query_layer = query_layer.permute([1, 2, 0, 3]).reshape(bs, np * sq, -1)
+        # [sk, b, 1, hn] -> [b, hn, sk]
+        key_layer = key_layer.squeeze(2).permute(1, 2, 0)
+        # [sk, b, 1, hn] -> [sk, b * np, hn]
+        # key_layer = key_layer.expand(output_size[3], output_size[0], np, -1)
+        # key_layer = key_layer.reshape(output_size[3], output_size[0] * np, -1)
+
+        # preallocting input tensor: [b, np * sq, sk]
+        matmul_input_buffer = mpu.get_global_memory_buffer().get_tensor(
+            (bs, np * sq, sk),
+            query_layer.dtype, "mpu")
+
+        # Raw attention scores. [b, np * sq, sk]
+        matmul_result = torch.baddbmm(
+            matmul_input_buffer,
+            query_layer,  # [b, np * sq, hn]
+            key_layer,  # [b, hn, sk]
+            beta=0.0, alpha=(1.0 / self.norm_factor))
+
+        # change view to [b, np, sq, sk]
+        attention_scores = matmul_result.view(bs, np, sq, sk)
+
+        # ===========================
+        # Attention probs and dropout
+        # ===========================
+        attention_mask = attention_mask.to(torch.bool)
+        # attention scores and attention mask [b, np, sq, sk]
+        attention_probs = self.scale_mask_softmax(attention_scores,
+                                                  attention_mask)
+
+        # This is actually dropping out entire tokens to attend to, which might
+        # seem a bit unusual, but is taken from the original Transformer paper.
+
+        if not self.sequence_parallel:
+            with tensor_parallel.get_cuda_rng_tracker().fork():
+                attention_probs = self.attention_dropout(attention_probs)
+        else:
+            attention_probs = self.attention_dropout(attention_probs)
+
+        # =========================
+        # Context layer. [sq, b, hp]
+        # =========================
+
+        # [sk, b, 1, hn] -> [b, sk, hn]
+        value_layer = value_layer.squeeze(2).transpose(0, 1)
+
+        # change view [b, np * sq, sk]
+        attention_probs = attention_probs.view(bs, np * sq, -1)
+
+        # matmul: [b, np * sq, hn]
+        context_layer = torch.bmm(attention_probs, value_layer)
+
+        # change view [b, np, sq, hn]
+        context_layer = context_layer.view(bs, np, sq, -1)
+
+        # [b, np, sq, hn] --> [sq, b, np, hn]
+        context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
+
+        # [sq, b, np, hn] --> [sq, b, hp]
+        new_context_layer_shape = context_layer.size()[:-2] + \
+                                  (self.hidden_size_per_partition,)
+
+        context_layer = context_layer.view(*new_context_layer_shape)
+        """
+        num_heads = query_layer.size(0)
+        q_length = query_layer.size(1)
+        head_dim = query_layer.size(2)
+        query_layer = query_layer.reshape(-1, num_heads, q_length, head_dim)
+        batch_size = query_layer.size(0)
+        query_layer_ = query_layer.reshape(batch_size, num_heads, -1, head_dim)
+        key_layer_ = key_layer.reshape(batch_size, self.num_kv, -1, head_dim)
+        value_layer_ = value_layer.reshape(batch_size, self.num_kv, -1, head_dim)
+
+        attn_output = F.scaled_dot_product_attention(
+            query_layer_, key_layer_, value_layer_, None, 0.0, is_causal=True
+        )
+
+        x = attn_output.view(batch_size, num_heads, q_length, head_dim)
+        x = x.permute(0, 2, 1, 3)
+        attn_output = x.reshape(batch_size, q_length, num_heads * head_dim)
+        attn_output = attn_output.transpose(1, 0)
+
+        return attn_output
 
 
 class FlashSelfAttention(torch.nn.Module):
@@ -311,19 +417,12 @@ class FlashSelfAttention(torch.nn.Module):
         attention_dropout: The dropout rate to apply to the attention
                            (default: 0.0)
     """
-    def __init__(self,
-                 causal=False,
-                 softmax_scale=None,
-                 attention_dropout=0.0,
-                 device=None,
-                 dtype=None):
+    def __init__(self, causal=False, softmax_scale=None, attention_dropout=0.0,
+                 device=None, dtype=None):
         super().__init__()
-        assert flash_attn_unpadded_func is not None, (
-            'Please install FlashAttention first, '
-            'e.g., with pip install flash-attn')
-        assert rearrange is not None, 'Please' \
-                                      ' install einops first,' \
-                                      ' e.g., with pip install einops'
+        assert flash_attn_unpadded_func is not None, ('Please install FlashAttention first, '
+                                                      'e.g., with pip install flash-attn')
+        assert rearrange is not None, 'Please install einops first, e.g., with pip install einops'
         self.causal = causal
         self.softmax_scale = softmax_scale
         self.dropout_p = attention_dropout
@@ -332,29 +431,39 @@ class FlashSelfAttention(torch.nn.Module):
         """Implements the multihead softmax attention.
         Arguments
         ---------
-            q, k, v: The tensor containing the
-             query, key, and value. (B, S, H, D)
+            q, k, v: The tensor containing the query, key, and value. (B, S, H, D)
         """
-        assert q.dtype in [torch.float16, torch.bfloat16]
-        assert q.is_cuda
-        batch_size, seqlen = q.shape[0], q.shape[1]
+
+        assert all((i.dtype in [torch.float16, torch.bfloat16] for i in (q,k,v)))
+        assert all((i.is_cuda for i in (q,k,v)))
+
+        batch_size, seqlen_q = q.shape[0], q.shape[1]
+        seqlen_k = k.shape[1]
+
         q, k, v = [rearrange(x, 'b s ... -> (b s) ...') for x in [q, k, v]]
-        max_s = seqlen
-        cu_seqlens = torch.arange(0, (batch_size + 1) * seqlen,
-                                  step=seqlen,
-                                  dtype=torch.int32,
-                                  device=q.device)
+        cu_seqlens_q = torch.arange(0, (batch_size + 1) * seqlen_q, step=seqlen_q, dtype=torch.int32,
+                                    device=q.device)
+
+        if self.training:
+            # during training q,k,v always have same seqlen
+            assert seqlen_k == seqlen_q
+
+            is_causal = self.causal
+            cu_seqlens_k = cu_seqlens_q
+        else:
+            # turn off FA causal mask after first inference autoregressive iteration
+            # only on first autoregressive step q,k,v have same seqlen
+            is_causal = seqlen_q == seqlen_k
+            cu_seqlens_k = torch.arange(0, (batch_size + 1) * seqlen_k, step=seqlen_k, dtype=torch.int32,
+                        device=q.device)
+            self.dropout_p = 0
+
         output = flash_attn_unpadded_func(
-            q,
-            k,
-            v,
-            cu_seqlens,
-            cu_seqlens,
-            max_s,
-            max_s,
-            self.dropout_p if self.training else 0.0,
-            softmax_scale=self.softmax_scale,
-            causal=self.causal)
+            q, k, v, cu_seqlens_q, cu_seqlens_k, seqlen_q, seqlen_k,
+            self.dropout_p,
+            softmax_scale=self.softmax_scale, causal=is_causal
+        )
+
         output = rearrange(output, '(b s) ... -> b s ...', b=batch_size)
         return output
 
@@ -365,10 +474,9 @@ class ParallelAttention(MegatronModule):
     Self-attention layer takes input with size [s, b, h]
     and returns output of the same size.
     """
-    def __init__(self,
-                 init_method,
-                 output_layer_init_method,
-                 layer_number,
+
+    def __init__(self, init_method,
+                 output_layer_init_method, layer_number,
                  attention_type=AttnType.self_attn,
                  attn_mask_type=AttnMaskType.padding):
         super(ParallelAttention, self).__init__()
@@ -377,6 +485,7 @@ class ParallelAttention(MegatronModule):
         self.attention_type = attention_type
         self.attn_mask_type = attn_mask_type
         self.params_dtype = args.params_dtype
+        self.attention_head_type = args.attention_head_type
         self.sequence_parallel = args.sequence_parallel
         self.position_embedding_type = args.position_embedding_type
         self.bf16 = args.bf16
@@ -401,7 +510,6 @@ class ParallelAttention(MegatronModule):
                                   ' please install with pip install einops')
 
         projection_size = args.kv_channels * args.num_attention_heads
-
         # Per attention head and per partition values.
         world_size = mpu.get_tensor_model_parallel_world_size()
         self.hidden_size_per_attention_head = core.utils.divide(
@@ -410,18 +518,55 @@ class ParallelAttention(MegatronModule):
             args.num_attention_heads, world_size)
         self.attention_dropout = torch.nn.Dropout(args.attention_dropout)
 
-        self.query_key_value = tensor_parallel.ColumnParallelLinear(
-            args.hidden_size,
-            self.hidden_size + 2 * self.head_dim,
-            gather_output=False,
-            init_method=init_method,
-            bias=False,
-            async_tensor_model_parallel_allreduce=args.
-            async_tensor_model_parallel_allreduce,
-            **_args_to_kwargs())
+        if attention_type == AttnType.self_attn and self.attention_head_type == 'multihead':
+            self.query_key_value = tensor_parallel.ColumnParallelLinear(
+                args.hidden_size,
+                self.hidden_size + 2 * self.head_dim,
+                gather_output=False,
+                init_method=init_method,
+                bias=False,
+                async_tensor_model_parallel_allreduce=args.
+                async_tensor_model_parallel_allreduce,
+                **_args_to_kwargs())
 
-        self.core_attention = CoreAttention(self.layer_number,
-                                            self.attn_mask_type)
+        elif attention_type == AttnType.self_attn and self.attention_head_type == 'multiquery':
+            # TODO: Find a way to merge the query and key-value computations?
+            self.query = tensor_parallel.ColumnParallelLinear(
+                args.hidden_size,
+                projection_size,
+                gather_output=False,
+                bias=False,
+                init_method=init_method)
+            # In MultiQuery attention, keys and values are shared across heads
+            # Use args.kv_channels instead of projection_size
+            # No `.fork()` so the rng tracker is shared across tensor-parallel processes.
+            # with mpu.get_cuda_rng_tracker():
+            self.key_value = get_linear_layer(
+                args.hidden_size,
+                2 * args.kv_channels,
+                init_method=init_method)
+
+        elif attention_type == AttnType.cross_attn and self.attention_head_type == 'multihead':
+            assert attention_type == AttnType.cross_attn
+            self.query = tensor_parallel.ColumnParallelLinear(
+                args.hidden_size,
+                projection_size,
+                gather_output=False,
+                init_method=init_method)
+
+            self.key_value = tensor_parallel.ColumnParallelLinear(
+                args.hidden_size,
+                2 * projection_size,
+                gather_output=False,
+                init_method=init_method)
+
+        if self.attention_head_type == 'multihead':
+            self.core_attention = CoreAttention(self.layer_number,
+                                                self.attn_mask_type)
+        else:
+            self.core_attention = MultiQueryCoreAttention(self.layer_number, self.attn_mask_type)
+
+
         self.checkpoint_core_attention = \
             args.recompute_granularity == 'selective'
 
@@ -468,152 +613,182 @@ class ParallelAttention(MegatronModule):
                            dtype=self.params_dtype,
                            device=torch.cuda.current_device())
 
-
-    def _split_heads(self, fused_qkv: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Split the last dimension into (num_heads, head_dim) without making any copies, results share same memory
-        storage as `fused_qkv`
-
-        Args:
-            fused_qkv (`torch.tensor`, *required*): [batch_size, seq_length, num_heads * 3 * head_dim]
-
-        Returns:
-            query: [batch_size, seq_length, num_heads, head_dim] key: [batch_size, seq_length, num_heads, head_dim]
-            value: [batch_size, seq_length, num_heads, head_dim]
-        """
-        if not self.multi_query:
-            batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
-            fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads, 3, self.head_dim)
-            return fused_qkv[..., 0, :], fused_qkv[..., 1, :], fused_qkv[..., 2, :]
-        else:
-            batch_size, seq_length, three_times_hidden_size = fused_qkv.shape
-            fused_qkv = fused_qkv.view(batch_size, seq_length, self.num_heads + 2, self.head_dim)
-            return fused_qkv[..., :-2, :], fused_qkv[..., [-2], :], fused_qkv[..., [-1], :]
-
-    def _merge_heads(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Merge heads together over the last dimenstion
-
-        Args:
-            x: (`torch.tensor`, *required*): [batch_size * num_heads, seq_length, head_dim]
-
-        Returns:
-            torch.tensor: [batch_size, seq_length, num_heads * head_dim]
-        """
-        # What we want to achieve is:
-        # batch_size * num_heads, seq_length, head_dim -> batch_size, seq_length, num_heads * head_dim
-        batch_size_and_num_heads, seq_length, _ = x.shape
-        batch_size = batch_size_and_num_heads // self.num_heads
-
-        # First view to decompose the batch size
-        # batch_size * num_heads, seq_length, head_dim -> batch_size, num_heads, seq_length, head_dim
-        x = x.view(batch_size, self.num_heads, seq_length, self.head_dim)
-
-        # batch_size, num_heads, seq_length, head_dim -> batch_size, seq_length, num_heads, head_dim
-        x = x.permute(0, 2, 1, 3)
-
-        # batch_size, seq_length, num_heads, head_dim -> batch_size, seq_length, num_heads * head_dim
-        return x.reshape(batch_size, seq_length, self.num_heads * self.head_dim)
-
-    def forward(self,
-                hidden_states,
-                attention_mask,
-                encoder_output=None,
-                inference_params=None):
+    def forward(self, hidden_states, attention_mask,
+                encoder_output=None, inference_params=None):
         # hidden_states: [sq, b, h]
+
+        if inference_params:
+            if self.layer_number not in inference_params.key_value_memory_dict:
+                inf_max_seq_len = inference_params.max_sequence_len
+                inf_max_batch_size = inference_params.max_batch_size
+                inference_key_memory = self._allocate_memory(
+                    inf_max_seq_len, inf_max_batch_size)
+                inference_value_memory = self._allocate_memory(
+                    inf_max_seq_len, inf_max_batch_size)
+                inference_params.key_value_memory_dict[self.layer_number] = (
+                    inference_key_memory, inference_value_memory)
+            else:
+                inference_key_memory, inference_value_memory = \
+                    inference_params.key_value_memory_dict[self.layer_number]
+
         # =====================
         # Query, Key, and Value
         # =====================
-        # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
+        if self.attention_type == AttnType.self_attn and self.attention_head_type == 'multihead':
+            # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
+            mixed_x_layer, _ = self.query_key_value(hidden_states)
 
-        mixed_x_layer, _ = self.query_key_value(hidden_states)
-        fused_qkv = mixed_x_layer.transpose(0, 1)
-        (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
+            # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
+            new_tensor_shape = mixed_x_layer.size()[:-1] + \
+                               (self.num_attention_heads_per_partition,
+                                3 * self.hidden_size_per_attention_head)
+            mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
 
-        batch_size, q_length, _, _ = query_layer.shape
-        query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
-        key_layer = key_layer.transpose(1, 2).reshape(
+            # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
+            (query_layer,
+             key_layer,
+             value_layer) = tensor_parallel.split_tensor_along_last_dim(mixed_x_layer, 3)
+        elif self.attention_type == AttnType.self_attn and self.attention_head_type == 'multiquery':
+            kv_input = hidden_states
+            # Attention heads [sq, b, h] --> [sq, b, (2 * hn)]
+            mixed_kv_layer = self.key_value(kv_input)
+
+            # Reduce the KV gradients in the tensor-parallel direction.
+            # This is different from multi-head attention which reduces the KV input,
+            # because the sum over attn heads happens in the attn weight gradient instead of the KV layer:
+            #   A [b, n * sq, sk] = Q [b, n * sq, hn] x K^T [b, hn, sk]
+            #   G_K [b, sk, hn] = G_A [b, sk, n * sq] x Q [b, n * sq, hn]
+            #                   = sum_p (G_Ap [b, sk, np * sq] x Q_p [b, np * sq, hn])
+            if get_args().sequence_parallel:
+                # We switch to the tensor parallel regime here instead of at the KV input
+                # so that the KV layer is done in parallel instead of just duplicated.
+                mixed_kv_layer = tensor_parallel.gather_from_sequence_parallel_region(mixed_kv_layer,
+                                                                          tensor_parallel_output_grad=True)
+            else:
+                mixed_kv_layer = tensor_parallel.copy_to_tensor_model_parallel_region(mixed_kv_layer)
+
+            # [sq, b, (2 * hn)] --> [sq, b, np (expanded), 2 * hn]
+            # new_tensor_shape = mixed_kv_layer.size()[:-1] + \
+            #     (self.num_attention_heads_per_partition,
+            #      2 * self.hidden_size_per_attention_head)
+            # mixed_kv_layer = mixed_kv_layer.unsqueeze(2).expand(*new_tensor_shape)
+
+            # [sq, b, (2 * hn)] --> [sq, b, 1, 2 * hn]
+            new_tensor_shape = mixed_kv_layer.size()[:-1] + \
+                               (1,
+                                2 * self.hidden_size_per_attention_head)
+            mixed_kv_layer = mixed_kv_layer.view(*new_tensor_shape)
+
+            # [sq, b, np, 2 * hn] --> 2 [sq, b, np, hn]
+            (key_layer,
+             value_layer) = tensor_parallel.split_tensor_along_last_dim(mixed_kv_layer, 2)
+
+            # Attention head [sq, b, h] --> [sq, b, np * hn]
+            query_layer, _ = self.query(hidden_states)
+            # [sq, b, np * hn] --> [sq, b, np, hn]
+            new_tensor_shape = query_layer.size()[:-1] + \
+                               (self.num_attention_heads_per_partition,
+                                self.hidden_size_per_attention_head)
+            query_layer = query_layer.view(*new_tensor_shape)
+
+            # [sq, b, np, hn] -> [b, np * sq, hn]
+        else:
+            # Attention heads [sk, b, h] --> [sk, b, (np * 2 * hn)]
+            mixed_kv_layer, _ = self.key_value(encoder_output)
+
+            # [sk, b, (np * 2 * hn)] --> [sk, b, np, 2 * hn]
+            new_tensor_shape = mixed_kv_layer.size()[:-1] + \
+                               (self.num_attention_heads_per_partition,
+                                2 * self.hidden_size_per_attention_head)
+            mixed_kv_layer = mixed_kv_layer.view(*new_tensor_shape)
+
+            # [sk, b, np, 2 * hn] --> 2 [sk, b, np, hn]
+            (key_layer,
+             value_layer) = tensor_parallel.split_tensor_along_last_dim(mixed_kv_layer, 2)
+
+            # Attention head [sq, b, h] --> [sq, b, hp]
+            query_layer, _ = self.query(hidden_states)
+            # [sq, b, hp] --> [sq, b, np, hn]
+            new_tensor_shape = query_layer.size()[:-1] + \
+                               (self.num_attention_heads_per_partition,
+                                self.hidden_size_per_attention_head)
+            query_layer = query_layer.view(*new_tensor_shape)
+
+        # ==================================
+        # Adjust key and value for inference
+        # ==================================
+
+        if inference_params:
+            batch_start = inference_params.batch_size_offset
+            batch_end = batch_start + key_layer.size(1)
+            assert batch_end <= inference_key_memory.size(1)
+            sequence_start = inference_params.sequence_len_offset
+            sequence_end = sequence_start + key_layer.size(0)
+            assert sequence_end <= inference_key_memory.size(0)
+            # Copy key and values.
+            inference_key_memory[sequence_start:sequence_end,
+            batch_start:batch_end, ...] = key_layer
+            inference_value_memory[sequence_start:sequence_end,
+            batch_start:batch_end, ...] = value_layer
+            key_layer = inference_key_memory[
+                        :sequence_end, batch_start:batch_end, ...]
+            value_layer = inference_value_memory[
+                          :sequence_end, batch_start:batch_end, ...]
+        # ==================================
+        # core attention computation
+        # ==================================
+        # query_layer: torch.Size([80, 1, 71, 64]) -> torch.Size([71, 80, 64])
+        # key_layer:torch.Size([80, 1, 1, 64]) -> torch.Size([1, 80, 64])
+        q_length, batch_size, _, _ = query_layer.shape
+        query_layer = query_layer.transpose(0, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
+
+        key_layer = key_layer.transpose(0, 2).reshape(
             batch_size * self.num_kv,
             q_length,
             self.head_dim,
         )
-        value_layer = value_layer.transpose(1, 2).reshape(batch_size * self.num_kv, q_length, self.head_dim)
-
         query_layer, key_layer = self.maybe_rotary(query_layer, key_layer)
+        # 1, 71, 80, 64
+        #query_layer = query_layer.reshape(batch_size, self.num_heads, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
+        #key_layer = key_layer.reshape(batch_size, self.num_kv, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
 
-        # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
-        """
-        new_tensor_shape =\
-            mixed_x_layer.size()[:-1] + (
-                self.num_attention_heads_per_partition,
-                3 * self.hidden_size_per_attention_head)
-        mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
+        if self.use_flash_attn:
+            if self.attention_head_type == "multiquery":
+                sq, b, np, hn = query_layer.size()
+                # Expand kv to be compatible with flash-attn implementation
+                # [sq, b, 1, hn] -> [sq, b, np, hn]
+                key_layer = key_layer.expand((sq, b, np, hn))
+                value_layer = value_layer.expand((sq, b, np, hn))
+            q, k, v = [rearrange(x, 's b ... -> b s ...').contiguous()
+                       for x in (query_layer, key_layer, value_layer)]
+            if self.sequence_parallel:
+                context_layer = self.core_attention_flash(q, k, v)
+            else:
+                with tensor_parallel.get_cuda_rng_tracker().fork():
+                    context_layer = self.core_attention_flash(q, k, v)
+            context_layer = rearrange(context_layer, 'b s h d -> s b (h d)').contiguous()
 
-        # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
-        # torch.Size([128, 1, 32, 128])
-        (query_layer, key_layer,
-         value_layer) = tensor_parallel.split_tensor_along_last_dim(
-             mixed_x_layer, 3)
-
-        query_layer = query_layer.permute(1, 2, 0, 3)
-        key_layer = key_layer.permute(1, 2, 0, 3)
-        value_layer = value_layer.permute(1, 2, 0, 3)
-
-        q_len, bsz, _ = hidden_states.size()
-        # single: key_layer: torch.Size([1, 32, 80, 128])
-        kv_seq_len = key_layer.shape[-2]
-        
-
-
-        query_layer = query_layer * (self.hidden_size_per_attention_head**-0.5)
-        attn_weights = torch.matmul(query_layer, key_layer.transpose(2, 3))
-
-        attn_weights = attn_weights + attention_mask
-        attn_weights = torch.max(
-            attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
-        # upcast attention to fp32
-        attn_weights = torch.nn.functional.softmax(attn_weights,
-                                                   dim=-1,
-                                                   dtype=torch.float32).to(
-                                                       query_layer.dtype)
-
-        if not self.sequence_parallel:
-            with tensor_parallel.get_cuda_rng_tracker().fork():
-                attn_weights = self.attention_dropout(attn_weights)
         else:
-            attn_weights = self.attention_dropout(attn_weights)
+            if self.checkpoint_core_attention:
+                context_layer = self._checkpointed_attention_forward(
+                    query_layer, key_layer, value_layer, attention_mask)
+            else:
+                context_layer = self.core_attention(
+                    query_layer, key_layer, value_layer, attention_mask)
 
-        attn_output = torch.matmul(attn_weights, value_layer)
-
-        attn_output = attn_output.transpose(1, 2)
-        world_size = mpu.get_tensor_model_parallel_world_size()
-        hidden_size_per_partition = core.utils.divide(self.hidden_size,
-                                                      world_size)
-        attn_output = attn_output.reshape(bsz, kv_seq_len,
-                                          hidden_size_per_partition)
-        attn_output = attn_output.transpose(1, 0)
-        """
-
-        query_layer_ = query_layer.reshape(batch_size, self.num_heads, -1, self.head_dim)
-        key_layer_ = key_layer.reshape(batch_size, self.num_kv, -1, self.head_dim)
-        value_layer_ = value_layer.reshape(batch_size, self.num_kv, -1, self.head_dim)
-
-        attn_output = F.scaled_dot_product_attention(
-            query_layer_, key_layer_, value_layer_, None, 0.0, is_causal=True
-        )
-
-        x = attn_output.view(batch_size, self.num_heads, q_length, self.head_dim)
-        x = x.permute(0, 2, 1, 3)
-        attn_output = x.reshape(batch_size, q_length, self.num_heads * self.head_dim)
-        attn_output = attn_output.transpose(1, 0)
-        output, bias = self.dense(attn_output)
+        # =================
+        # Output. [sq, b, h]
+        # =================
+        output, bias = self.dense(context_layer)
 
         return output, bias
 
 
 def bias_dropout_add(x, bias, residual, prob, training):
-    # type: (Tensor, Tensor, Tensor, float, bool) -> Tensor
-    out = torch.nn.functional.dropout(x + bias, p=prob, training=training)
+    # type: (Tensor, Optional[Tensor], Tensor, float, bool) -> Tensor
+    if bias is not None:
+        x = x + bias
+    out = torch.nn.functional.dropout(x, p=prob, training=training)
     out = residual + out
     return out
 
@@ -621,8 +796,23 @@ def bias_dropout_add(x, bias, residual, prob, training):
 def get_bias_dropout_add(training):
     def _bias_dropout_add(x, bias, residual, prob):
         return bias_dropout_add(x, bias, residual, prob, training)
-
     return _bias_dropout_add
+
+
+@torch.jit.script
+def bias_dropout_add_fused_train(x: torch.Tensor,
+                                 bias: Optional[torch.Tensor],
+                                 residual: torch.Tensor,
+                                 prob: float) -> torch.Tensor:
+    return bias_dropout_add(x, bias, residual, prob, True)
+
+
+@torch.jit.script
+def bias_dropout_add_fused_inference(x: torch.Tensor,
+                                     bias: Optional[torch.Tensor],
+                                     residual: torch.Tensor,
+                                     prob: float) -> torch.Tensor:
+    return bias_dropout_add(x, bias, residual, prob, False)
 
 
 class ParallelTransformerLayer(MegatronModule):

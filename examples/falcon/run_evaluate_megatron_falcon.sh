@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_megatron_falcon.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 0 fp16 1 1 /mnt/llama-datasets/alpaca_data.json /mnt/falcon-ckpts/falcon-7b-to-megatron-tp1-pp1
+# sh run_evaluate_megatron_falcon.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 0 fp16 1 1 /mnt/llama-datasets/alpaca_data.json /mnt/falcon-ckpts/falcon-7b-hf-to-megatron-tp1-pp1
 
 set -e
 ENV=$1
@@ -86,6 +86,7 @@ megatron_options=" \
         --disable-bias-linear \
         --tokenizer-type NullTokenizer \
         --vocab-size -1 \
+        --attention-head-type multiquery \
         --patch-tokenizer-type FalconTokenizer
         "
 
