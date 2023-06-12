@@ -749,10 +749,10 @@ class ParallelAttention(MegatronModule):
         )
         query_layer, key_layer = self.maybe_rotary(query_layer, key_layer)
         # 1, 71, 80, 64
-        #query_layer = query_layer.reshape(batch_size, self.num_heads, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
-        #key_layer = key_layer.reshape(batch_size, self.num_kv, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
 
         if self.use_flash_attn:
+            query_layer = query_layer.reshape(batch_size, self.num_heads, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
+            key_layer = key_layer.reshape(batch_size, self.num_kv, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
             if self.attention_head_type == "multiquery":
                 sq, b, np, hn = query_layer.size()
                 # Expand kv to be compatible with flash-attn implementation
