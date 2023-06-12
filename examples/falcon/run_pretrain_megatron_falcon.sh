@@ -167,6 +167,7 @@ megatron_options="  \
         --disable-bias-linear \
         --tokenizer-type NullTokenizer \
         --vocab-size -1 \
+        --attention-head-type multiquery \
         --patch-tokenizer-type FalconTokenizer
         "
 
