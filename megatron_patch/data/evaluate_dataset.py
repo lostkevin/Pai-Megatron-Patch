@@ -279,7 +279,7 @@ def build_evaluation_dataset(dataset):
     args = get_args()
     tokenizer = get_tokenizer()
 
-    if dataset == 'WIKITEXT103-GLM130B':
+    if dataset == 'GLM130B-WIKITEXT103':
         val_dataset = GLM130BDataset(args.data_path[0], tokenizer,
                                      args.seq_length, args.generation_length)
         return val_dataset

@@ -18,7 +18,7 @@ import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
 from megatron import get_args, is_last_rank, print_rank_0
-from megatron.core import parallel_state, tensor_parallel
+from megatron.core import parallel_state
 from megatron.core.pipeline_parallel.p2p_communication import send_forward
 from megatron.initialize import initialize_megatron
 from megatron.model import DistributedDataParallel as LocalDDP
@@ -26,24 +26,32 @@ from megatron.model import Float16Module
 from megatron.utils import unwrap_model
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
-from megatron_patch.tokenizer import build_tokenizer
+from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import get_model
-from sat.model import GLM130B as GPTModel
-from sat.training import load_checkpoint
+from transformers import AutoModelForCausalLM
+
+
+try:
+    from megatron.model import ModelType
+except ImportError:
+    from megatron.core.enums import ModelType
 
 
 def get_tasks_args(parser):
-    group = parser.add_argument_group(title='glm')
+    group = parser.add_argument_group(title='falcon')
+
+    parser.add_argument('--local-rank', type=int, default=None,
+                        help='local rank passed from distributed launcher')
 
     group.add_argument('--transformer-type',
                        type=str,
                        default='megatron',
                        help='transformer-type')
 
-    group.add_argument('--generation-length',
+    group.add_argument('--max-padding-length',
                        type=int,
                        default=None,
-                       help='generation-seq-len')
+                       help='max-padding-length')
 
     group.add_argument('--dataset', type=str, default=None, help='dataset')
 
@@ -65,10 +73,6 @@ def get_tasks_args(parser):
 
     group.add_argument('--data-dir', default=None, help='data-dir')
 
-    group.add_argument('--glu-activation',
-                       type=str,
-                       help='GLU activations to use.')
-
     group.add_argument('--train-data',
                        default=None,
                        help='Whitespace separated paths or corpora names '
@@ -78,11 +82,10 @@ def get_tasks_args(parser):
                        default=None,
                        help='path(s) to the validation data.')
 
-    group.add_argument('--position-embedding-type',
-                       type=str,
-                       default='absolute',
-                       help='Define position embedding type '
-                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
 
     group.add_argument('--patch-tokenizer-type',
                        type=str,
@@ -91,48 +94,25 @@ def get_tasks_args(parser):
     return parser
 
 
-def get_model_provider(eval_metric):
+def get_model_provider():
     """Based on evaluation metric set the parallel-output flag and
     return the model provider."""
     def model_provider(pre_process=True, post_process=True):
-        """Build the model."""
         args = get_args()
-        print_rank_0('building GPT model ...')
         build_tokenizer(args)
-        args.model_parallel_size = args.tensor_model_parallel_size
-        args.vocab_size = 150528
-        args.max_sequence_length = args.seq_length
-        args.layernorm_order = 'post'
-        args.skip_init = True
-        args.inner_hidden_size = 32768
-        args.position_encoding_2d = False
-        args.no_glu = False
-        model = GPTModel(args)
-
+        model = AutoModelForCausalLM.from_pretrained(args.load, trust_remote_code=True)
         return model
 
     return model_provider
 
 
-def process_batch(batch):
-    """Process batch and produce inputs for the model."""
-
-    tokens = batch['tokens'].long().cuda().contiguous()
-    labels = batch['targets'].long().cuda().contiguous()
-    attention_mask = batch['attention_mask'].long().cuda().contiguous()
-    loss_mask = batch['loss_mask'].long().cuda().contiguous()
-    position_ids = batch['position_ids'].long().cuda().contiguous()
-    attention_mask = attention_mask.to(torch.bool).unsqueeze(1)
-
-    return tokens, labels, attention_mask, position_ids, loss_mask
-
-
-def forward_step(batch, model, eval_metric):
+def forward_step(batch, model):
     """Forward step."""
-
+    tokenizer = get_tokenizer()
     # Get the batch.
-    tokens, labels, attention_mask, position_ids, loss_mask = process_batch(
-        batch)
+    input_ids = batch['input_ids'].long().cuda()
+    labels = batch['labels'].long().cuda()
+    attention_mask = input_ids.ne(tokenizer.pad_token_id)
 
     # Tell the model what our actual batch size will be
     args = get_args()
@@ -140,35 +120,18 @@ def forward_step(batch, model, eval_metric):
 
     # Forward pass through the model.
     unwrapped_model = unwrap_model(model, (torchDDP, LocalDDP, Float16Module))
-    original_parallel_output = unwrapped_model.transformer.parallel_output
-    unwrapped_model.transformer.parallel_output = True
-    output, *output_per_layers = unwrapped_model(tokens, position_ids,
-                                                 attention_mask)
-    unwrapped_model.transformer.parallel_output = original_parallel_output
+    output = unwrapped_model(input_ids=input_ids,
+                             labels=labels,
+                             attention_mask=attention_mask)
     send_forward(output)
     if parallel_state.is_pipeline_last_stage():
-        # For loss, return the unreduced loss.
-        if eval_metric == 'loss':
-            losses = tensor_parallel.vocab_parallel_cross_entropy(
-                output.contiguous().float(), labels.contiguous())
-            loss = torch.sum(
-                losses.view(-1) * loss_mask.contiguous().view(-1).float())
-            return loss
+        print_rank_0(output.loss)
+        return output.loss
 
-        # For accuracy, return the number of correctly predicted samples.
-        if eval_metric == 'accuracy':
-            outputs = torch.argmax(output, -1)
-            correct = (outputs == labels).float()
-            correct[(1 - loss_mask).bool()] = 1
-            correct = correct.prod(-1)
-            return correct.sum()
-
-        raise NotImplementedError('forward method for evaluation metric {} '
-                                  'is not implemented.'.format(eval_metric))
     return None
 
 
-def evaluate(data_loader, model, eval_metric):
+def evaluate(data_loader, model):
     """Evaluation."""
     args = get_args()
 
@@ -182,7 +145,7 @@ def evaluate(data_loader, model, eval_metric):
             if iteration % args.log_interval == 0:
                 print_rank_0('> working on iteration: {}'.format(iteration))
             # Forward evaluation.
-            output = forward_step(batch, model, eval_metric)
+            output = forward_step(batch, model)
 
             # Reduce across processes.
             if parallel_state.is_pipeline_last_stage():
@@ -236,23 +199,14 @@ def main():
     """Main program."""
     args = get_args()
     if args.num_layers_per_virtual_pipeline_stage is not None:
-        print('Interleaved pipeline schedule'
-              ' is not yet supported for text generation.')
+        print('Interleaved pipeline schedule '
+              'is not yet supported for text generation.')
         exit()
 
-    if args.dataset == 'LAMBADA':
-        eval_metric = 'accuracy'
-    elif args.dataset == 'WIKITEXT103' or\
-            args.dataset == 'GLM130B-WIKITEXT103':
-        eval_metric = 'loss'
-    else:
-        raise NotImplementedError('{} task is not implemented.'.format(
-            args.dataset))
-
     # Set up model and load checkpoint.
-    model = get_model(get_model_provider(eval_metric), wrap_with_ddp=False)
-    if args.load is not None:
-        load_checkpoint(model[0], args)
+    model = get_model(get_model_provider(),
+                      model_type=ModelType.encoder_or_decoder,
+                      wrap_with_ddp=False)
 
     assert len(model) == 1, 'Above condition should have caught this'
     model = model[0]
@@ -265,8 +219,7 @@ def main():
                                    drop_last=False)
 
     # Run evaluation.
-    evaluate_and_print_results(args.dataset, dataloader, model, eval_metric)
-
+    evaluate(dataloader, model)
     print_rank_0('done :-)')
 
 

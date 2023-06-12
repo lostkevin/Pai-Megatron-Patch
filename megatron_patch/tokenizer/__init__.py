@@ -21,11 +21,12 @@ def build_tokenizer(args):
     """Initialize tokenizer."""
     if args.rank == 0:
         print('> building {} tokenizer ...'.format(args.patch_tokenizer_type))
-
     # Select and instantiate the tokenizer.
     if args.patch_tokenizer_type == 'JiebaBPETokenizer':
         from .jiebabpe_tokenizer import JiebaBPETokenizer
         tokenizer = JiebaBPETokenizer(args.patch_vocab_file)
+        args.padded_vocab_size = _vocab_size_with_padding(
+            tokenizer.vocab_size, args)
     elif args.patch_tokenizer_type == 'BloomTokenizerFromHF':
         from transformers import BloomTokenizerFast as BloomTokenizer
         tokenizer = BloomTokenizer.from_pretrained('bigscience/bloom-560m')
@@ -108,6 +109,39 @@ def build_tokenizer(args):
             special_tokens_dict['unk_token'] = DEFAULT_UNK_TOKEN
         tokenizer.add_special_tokens(special_tokens_dict)
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
+    elif args.patch_tokenizer_type == 'FalconTokenizer':
+        if args.load is None:
+            import transformers
+            tokenizer = transformers.LlamaTokenizer.from_pretrained(
+                'tiiuae/falcon-7b',
+                model_max_length=args.seq_length,
+                padding_side='right',
+                use_fast=False,
+            )
+        else:
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(
+                args.load,
+                model_max_length=args.seq_length,
+                padding_side='right',
+                use_fast=False,
+            )
+        DEFAULT_PAD_TOKEN = '[PAD]'
+        DEFAULT_EOS_TOKEN = '</s>'
+        DEFAULT_BOS_TOKEN = '<s>'
+        DEFAULT_UNK_TOKEN = '<unk>'
+
+        special_tokens_dict = dict()
+        if not tokenizer.pad_token:
+            special_tokens_dict['pad_token'] = DEFAULT_PAD_TOKEN
+        if not tokenizer.eos_token:
+            special_tokens_dict['eos_token'] = DEFAULT_EOS_TOKEN
+        if not tokenizer.bos_token:
+            special_tokens_dict['bos_token'] = DEFAULT_BOS_TOKEN
+        if not tokenizer.unk_token:
+            special_tokens_dict['unk_token'] = DEFAULT_UNK_TOKEN
+        tokenizer.add_special_tokens(special_tokens_dict)
+        args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
     elif args.patch_tokenizer_type == 'BloomTokenizerFromCustom':
         print_rank_0('Using Customized Bloom tokenizer.')
         from transformers import BloomTokenizerFast as BloomTokenizer
@@ -122,19 +156,6 @@ def build_tokenizer(args):
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(
                                       args.patch_tokenizer_type))
-
-    if args.patch_tokenizer_type !=\
-            'BloomTokenizerFromHF' and args.patch_tokenizer_type !=\
-            'ChatGLMTokenizerFromHF' and\
-            args.patch_tokenizer_type != 'GLM10BZHTokenizerFromHF'\
-            and args.patch_tokenizer_type != 'IcetkGLM130BTokenizer' and\
-            args.patch_tokenizer_type != 'LLamaTokenizer' and \
-            args.patch_tokenizer_type != 'LLamaTokenizer-ziya' and \
-            args.patch_tokenizer_type != 'BloomTokenizerFromCustom' and\
-            args.patch_tokenizer_type != 'OPTTokenizer':
-
-        args.padded_vocab_size = _vocab_size_with_padding(
-            tokenizer.vocab_size, args)
 
     global _GLOBAL_TOKENIZER
     _GLOBAL_TOKENIZER = tokenizer

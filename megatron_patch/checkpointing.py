@@ -23,7 +23,6 @@ from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 from megatron import update_num_microbatches
 from megatron.checkpointing import (_transpose_first_dim,
                                     find_checkpoint_rank_0,
-                                    get_checkpoint_names,
                                     get_checkpoint_tracker_filename,
                                     get_checkpoint_version, get_rng_state,
                                     read_metadata, set_checkpoint_version)
@@ -32,6 +31,42 @@ from megatron.global_vars import get_args
 from megatron.model import DistributedDataParallel as LocalDDP
 from megatron.model import Float16Module
 from megatron.utils import print_rank_0, unwrap_model
+
+
+def get_checkpoint_names(checkpoints_path, iteration, use_distributed_optimizer, release=False,
+                        pipeline_parallel=None, tensor_rank=None, pipeline_rank=None):
+    """Determine the directory name for this rank's checkpoint."""
+    if release:
+        directory = 'release'
+    else:
+        directory = 'iter_{:07d}'.format(iteration)
+
+    # Use both the tensor and pipeline MP rank.
+    if pipeline_parallel is None:
+        pipeline_parallel = (mpu.get_pipeline_model_parallel_world_size() > 1)
+    if tensor_rank is None:
+        tensor_rank = mpu.get_tensor_model_parallel_rank()
+    if pipeline_rank is None:
+        pipeline_rank = mpu.get_pipeline_model_parallel_rank()
+
+    # Use both the tensor and pipeline MP rank. If using the distributed
+    # optimizer, then the optimizer's path must additionally include the
+    # data parallel rank.
+    if not pipeline_parallel:
+        common_path = os.path.join(checkpoints_path, directory,
+                            f'mp_rank_{tensor_rank:02d}')
+    else:
+        common_path = os.path.join(checkpoints_path, directory,
+                        f'mp_rank_{tensor_rank:02d}_{pipeline_rank:03d}')
+
+    if use_distributed_optimizer:
+        model_name = os.path.join(common_path, "model_rng.pt")
+        optim_name = os.path.join(
+            common_path + "_%03d" % mpu.get_data_parallel_rank(),
+            "optim.pt")
+    else:
+        model_name = optim_name = os.path.join(common_path, "model_optim_rng.pt")
+    return model_name, optim_name
 
 
 def ensure_directory_exists(filename):

@@ -81,7 +81,7 @@ class MegatronGPTPredictor(GPTPredictor):
         args = get_args()
         args.model_type = ModelType.encoder_or_decoder
         model = GPTModel(num_tokentypes=0,
-                         parallel_output=True,
+                         parallel_output=False,
                          pre_process=pre_process,
                          post_process=post_process)
 
