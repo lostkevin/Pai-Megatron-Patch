@@ -163,7 +163,6 @@ megatron_options="  \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --position-embedding-type rotary \
-        --untie-embeddings-and-output-weights \
         --disable-bias-linear \
         --tokenizer-type NullTokenizer \
         --vocab-size -1 \
