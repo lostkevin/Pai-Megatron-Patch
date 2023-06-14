@@ -4,8 +4,6 @@ import os
 import torch
 from torch.utils.data import Dataset
 
-from datasets import load_dataset
-from reward_model import GPTRewardModel
 from reward_model_bloom import BLOOMRewardModel
 from tqdm import tqdm
 from transformers import AutoTokenizer, Trainer, TrainingArguments
@@ -23,24 +21,6 @@ def read_json(data_path):
             line = json.loads(line)
             res.append(line)
     return res
-
-
-# def create_comparison_dataset(path="CarperAI/openai_summarize_comparisons", split="train"):
-#     dataset = load_dataset(path, split=split)
-#     pairs = []
-#     for sample in tqdm(dataset):
-#         pair = {}
-#         prompt = sample["prompt"]
-#         chosen_summary = sample["chosen"]
-#         rejected_summary = sample["rejected"]
-#         if chosen_summary == rejected_summary:
-#             continue
-#         if len(chosen_summary.split()) < 5 or len(rejected_summary.split()) < 5:
-#             continue
-#         pair["chosen"] = prompt + "\n" + chosen_summary
-#         pair["rejected"] = prompt + "\n" + rejected_summary
-#         pairs.append(pair)
-#     return pairs
 
 
 def create_comparison_dataset(path):
@@ -191,8 +171,7 @@ if __name__ == '__main__':
     )
 
     # Initialize the reward model from the (supervised) fine-tuned GPT-J
-    # model = GPTRewardModel("CarperAI/openai_summarize_tldr_sft")
-    # model = GPTRewardModel("../sft/gptj-supervised-summarize-checkpoint/")
+
     model = BLOOMRewardModel('bigscience/bloom-1b1')
 
     # Freeze the first 70% of the hidden layers of the reward model backbone
@@ -208,9 +187,6 @@ if __name__ == '__main__':
         os.path.join(data_path, 'ranking_train.json'))
     val_pairs = create_comparison_dataset(
         os.path.join(data_path, 'ranking_val.json'))
-    # data_path = "CarperAI/openai_summarize_comparisons"
-    # train_pairs = create_comparison_dataset(data_path, "train")
-    # val_pairs = create_comparison_dataset(data_path, "test")
 
     # Make pairwise datasets for training
     max_length = 550

@@ -1,14 +1,11 @@
 import os
 os.environ["WANDB_DISABLED"] = "true"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
-# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 from typing import List
 
 import json
 import torch
-from datasets import load_dataset
 from reward_model.reward_model_bloom import BLOOMRewardModel
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -94,6 +91,7 @@ def read_json(data_path):
             line = json.loads(line)
             res.append(line)
     return res
+
 
 def create_prompt_dataset(path):
     dataset = read_json(path)

@@ -286,7 +286,7 @@ def build_evaluation_dataset(dataset):
 
     elif dataset == 'LLama-SFT':
         val_dataset = LLamaDataset(args.data_path[0], tokenizer,
-                                    args.max_padding_length)
+                                   args.max_padding_length)
         return val_dataset
 
     elif dataset == 'Bloom-SFT':

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2023 Alibaba PAI Team.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 """Transformer."""
 import math
 from contextlib import nullcontext
-from typing import Optional, Tuple, Union
+from typing import Optional
 import torch
 import torch.nn.functional as F
 from torch import Tensor
@@ -65,9 +65,11 @@ def _args_to_kwargs():
     }
     return common_kwargs
 
+
 def rotate_half(x):
     x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=x1.ndim - 1)  # dim=-1 triggers a bug in torch < 1.8.0
+
 
 class RotaryEmbedding(torch.nn.Module):
     """Implementation of RotaryEmbedding from GPT-NeoX.
@@ -304,7 +306,7 @@ class CoreAttention(MegatronModule):
 class MultiQueryCoreAttention(CoreAttention):
 
     def __init__(self, *args, **kwargs) -> None:
-        self.num_kv =1
+        self.num_kv = 1
         super().__init__(*args, **kwargs)
 
     def forward(self, query_layer, key_layer, value_layer, attention_mask):
@@ -434,8 +436,8 @@ class FlashSelfAttention(torch.nn.Module):
             q, k, v: The tensor containing the query, key, and value. (B, S, H, D)
         """
 
-        assert all((i.dtype in [torch.float16, torch.bfloat16] for i in (q,k,v)))
-        assert all((i.is_cuda for i in (q,k,v)))
+        assert all((i.dtype in [torch.float16, torch.bfloat16] for i in (q, k, v)))
+        assert all((i.is_cuda for i in (q, k, v)))
 
         batch_size, seqlen_q = q.shape[0], q.shape[1]
         seqlen_k = k.shape[1]
@@ -455,7 +457,7 @@ class FlashSelfAttention(torch.nn.Module):
             # only on first autoregressive step q,k,v have same seqlen
             is_causal = seqlen_q == seqlen_k
             cu_seqlens_k = torch.arange(0, (batch_size + 1) * seqlen_k, step=seqlen_k, dtype=torch.int32,
-                        device=q.device)
+                                        device=q.device)
             self.dropout_p = 0
 
         output = flash_attn_unpadded_func(
@@ -566,7 +568,6 @@ class ParallelAttention(MegatronModule):
         else:
             self.core_attention = MultiQueryCoreAttention(self.layer_number, self.attn_mask_type)
 
-
         self.checkpoint_core_attention = \
             args.recompute_granularity == 'selective'
 
@@ -663,15 +664,9 @@ class ParallelAttention(MegatronModule):
                 # We switch to the tensor parallel regime here instead of at the KV input
                 # so that the KV layer is done in parallel instead of just duplicated.
                 mixed_kv_layer = tensor_parallel.gather_from_sequence_parallel_region(mixed_kv_layer,
-                                                                          tensor_parallel_output_grad=True)
+                                                                                      tensor_parallel_output_grad=True)
             else:
                 mixed_kv_layer = tensor_parallel.copy_to_tensor_model_parallel_region(mixed_kv_layer)
-
-            # [sq, b, (2 * hn)] --> [sq, b, np (expanded), 2 * hn]
-            # new_tensor_shape = mixed_kv_layer.size()[:-1] + \
-            #     (self.num_attention_heads_per_partition,
-            #      2 * self.hidden_size_per_attention_head)
-            # mixed_kv_layer = mixed_kv_layer.unsqueeze(2).expand(*new_tensor_shape)
 
             # [sq, b, (2 * hn)] --> [sq, b, 1, 2 * hn]
             new_tensor_shape = mixed_kv_layer.size()[:-1] + \
@@ -922,7 +917,7 @@ class ParallelTransformerLayer(MegatronModule):
                                                     self.hidden_dropout)
 
         # Layer norm post the self attention.
-        #layernorm_output = self.post_attention_layernorm(layernorm_input)
+        # layernorm_output = self.post_attention_layernorm(layernorm_input)
 
         # MLP.
         mlp_output, mlp_bias = self.mlp(layernorm_output)

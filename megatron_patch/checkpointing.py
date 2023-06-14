@@ -34,7 +34,7 @@ from megatron.utils import print_rank_0, unwrap_model
 
 
 def get_checkpoint_names(checkpoints_path, iteration, use_distributed_optimizer, release=False,
-                        pipeline_parallel=None, tensor_rank=None, pipeline_rank=None):
+                         pipeline_parallel=None, tensor_rank=None, pipeline_rank=None):
     """Determine the directory name for this rank's checkpoint."""
     if release:
         directory = 'release'
@@ -54,10 +54,10 @@ def get_checkpoint_names(checkpoints_path, iteration, use_distributed_optimizer,
     # data parallel rank.
     if not pipeline_parallel:
         common_path = os.path.join(checkpoints_path, directory,
-                            f'mp_rank_{tensor_rank:02d}')
+                                   f'mp_rank_{tensor_rank:02d}')
     else:
         common_path = os.path.join(checkpoints_path, directory,
-                        f'mp_rank_{tensor_rank:02d}_{pipeline_rank:03d}')
+                                   f'mp_rank_{tensor_rank:02d}_{pipeline_rank:03d}')
 
     if use_distributed_optimizer:
         model_name = os.path.join(common_path, "model_rng.pt")

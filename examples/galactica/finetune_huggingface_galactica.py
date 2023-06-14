@@ -86,9 +86,9 @@ def train_valid_datasets_provider():
     args = get_args()
     tokenizer = build_tokenizer(args)
     train_dataset = LLamaDataset(args.train_data, tokenizer,
-                                  args.max_padding_length)
+                                 args.max_padding_length)
     valid_dataset = LLamaDataset(args.valid_data, tokenizer,
-                                  args.max_padding_length)
+                                 args.max_padding_length)
     return train_dataset, valid_dataset
 
 
