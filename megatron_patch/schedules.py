@@ -1,4 +1,4 @@
-# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023 Alibaba PAI Team. All rights reserved.
 
 from contextlib import contextmanager, nullcontext
 from typing import Callable, List, Optional, Union

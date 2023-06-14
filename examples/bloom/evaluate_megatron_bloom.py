@@ -150,14 +150,6 @@ def forward_step(batch, model):
     shift_labels = input_ids[..., 1:].contiguous()
     loss_mask = loss_mask[..., 1:].contiguous()
     send_forward(shift_logits)
-    """
-    loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
-    if parallel_state.is_pipeline_last_stage():
-        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)),
-                        shift_labels.view(-1))
-        print_rank_0(loss)
-        return loss
-    """
     if parallel_state.is_pipeline_last_stage():
         losses = tensor_parallel.vocab_parallel_cross_entropy(
             shift_logits.contiguous().float(), shift_labels.contiguous())

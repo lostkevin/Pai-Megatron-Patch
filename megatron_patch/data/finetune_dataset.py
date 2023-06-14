@@ -574,6 +574,7 @@ class LLamaDataset(GPTDataset):
 
         return train_sample
 
+
 class FalconDataset(GPTDataset):
     def __init__(self, datapaths, tokenizer, max_padding_length):
         self.IGNORE_INDEX = -100
@@ -684,3 +685,4 @@ class FalconDataset(GPTDataset):
         }
 
         return train_sample
+    

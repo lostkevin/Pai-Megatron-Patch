@@ -452,7 +452,7 @@ def build_pretrain_glm130b_datasets_from_original(data_prefix, max_seq_length,
     def build_dataset():
 
         dataset = GLM130BDataset(data_prefix[0], max_seq_length,
-                                     generation_length)
+                                 generation_length)
 
         return dataset
 
@@ -462,14 +462,15 @@ def build_pretrain_glm130b_datasets_from_original(data_prefix, max_seq_length,
 
     return (train_dataset, valid_dataset, test_dataset)
 
+
 def build_pretrain_llama_datasets_from_idxmap(data_prefix,
-                                                max_padding_length,
-                                                data_impl,
-                                                splits_string,
-                                                train_valid_test_num_samples,
-                                                seed,
-                                                skip_warmup,
-                                                return_doc_ids=False):
+                                              max_padding_length,
+                                              data_impl,
+                                              splits_string,
+                                              train_valid_test_num_samples,
+                                              seed,
+                                              skip_warmup,
+                                              return_doc_ids=False):
     """Build train, valid, and test datasets."""
     data_prefix = data_prefix[0]
     # Indexed dataset.
@@ -508,8 +509,9 @@ def build_pretrain_llama_datasets_from_idxmap(data_prefix,
 
     return (train_dataset, valid_dataset, test_dataset)
 
+
 def build_pretrain_llama_datasets_from_original(data_prefix,
-                                                 max_padding_length):
+                                                max_padding_length):
     def build_dataset():
 
         dataset = LLamaDataset(data_prefix[0], max_padding_length)
@@ -524,13 +526,13 @@ def build_pretrain_llama_datasets_from_original(data_prefix,
 
 
 def build_pretrain_falcon_datasets_from_idxmap(data_prefix,
-                                                max_padding_length,
-                                                data_impl,
-                                                splits_string,
-                                                train_valid_test_num_samples,
-                                                seed,
-                                                skip_warmup,
-                                                return_doc_ids=False):
+                                               max_padding_length,
+                                               data_impl,
+                                               splits_string,
+                                               train_valid_test_num_samples,
+                                               seed,
+                                               skip_warmup,
+                                               return_doc_ids=False):
     """Build train, valid, and test datasets."""
     data_prefix = data_prefix[0]
     # Indexed dataset.
@@ -566,6 +568,7 @@ def build_pretrain_falcon_datasets_from_idxmap(data_prefix,
     train_dataset = build_dataset(0, 'train')
     valid_dataset = build_dataset(1, 'valid')
     test_dataset = build_dataset(2, 'test')
+
 
     return (train_dataset, valid_dataset, test_dataset)
 
