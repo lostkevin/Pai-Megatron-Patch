@@ -389,13 +389,24 @@ class MultiQueryCoreAttention(CoreAttention):
         context_layer = context_layer.view(*new_context_layer_shape)
         """
         num_heads = query_layer.size(0)
+
         q_length = query_layer.size(1)
         head_dim = query_layer.size(2)
         query_layer = query_layer.reshape(-1, num_heads, q_length, head_dim)
         batch_size = query_layer.size(0)
         query_layer_ = query_layer.reshape(batch_size, num_heads, -1, head_dim)
-        key_layer_ = key_layer.reshape(batch_size, self.num_kv, -1, head_dim)
-        value_layer_ = value_layer.reshape(batch_size, self.num_kv, -1, head_dim)
+        
+        # fix num_kv
+        if num_heads == 71:
+            self.num_kv = 1 
+            key_layer_ = key_layer.reshape(batch_size, self.num_kv, -1, head_dim)
+            value_layer_ = value_layer.reshape(batch_size, self.num_kv, -1, head_dim)
+        else:
+            self.num_kv = 8
+            key_layer_ = key_layer.reshape(-1, num_heads, q_length, head_dim)
+            key_layer_ = key_layer_.reshape(batch_size, num_heads, -1, head_dim)
+            value_layer_ = value_layer.reshape(-1, num_heads, q_length, head_dim)
+            value_layer_ = value_layer_.reshape(batch_size, num_heads, -1, head_dim)
 
         attn_output = F.scaled_dot_product_attention(
             query_layer_, key_layer_, value_layer_, None, 0.0, is_causal=True
@@ -496,6 +507,10 @@ class ParallelAttention(MegatronModule):
         self.num_heads = args.num_attention_heads
         self.head_dim = self.hidden_size // self.num_heads
         self.seq_length = args.seq_length
+        if self.hidden_size == 4544:
+            self.num_kv = 1
+        else:
+            self.num_kv = 8
         if self.use_flash_attn:
             if flash_attn_unpadded_func is None:
                 raise ImportError(
@@ -545,7 +560,7 @@ class ParallelAttention(MegatronModule):
             # with mpu.get_cuda_rng_tracker():
             self.key_value = get_linear_layer(
                 args.hidden_size,
-                2 * args.kv_channels,
+                2 * args.kv_channels * self.num_kv,
                 init_method=init_method)
 
         elif attention_type == AttnType.cross_attn and self.attention_head_type == 'multihead':
@@ -574,7 +589,6 @@ class ParallelAttention(MegatronModule):
         self.maybe_rotary = RotaryEmbedding(self.head_dim)
 
         self.multi_query = True
-        self.num_kv = 1
         if self.use_flash_attn:
             self.core_attention_flash = FlashSelfAttention(
                 causal=True, attention_dropout=args.attention_dropout)
@@ -671,13 +685,11 @@ class ParallelAttention(MegatronModule):
             # [sq, b, (2 * hn)] --> [sq, b, 1, 2 * hn]
             new_tensor_shape = mixed_kv_layer.size()[:-1] + \
                                (1,
-                                2 * self.hidden_size_per_attention_head)
+                                2 * self.hidden_size_per_attention_head * self.num_kv)
             mixed_kv_layer = mixed_kv_layer.view(*new_tensor_shape)
-
             # [sq, b, np, 2 * hn] --> 2 [sq, b, np, hn]
             (key_layer,
              value_layer) = tensor_parallel.split_tensor_along_last_dim(mixed_kv_layer, 2)
-
             # Attention head [sq, b, h] --> [sq, b, np * hn]
             query_layer, _ = self.query(hidden_states)
             # [sq, b, np * hn] --> [sq, b, np, hn]
@@ -712,7 +724,6 @@ class ParallelAttention(MegatronModule):
         # ==================================
         # Adjust key and value for inference
         # ==================================
-
         if inference_params:
             batch_start = inference_params.batch_size_offset
             batch_end = batch_start + key_layer.size(1)
@@ -735,18 +746,43 @@ class ParallelAttention(MegatronModule):
         # query_layer: torch.Size([80, 1, 71, 64]) -> torch.Size([71, 80, 64])
         # key_layer:torch.Size([80, 1, 1, 64]) -> torch.Size([1, 80, 64])
         q_length, batch_size, _, _ = query_layer.shape
-        query_layer = query_layer.transpose(0, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
+        query_layer = query_layer.transpose(0, 2).reshape(batch_size * self.num_attention_heads_per_partition, q_length, self.head_dim)
+        if self.num_kv == 1:
+            key_layer = key_layer.transpose(0, 2).reshape(
+                batch_size * self.num_kv,
+                q_length,
+                self.head_dim,
+            )
+        else:
+            from einops import rearrange
+            key_layer_ = key_layer.reshape(batch_size, -1, self.num_kv, self.head_dim).unsqueeze(3)
+            value_layer_ = value_layer.reshape(batch_size, -1, self.num_kv, self.head_dim).unsqueeze(3)
+            query_layer_shape = query_layer.reshape(batch_size, -1, self.num_kv, self.num_attention_heads_per_partition // self.num_kv, self.head_dim).shape
+            key_layer_ = torch.broadcast_to(key_layer_, query_layer_shape)
+            value_layer_ = torch.broadcast_to(value_layer_, query_layer_shape)
+            key_layer_ = rearrange(
+                key_layer_,
+                "batch seq_len group num_heads head_dim ->\
+                batch seq_len (group num_heads) head_dim",
+                head_dim=self.head_dim,
+            ).transpose(1, 2)
+            key_layer = key_layer_.reshape(
+                batch_size * self.num_attention_heads_per_partition,
+                q_length,
+                self.head_dim,
+            )
+            value_layer = rearrange(
+                value_layer_,
+                "batch seq_len group num_heads head_dim ->\
+                batch seq_len (group num_heads) head_dim",
+                head_dim=self.head_dim,
+            ).transpose(1, 2)
 
-        key_layer = key_layer.transpose(0, 2).reshape(
-            batch_size * self.num_kv,
-            q_length,
-            self.head_dim,
-        )
         query_layer, key_layer = self.maybe_rotary(query_layer, key_layer)
         # 1, 71, 80, 64
 
         if self.use_flash_attn:
-            query_layer = query_layer.reshape(batch_size, self.num_heads, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
+            query_layer = query_layer.reshape(batch_size, self.num_attention_heads_per_partition, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
             key_layer = key_layer.reshape(batch_size, self.num_kv, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
             if self.attention_head_type == "multiquery":
                 sq, b, np, hn = query_layer.size()
@@ -841,6 +877,14 @@ class ParallelTransformerLayer(MegatronModule):
             eps=args.layernorm_epsilon,
             no_persist_layer_norm=args.no_persist_layer_norm,
             sequence_parallel=args.sequence_parallel)
+        
+        # add post_attention_layernorm for falcon-40b
+        if self.num_layers == 60:
+            self.post_attention_layernorm = LayerNorm(
+                args.hidden_size,
+                eps=args.layernorm_epsilon,
+                no_persist_layer_norm=args.no_persist_layer_norm,
+                sequence_parallel=args.sequence_parallel)
 
         """
         # Layernorm on the attention output
@@ -917,10 +961,13 @@ class ParallelTransformerLayer(MegatronModule):
                                                     self.hidden_dropout)
 
         # Layer norm post the self attention.
-        # layernorm_output = self.post_attention_layernorm(layernorm_input)
-
-        # MLP.
-        mlp_output, mlp_bias = self.mlp(layernorm_output)
+        # add post_attention_layernorm for falcon-40b
+        if self.num_layers == 60:
+            mlp_input = self.post_attention_layernorm(hidden_states)
+            mlp_output, mlp_bias = self.mlp(mlp_input)
+        else:
+            # MLP.
+            mlp_output, mlp_bias = self.mlp(layernorm_output)
 
         # Second residual connection.
         if self.apply_residual_connection_post_layernorm:
