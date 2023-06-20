@@ -18,8 +18,8 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-# from megatron.model.transformer import (bias_dropout_add_fused_inference,
-#                                         bias_dropout_add_fused_train)
+from megatron.model.transformer import (bias_dropout_add_fused_inference,
+                                        bias_dropout_add_fused_train)
 from megatron import core, get_args
 from megatron.core import mpu, tensor_parallel
 from megatron.model import LayerNorm
