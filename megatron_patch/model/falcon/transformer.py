@@ -176,7 +176,7 @@ class ParallelMLP(MegatronModule):
 
 
 class CoreAttention(MegatronModule):
-    def __init__(self, layer_number, attn_mask_type=AttnMaskType.padding):
+    def __init__(self, layer_number, attn_mask_type=AttnMaskType.padding, num_head=None):
         super(CoreAttention, self).__init__()
         args = get_args()
         self.fp16 = args.fp16
@@ -307,6 +307,7 @@ class MultiQueryCoreAttention(CoreAttention):
 
     def __init__(self, *args, **kwargs) -> None:
         self.num_kv = 1
+        self.num_heads = args[2]
         super().__init__(*args, **kwargs)
 
     def forward(self, query_layer, key_layer, value_layer, attention_mask):
@@ -387,8 +388,8 @@ class MultiQueryCoreAttention(CoreAttention):
                                   (self.hidden_size_per_partition,)
 
         context_layer = context_layer.view(*new_context_layer_shape)
-        """
-        num_heads = query_layer.size(0)
+        """        
+        num_heads = self.num_heads
 
         q_length = query_layer.size(1)
         head_dim = query_layer.size(2)
@@ -397,8 +398,8 @@ class MultiQueryCoreAttention(CoreAttention):
         query_layer_ = query_layer.reshape(batch_size, num_heads, -1, head_dim)
         
         # fix num_kv
-        if num_heads == 71:
-            self.num_kv = 1 
+        if not self.num_heads % 71:
+            self.num_kv = 1
             key_layer_ = key_layer.reshape(batch_size, self.num_kv, -1, head_dim)
             value_layer_ = value_layer.reshape(batch_size, self.num_kv, -1, head_dim)
         else:
@@ -581,7 +582,7 @@ class ParallelAttention(MegatronModule):
             self.core_attention = CoreAttention(self.layer_number,
                                                 self.attn_mask_type)
         else:
-            self.core_attention = MultiQueryCoreAttention(self.layer_number, self.attn_mask_type)
+            self.core_attention = MultiQueryCoreAttention(self.layer_number, self.attn_mask_type, self.num_attention_heads_per_partition)
 
         self.checkpoint_core_attention = \
             args.recompute_granularity == 'selective'
