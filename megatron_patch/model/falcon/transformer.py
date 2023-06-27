@@ -416,7 +416,7 @@ class MultiQueryCoreAttention(CoreAttention):
         x = attn_output.view(batch_size, num_heads, q_length, head_dim)
         x = x.permute(0, 2, 1, 3)
         attn_output = x.reshape(batch_size, q_length, num_heads * head_dim)
-        attn_output = attn_output.transpose(1, 0)
+        attn_output = attn_output.transpose(1, 0).contiguous()
 
         return attn_output
 
