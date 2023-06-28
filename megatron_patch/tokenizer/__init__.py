@@ -29,7 +29,10 @@ def build_tokenizer(args):
             tokenizer.vocab_size, args)
     elif args.patch_tokenizer_type == 'BloomTokenizerFromHF':
         from transformers import BloomTokenizerFast as BloomTokenizer
-        tokenizer = BloomTokenizer.from_pretrained('bigscience/bloom-560m')
+        if args.load is None:
+            tokenizer = BloomTokenizer.from_pretrained('bigscience/bloom-560m')
+        else:
+            tokenizer = BloomTokenizer.from_pretrained(args.load)
         tokenizer.eod = tokenizer.eos_token_id
         args.padded_vocab_size = 250880
     elif args.patch_tokenizer_type == 'ChatGLMTokenizerFromHF':
