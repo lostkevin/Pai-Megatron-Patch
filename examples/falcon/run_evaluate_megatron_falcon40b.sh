@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_megatron_falcon.sh dsw /root/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 1 1 /mnt/llama-datasets/alpaca_data.json /mnt/falcon-ckpts/falcon-7b-hf-to-megatron-tp1-pp1
+# sh run_evaluate_megatron_falcon40b.sh dsw /root/Megatron-LM /workspace/PAI-Megatron-Patch/ 40B 1 2048 80 0 fp16 2 1 /mnt/llama-datasets/alpaca_data.json /mnt/falcon-ckpts/falcon-40b-hf-to-megatron-tp2-pp1/
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -7,12 +7,12 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=7
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=4
+GPUS_PER_NODE=1
 
 elif [ $ENV = dlc ]; then
 
@@ -47,6 +47,7 @@ elif [ $MODEL_SIZE = 40B ]; then
 NUM_LAYERS=60
 HIDDEN_SIZE=8192
 NUM_ATTN_HEADS=128
+NUM_HEAD_KV=8
 
 fi
 
@@ -90,11 +91,12 @@ megatron_options=" \
         --disable-bias-linear \
         --tokenizer-type NullTokenizer \
         --vocab-size -1 \
+        --n-head-kv ${NUM_HEAD_KV} \
         --attention-head-type multiquery \
         --patch-tokenizer-type FalconTokenizer \
         "
 
-run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_falcon.py
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_falcon40b.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}
