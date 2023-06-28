@@ -616,7 +616,7 @@ class ParallelAttention(MegatronModule):
         x = attn_output.view(batch_size, self.num_attention_heads_per_partition, q_length, self.head_dim)
         x = x.permute(0, 2, 1, 3)
         attn_output = x.reshape(batch_size, q_length, self.num_attention_heads_per_partition * self.head_dim)
-        attn_output = attn_output.transpose(1, 0)
+        attn_output = attn_output.transpose(1, 0).contiguous()
         output, bias = self.dense(attn_output)
 
         return output, bias
