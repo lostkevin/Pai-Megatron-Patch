@@ -493,7 +493,7 @@ class ParallelAttention(MegatronModule):
                                                       world_size)
         attn_output = attn_output.reshape(bsz, kv_seq_len,
                                           hidden_size_per_partition)
-        attn_output = attn_output.transpose(1, 0)
+        attn_output = attn_output.transpose(1, 0).contiguous()
 
         output, bias = self.dense(attn_output)
         """
