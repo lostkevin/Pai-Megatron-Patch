@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_pretrain_megatron_falcon.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false 100000 /mnt/llama-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron-tp1-pp1 100000000 10000 /mnt/output_llama
+#sh run_pretrain_megatron_falcon40b.sh dsw /root/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 40B 1 8 1e-5 1e-6 2048 80 0 fp16 2 1 sel true false false 100000 /mnt/falcon-datasets/wudao_train.json /mnt/falcon-ckpts/falcon-40b-hf-to-megatron-tp2-pp1 100000000 10000 /mnt/output_falcon
 set -e
 ENV=$1
 MEGATRON_PATH=$2
