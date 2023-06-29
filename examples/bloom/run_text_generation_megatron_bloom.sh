@@ -1,8 +1,8 @@
 #!/bin/bash
-# bash run_text_generation_megatron_bloom.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch bloombpe-c /mnt/bloom-ckpts/bloomwcp-shrink_mg_test 7.1B 1 1 1024 fp16 10 512 512 /mnt/bloom-datasets/cn.preds.txt /mnt/bloom-datasets/bloom_pred.txt 0 1.0 1.2
+# bash run_text_generation_megatron_bloom.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch bloombpe-c /mnt/bloom-ckpts/bloomwcp-shrink_mg_test 7.1B 1 1 1024 fp16 10 512 512 /mnt/bloom-datasets/pred_input.jsonl /mnt/bloom-datasets/bloom_pred.txt 0 1.0 1.2
 set -e
 ENV=$1
-export CUDA_VISIBLE_DEVICES=7
+export CUDA_VISIBLE_DEVICES=0
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 GPUS_PER_NODE=1
