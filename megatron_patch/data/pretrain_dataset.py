@@ -31,7 +31,12 @@ from megatron_patch.tokenizer import get_tokenizer
 
 
 class GLM130BDataset(torch.utils.data.Dataset):
+    """GLM130B dataset class."""
     def __init__(self, path, max_seq_length, generation_length):
+        """
+        Initializes the dataset with the path to the text file, the maximum length of input sequences,
+        and the length of generated text after the prompt.
+        """
         self.path = path
         self.max_seq_length = max_seq_length
         self.generation_length = generation_length
@@ -43,6 +48,11 @@ class GLM130BDataset(torch.utils.data.Dataset):
         self.process_single_file(self.path)
 
     def process_single_file(self, path):
+        """ 
+        Processes a single dataset file. 
+        Args:
+            path(str): The path of the dataset file.
+        """
         num_sequences = []
         with open(os.path.join(path), 'r', encoding='utf-8') as file:
             raw_text = file.read()
@@ -104,6 +114,7 @@ class GLM130BDataset(torch.utils.data.Dataset):
 
 
 class GLM130BIdxMapDataset(torch.utils.data.Dataset):
+    """GLM130B dataset class for mmap format data"""
     def __init__(self,
                  name,
                  data_prefix,
@@ -114,6 +125,19 @@ class GLM130BIdxMapDataset(torch.utils.data.Dataset):
                  generation_length,
                  seed,
                  return_doc_ids=False):
+        """
+        Initializes the GLM130BIdxMapDataset class.
+        Args:
+            name (str): Dataset name.
+            data_prefix (str): Path prefix.
+            documents (list of int): List of document indices.
+            indexed_dataset (object): Indexed dataset object.
+            num_samples (int): Number of samples.
+            seq_length (int): Maximum sequence length.
+            generation_length (int): Generation length (length of generated text).
+            seed (int): Random seed.
+            return_doc_ids (bool, optional): Whether to return document ids. Defaults to False.
+        """
 
         self.max_seq_length = seq_length
         self.generation_length = generation_length
@@ -204,7 +228,14 @@ class GLM130BIdxMapDataset(torch.utils.data.Dataset):
 
 
 class LLamaDataset(torch.utils.data.Dataset):
+    """LLAMA dataset class"""
     def __init__(self, datapath, max_padding_length):
+        """
+        Args:
+            datapath (str): The path of the dataset.
+            max_padding_length (int): The maximum length to pad the input sequences to.
+        """
+        
         self.IGNORE_INDEX = -100
         self.tokenizer = get_tokenizer()
         self.max_padding_length = max_padding_length
@@ -271,7 +302,18 @@ class LLamaDataset(torch.utils.data.Dataset):
         return dict(input_ids=input_ids, labels=labels)
 
     def tokenize(self, strings, tokenizer):
-        """Tokenize a list of strings."""
+        """
+        This function tokenizes the source strings given the tokenizer and returns a dictionary containing the
+        tokenized inputs and labels.
+        Args:
+            strings (List[str]): The list of input strings.
+            tokenizer (PreTrainedTokenizer): The tokenizer to use.
+            max_input_length (Optional[int]): The maximum length of the input sequences.
+            max_target_length (Optional[int]): The maximum length of the target sequences.
+        Returns:
+            Dict[str, Any]: A dictionary containing input_ids, labels, input_ids_lens and labels_lens.
+        """
+        
         tokenized_list = [
             tokenizer(
                 text,
@@ -309,6 +351,7 @@ class LLamaDataset(torch.utils.data.Dataset):
         return train_sample
 
 class LLamaIdxMapDataset(torch.utils.data.Dataset):
+    """LLAMA dataset class for mmap format data"""
     def __init__(self,
                  name,
                  data_prefix,
@@ -406,7 +449,22 @@ def build_pretrain_glm130b_datasets_from_idxmap(data_prefix,
                                                 seed,
                                                 skip_warmup,
                                                 return_doc_ids=False):
-    """Build train, valid, and test datasets."""
+    """
+    Build train, valid, and test datasets for pretraining a GLM130B model on mmap format data.
+    Args:
+        data_prefix (str): common prefix added to the front of files.
+        data_impl (str): implementation of the data loader.
+        splits_string (str): string specifying the dataset splits.
+        train_valid_test_num_samples (List[int]): Number of training, validation, and test samples.
+        seq_length (int): the sequence length of the input sequence.
+        generation_length (int): the length of generated sequences.
+        seed (int): seed for the random number generator.
+        skip_warmup (bool): whether to skip the warmup period.
+        return_doc_ids (bool): whether to return document IDs along with the input and target sequences.
+    Returns:
+        Tuple[Optional[GLM130BIdxMapDataset], Optional[GLM130BIdxMapDataset], Optional[GLM130BIdxMapDataset]]: 
+        The train, validation, and test datasets respectively wrapped in an optional class.
+    """
     data_prefix = data_prefix[0]
     # Indexed dataset.
     indexed_dataset = get_indexed_dataset_(data_prefix, data_impl, skip_warmup)
@@ -449,6 +507,9 @@ def build_pretrain_glm130b_datasets_from_idxmap(data_prefix,
 
 def build_pretrain_glm130b_datasets_from_original(data_prefix, max_seq_length,
                                                   generation_length):
+    """
+    Build train, valid, and test datasets for pretraining a GLM130B model on original format data.
+    """
     def build_dataset():
 
         dataset = GLM130BDataset(data_prefix[0], max_seq_length,
@@ -471,7 +532,20 @@ def build_pretrain_llama_datasets_from_idxmap(data_prefix,
                                               seed,
                                               skip_warmup,
                                               return_doc_ids=False):
-    """Build train, valid, and test datasets."""
+    """
+    Build train, valid, and test datasets for pretraining a LLAMA model on mmap format data.
+    Args:
+        data_prefix (str): common prefix added to the front of files.
+        max_padding_length (int): Maximum sequence length after padding.
+        data_impl (str): implementation of the data loader.
+        splits_string (str): string specifying the dataset splits.
+        train_valid_test_num_samples (Tuple[int, int, int]): Number of training, validation, and test samples.
+        seed (int): seed for the random number generator.
+        skip_warmup (bool): whether to skip the warmup period.
+        return_doc_ids (bool): whether to return document IDs along with the input and target sequences.
+    Returns:
+        A tuple of three LLamaIdxMapDataset objects: train_dataset, valid_dataset, and test_dataset.
+    """
     data_prefix = data_prefix[0]
     # Indexed dataset.
     indexed_dataset = get_indexed_dataset_(data_prefix, data_impl, skip_warmup)
@@ -512,6 +586,9 @@ def build_pretrain_llama_datasets_from_idxmap(data_prefix,
 
 def build_pretrain_llama_datasets_from_original(data_prefix,
                                                 max_padding_length):
+    """
+    Build train, valid, and test datasets for pretraining a LLAMA model on original format data.
+    """
     def build_dataset():
 
         dataset = LLamaDataset(data_prefix[0], max_padding_length)
@@ -533,7 +610,20 @@ def build_pretrain_falcon_datasets_from_idxmap(data_prefix,
                                                seed,
                                                skip_warmup,
                                                return_doc_ids=False):
-    """Build train, valid, and test datasets."""
+    """
+    Build train, valid, and test datasets for pretraining a falcon model on mmap format data.
+    Args:
+        data_prefix (str): common prefix added to the front of files.
+        max_padding_length (int): Maximum sequence length after padding.
+        data_impl (str): implementation of the data loader.
+        splits_string (str): string specifying the dataset splits.
+        train_valid_test_num_samples (Tuple[int, int, int]): Number of training, validation, and test samples.
+        seed (int): seed for the random number generator.
+        skip_warmup (bool): whether to skip the warmup period.
+        return_doc_ids (bool): whether to return document IDs along with the input and target sequences.
+    Returns:
+        A tuple of three LLamaIdxMapDataset objects: train_dataset, valid_dataset, and test_dataset.
+    """
     data_prefix = data_prefix[0]
     # Indexed dataset.
     indexed_dataset = get_indexed_dataset_(data_prefix, data_impl, skip_warmup)
@@ -574,6 +664,9 @@ def build_pretrain_falcon_datasets_from_idxmap(data_prefix,
 
 def build_pretrain_falcon_datasets_from_original(data_prefix,
                                                  max_padding_length):
+    """
+    Build train, valid, and test datasets for pretraining a falcon model on original format data.
+    """
     def build_dataset():
 
         dataset = LLamaDataset(data_prefix[0], max_padding_length)

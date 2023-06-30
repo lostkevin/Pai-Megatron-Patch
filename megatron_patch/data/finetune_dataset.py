@@ -28,6 +28,15 @@ class AbstractDataset(ABC, Dataset):
     """GLUE base dataset class."""
     def __init__(self, data_dir, data_name, file_name, tokenizer,
                  max_seq_length):
+        """ 
+        Initializes the dataset. 
+        Args:
+            data_dir (str): The directory containing the dataset files.
+            data_name (str): The name of the dataset.
+            file_name (str): The name of the dataset file.
+            tokenizer (Tokenizer): The tokenizer to use for encoding the dataset.
+            max_seq_length (int): The maximum sequence length for the input.
+        """
         # Store inputs.
         self.tokenizer = tokenizer
         self.max_seq_length = max_seq_length
@@ -73,8 +82,19 @@ class AbstractDataset(ABC, Dataset):
     def build_tokens_types_paddings_from_ids(self, text_a_ids, text_b_ids,
                                              max_seq_length, cls_id, sep_id,
                                              pad_id):
-        """Build token types and paddings,
-         trim if needed, and pad if needed."""
+        """
+        Builds the token types and paddings based on the input text ids, 
+        and trims and pads the sequences if necessary.
+        Args:
+            text_a_ids (list[int]): The token ids of the input text A.
+            text_b_ids (list[int]): The token ids of the input text B, or None if there is no text B.
+            max_seq_length (int): The maximum sequence length.
+            cls_id (int): The id of the [CLS] token.
+            sep_id (int): The id of the [SEP] token.
+            pad_id (int): The id of the padding token.
+        Returns:
+            tuple: The token ids, token types, and token paddings.
+        """
 
         ids = []
         types = []
@@ -131,8 +151,18 @@ class AbstractDataset(ABC, Dataset):
         return ids, types, paddings
 
     def build_sample(self, ids, types, paddings, label, unique_id):
-        """Convert to numpy and return a sample
-         consumed by the batch producer."""
+        """
+        Converts the token ids, types, paddings, label, and unique ID to a NumPy array and 
+        returns a sample to be consumed by the batch producer.
+        Args:
+            ids (list[int]): The token ids.
+            types (list[int]): The token types.
+            paddings (list[int]): The paddings.
+            label (int): The label.
+            unique_id (int): The unique ID.
+        Returns:
+            dict: The sample dictionary containing the token ids, types, paddings, label, and unique ID.
+        """
 
         ids_np = np.array(ids, dtype=np.int64)
         types_np = np.array(types, dtype=np.int64)
@@ -148,8 +178,13 @@ class AbstractDataset(ABC, Dataset):
         return sample
 
     def clean_text(self, text):
-        """Remove new lines and multiple spaces and
-         adjust end of sentence dot."""
+        """
+        Cleans the text by removing newlines and multiple spaces, and adjusting the end of sentence dot.
+        Args:
+            text (str): The text to be cleaned.
+        Returns:
+            str: The cleaned text.
+        """
 
         text = text.replace('\n', ' ')
         text = re.sub(r'\s+', ' ', text)
@@ -159,6 +194,15 @@ class AbstractDataset(ABC, Dataset):
         return text
 
     def truncate(self, tokenizer, array, max_length):
+        """
+        Truncates an array to a maximum length or pads it with zeros if its length is less than `max_length`.
+        Args:
+            tokenizer: The tokenizer used to encode the input.
+            array: The numpy array to truncate or pad.
+            max_length: The maximum length of the array.
+        Returns:
+            A numpy array of length `max_length` containing the contents of `array`, truncated if necessary or padded with zeros.
+        """
         if len(array) < max_length:
             return np.pad(array, (0, max_length - len(array)),
                           constant_values=tokenizer.eod)
@@ -167,8 +211,15 @@ class AbstractDataset(ABC, Dataset):
 
 
 class GPTDataset(AbstractDataset):
-    """GLUE base dataset class."""
+    """GPT dataset class."""
     def __init__(self, datapaths, tokenizer, max_seq_length):
+        """
+        Initializes a new instance of the GPTDataset class.
+        Args:
+            datapaths (list): List of file paths containing the raw text data.
+            tokenizer: Instance of the tokenizer used to tokenize the text data.
+            max_seq_length (int): Maximum sequence length for input to the model.
+        """
         self.tokenizer = tokenizer
         self.max_seq_length = max_seq_length
 
@@ -187,8 +238,16 @@ class GPTDataset(AbstractDataset):
                                                    self.max_seq_length)
 
     def clean_text(self, raw):
+        """
+        Cleans the input text by removing URLs, extra spaces, and special characters, and adjusting the end of sentence dot.
+        Args:
+            text (str): The raw text to be processed.
+        Returns:
+            str: The cleaned text.
+        """
+    
         httpcom = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|['
-                             r'!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')  # 匹配模式
+                             r'!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
         raw = httpcom.sub('', raw)
 
         space = re.compile(r' +')
@@ -201,7 +260,9 @@ class GPTDataset(AbstractDataset):
         return raw.strip()
 
     def process_samples_from_single_path(self, filename):
-        """"Implement abstract method."""
+        """
+        Process a single file and return a list of samples.
+        """
         print(' > Processing {} ...'.format(filename))
         samples = []
         total = 0
@@ -220,6 +281,9 @@ class GPTDataset(AbstractDataset):
 
     def gpt_convert_example_to_feature(self, sample, tokenizer,
                                        max_seq_length):
+        """
+        Convert a single sample into a format suitable for GPT training.
+        """
         tokens = tokenizer.tokenize(sample['text'])
         input_ids = np.array(tokens)
         input_ids = self.truncate(tokenizer, input_ids, max_seq_length)
@@ -228,6 +292,7 @@ class GPTDataset(AbstractDataset):
 
 
 class BloomDataset(GPTDataset):
+    """Bloom dataset class."""
     def __init__(self, datapath, tokenizer, max_seq_length):
         self.tokenizer = tokenizer
         self.max_seq_length = max_seq_length
@@ -275,6 +340,7 @@ class BloomDataset(GPTDataset):
 
 
 class ChatGLMDataset(GPTDataset):
+    """ChatGLM dataset class."""
     def __init__(self, datapaths, tokenizer, max_source_length,
                  max_target_length):
         self.tokenizer = tokenizer
@@ -345,6 +411,7 @@ class ChatGLMDataset(GPTDataset):
 
 
 class GLMDataset(GPTDataset):
+    """GLM dataset class."""
     def __init__(self, datapaths, tokenizer, max_source_seq_length,
                  max_target_seq_length):
         self.tokenizer = tokenizer
@@ -464,6 +531,7 @@ class GLMDataset(GPTDataset):
 
 
 class LLamaDataset(GPTDataset):
+    """LLAMA dataset class."""
     def __init__(self, datapaths, tokenizer, max_padding_length):
         self.IGNORE_INDEX = -100
         self.tokenizer = tokenizer
@@ -576,6 +644,7 @@ class LLamaDataset(GPTDataset):
 
 
 class FalconDataset(GPTDataset):
+    """Falcon dataset class."""
     def __init__(self, datapaths, tokenizer, max_padding_length):
         self.IGNORE_INDEX = -100
         self.tokenizer = tokenizer

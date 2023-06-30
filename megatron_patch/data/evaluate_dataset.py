@@ -28,7 +28,16 @@ from megatron_patch.tokenizer import get_tokenizer
 
 
 class GLM130BDataset(torch.utils.data.Dataset):
+    """A class for processing a GLM130B text dataset"""
     def __init__(self, path, tokenizer, max_seq_length, generation_length):
+        """ 
+        Initializes the dataset. 
+        Args:
+            path(str): The path of the dataset file.
+            tokenizer(object): The tokenizer object.
+            max_seq_length(int): The maximum length of sequences.
+            generation_length(int): The length of generated sequence.
+        """
         self.path = path
         self.max_seq_length = max_seq_length
         self.generation_length = generation_length
@@ -42,6 +51,11 @@ class GLM130BDataset(torch.utils.data.Dataset):
         self.process_single_file(self.path)
 
     def process_single_file(self, path):
+        """ 
+        Processes a single dataset file. 
+        Args:
+            path(str): The path of the dataset file.
+        """
         num_sequences = []
         with open(os.path.join(path), 'r', encoding='utf-8') as file:
             raw_text = file.read()
@@ -66,9 +80,20 @@ class GLM130BDataset(torch.utils.data.Dataset):
         self.left_weights = [0] + self.weights[:-1]
 
     def __len__(self):
+        """
+        Returns the number of sequences in the dataset.
+        """
         return self.data[0]['num_sequences']
 
     def __getitem__(self, idx):
+        """
+        Returns the item at the given index.
+        Args:
+            idx (int): The index of the item to return.
+        Returns:
+            A dictionary containing the following tokens, targets, position_ids, attention_mask and loss_mask.
+        """
+        
         document_idx = bisect_right(self.weights, idx)
         idx = idx - self.left_weights[document_idx]
         start_idx = idx * self.generation_length
@@ -104,7 +129,15 @@ class GLM130BDataset(torch.utils.data.Dataset):
 
 
 class BloomDataset(torch.utils.data.Dataset):
+    """A class for processing a Bloom text dataset"""
     def __init__(self, datapaths, tokenizer, max_seq_length):
+        """ 
+        Initializes the dataset. 
+        Args:
+            path(str): The path of the dataset file.
+            tokenizer(object): The tokenizer object.
+            max_seq_length(int): The maximum length of sequences.
+        """
         self.tokenizer = tokenizer
         self.max_seq_length = max_seq_length
         self.prompt = ''
@@ -124,6 +157,16 @@ class BloomDataset(torch.utils.data.Dataset):
                                                    self.max_seq_length)
 
     def truncate(self, tokenizer, array, max_length):
+        """
+        Truncates an array to a maximum length or pads it with zeros if its length is less than `max_length`.
+        Args:
+            tokenizer: The tokenizer used to encode the input.
+            array: The numpy array to truncate or pad.
+            max_length: The maximum length of the array.
+        Returns:
+            A numpy array of length `max_length` containing the contents of `array`, truncated if necessary or padded with zeros.
+        """
+    
         if len(array) < max_length:
             return np.pad(array, (0, max_length - len(array)),
                           constant_values=tokenizer.eod)
@@ -131,14 +174,16 @@ class BloomDataset(torch.utils.data.Dataset):
             return array[:max_length]
 
     def process_samples_from_single_path(self, filename):
+        """
+        Process a single file containing prompt-answer pairs and return a list of samples.
+        """
+        
         print(' > Processing {} ...'.format(filename))
         samples = []
         total = 0
         with open(filename, encoding='utf-8-sig') as f:
             for example in f:
                 text = json.loads(example)['text']
-                # prompt = text.split("\n")[0]
-                # answer = text.replace(prompt, "").strip()
                 sample = {
                     'prompt':
                     text + '</s>' if not text.endswith('</s>') else text,
@@ -152,6 +197,10 @@ class BloomDataset(torch.utils.data.Dataset):
 
     def gpt_convert_example_to_feature(self, sample, tokenizer,
                                        max_seq_length):
+        """
+        Convert a single sample containing a prompt-answer pair into a format suitable for GPT training.
+        """
+        
         tokens = tokenizer(sample['prompt'])
         input_ids = tokens['input_ids']
         input_ids = self.truncate(tokenizer, input_ids, max_seq_length + 1)
@@ -160,7 +209,15 @@ class BloomDataset(torch.utils.data.Dataset):
 
 
 class LLamaDataset(torch.utils.data.Dataset):
+    """A class for processing a LLama text dataset"""
     def __init__(self, path, tokenizer, max_padding_length):
+        """ 
+        Initializes the dataset. 
+        Args:
+            path(str): The path of the dataset file.
+            tokenizer(object): The tokenizer object.
+            max_padding_length(int): The maximum length of the padding to the sequences.
+        """
         self.IGNORE_INDEX = -100
         self.tokenizer = tokenizer
         self.max_padding_length = max_padding_length
@@ -207,7 +264,14 @@ class LLamaDataset(torch.utils.data.Dataset):
         return f
 
     def jload(self, f, mode='r'):
-        """Load a .json file into a dictionary."""
+        """
+        Load a .json file into a dictionary.
+        Args:
+            f: The file object or string representing the file path.
+            mode: The mode in which to open the file (e.g., 'r', 'w', 'a').
+        Returns:
+            A dictionary containing the contents of the JSON file.
+        """
         f = self._make_r_io_base(f, mode)
         jdict = json.load(f)
         f.close()
@@ -222,7 +286,16 @@ class LLamaDataset(torch.utils.data.Dataset):
         return self.gpt_convert_example_to_feature(raw_sample)
 
     def preprocess(self, sources, targets, tokenizer):
-        """Preprocess the data by tokenizing."""
+        """
+        Preprocess the data by tokenizing.
+        Args:
+            sources (List[str]): a list of source strings
+            targets (List[str]): a list of target strings
+            tokenizer (Tokenizer): a tokenizer object used for tokenization
+        Returns:
+            dict: a dictionary containing the input_ids and labels for the examples
+        """
+    
         examples = [s + t for s, t in zip(sources, targets)]
         examples_tokenized, sources_tokenized = [
             self.tokenize(strings, tokenizer)
@@ -236,7 +309,15 @@ class LLamaDataset(torch.utils.data.Dataset):
         return dict(input_ids=input_ids, labels=labels)
 
     def tokenize(self, strings, tokenizer):
-        """Tokenize a list of strings."""
+        """
+        Tokenize a list of strings.
+        Args:
+            strings (List[str]): a list of strings to be tokenized
+            tokenizer (Tokenizer): a tokenizer object used for tokenization
+        Returns:
+            dict: a dictionary containing the input_ids and labels for the tokenized strings
+        """
+    
         tokenized_list = [
             tokenizer(
                 text,
@@ -261,6 +342,9 @@ class LLamaDataset(torch.utils.data.Dataset):
         )
 
     def gpt_convert_example_to_feature(self, sample):
+        """
+        Convert a single sample containing input_id, label and loss_mask into a format suitable for GPT training.
+        """
         input_ids, labels = sample
         loss_mask = np.ones(labels.shape, dtype=np.int64)
         loss_mask[labels == self.IGNORE_INDEX] = 0
@@ -275,7 +359,13 @@ class LLamaDataset(torch.utils.data.Dataset):
 
 
 def build_evaluation_dataset(dataset):
-    """Helper function to select and build dataset."""
+    """
+    Helper function to select and build the appropriate dataset object for evaluation.
+    Args:
+        dataset (str): The name of the dataset to use.
+    Returns:
+        Dataset: The evaluation dataset object.
+    """
     args = get_args()
     tokenizer = get_tokenizer()
 
