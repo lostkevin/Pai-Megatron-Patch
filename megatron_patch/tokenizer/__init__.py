@@ -114,8 +114,8 @@ def build_tokenizer(args):
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
     elif args.patch_tokenizer_type == 'FalconTokenizer':
         if args.load is None:
-            import transformers
-            tokenizer = transformers.LlamaTokenizer.from_pretrained(
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(
                 'tiiuae/falcon-7b',
                 model_max_length=args.seq_length,
                 padding_side='right',
