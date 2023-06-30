@@ -51,6 +51,7 @@ def pretrain(train_valid_test_dataset_provider,
              extra_args_provider=None,
              args_defaults={'tokenizer_type': 'GPT2BPETokenizer'}):
     """Main training program.
+    Refer to https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/training.py
 
     This function will run the followings in the order provided:
         1) initialize Megatron.
