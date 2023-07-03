@@ -160,6 +160,8 @@ megatron_options="  \
         --no-load-rng \
         --num-workers 8 \
         --seed 1234 \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --patch-tokenizer-type OPTTokenizer

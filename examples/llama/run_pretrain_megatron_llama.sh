@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_pretrain_megatron_llama.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false 100000 /mnt/llama-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron-tp1-pp1 100000000 10000 /mnt/output_llama
+#sh run_pretrain_megatron_llama.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false 100000 /mnt/llama-datasets/alpaca_data.json /mnt/llama-ckpts/llama-7b-hf-to-megatron-tp1-pp1 100000000 10000 /mnt/output_llama
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -171,6 +171,8 @@ megatron_options="  \
         --seed 1234 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --position-embedding-type rotary \
         --swiglu \
         --untie-embeddings-and-output-weights \

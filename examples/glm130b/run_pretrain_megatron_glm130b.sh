@@ -173,6 +173,8 @@ megatron_options=" \
         --no-load-rng \
         --num-workers 8 \
         --generation-length ${GEN_LEN} \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --apply-residual-connection-post-layernorm \
         --geglu \
         --no-position-embedding \
