@@ -34,6 +34,9 @@ except ImportError:
 def get_tasks_args(parser):
     group = parser.add_argument_group(title='bloom')
 
+    group.add_argument('--local-rank', type=int, default=None,
+                        help='local rank passed from distributed launcher')
+
     group.add_argument('--transformer-type',
                        type=str,
                        default='megatron',

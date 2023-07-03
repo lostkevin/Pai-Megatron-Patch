@@ -171,6 +171,8 @@ megatron_options="  \
         --no-load-rng \
         --num-workers 8 \
         --seed 1234 \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --embed-layernorm \
         --position-embedding-type alibi \
