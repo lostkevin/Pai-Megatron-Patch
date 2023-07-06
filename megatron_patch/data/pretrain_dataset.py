@@ -378,7 +378,7 @@ class LLamaIdxMapDataset(torch.utils.data.Dataset):
         self.doc_idx, self.sample_idx, self.shuffle_idx, self.index_prefix = \
             _build_index_mappings(self.name, data_prefix,
                                   documents, self.indexed_dataset.sizes,
-                                  num_samples, self.max_padding_length-1, seed, data_cache_path=None)
+                                  num_samples, self.max_padding_length-1, seed)
 
     def __len__(self):
         # -1 is due to data structure used to retieve the index:
