@@ -155,6 +155,13 @@ def build_tokenizer(args):
         else:
             args.padded_vocab_size = _vocab_size_with_padding(
                 tokenizer.vocab_size, args)
+    elif args.patch_tokenizer_type == 'StarcoderTokenizerFromHF':
+        print_rank_0('Using Starcoder tokenizer.')
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(args.load)
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.eod = tokenizer.eos_token_id
+        args.padded_vocab_size = 49152
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(
