@@ -33,7 +33,7 @@ def run_preprocess(input_fp, output_fp):
             except ValueError:
                 file_json = {}
             for obj in file_json:
-                text = obj['content']
+                text = obj['output']
                 text = clean_text(text)
                 di = {'text': text}
                 dumped_di = json.dumps(di, ensure_ascii=False)

@@ -113,8 +113,8 @@ def build_tokenizer(args):
         tokenizer.add_special_tokens(special_tokens_dict)
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
     elif args.patch_tokenizer_type == 'FalconTokenizer':
+        from transformers import AutoTokenizer
         if args.load is None:
-            from transformers import AutoTokenizer
             tokenizer = AutoTokenizer.from_pretrained(
                 'tiiuae/falcon-7b',
                 model_max_length=args.seq_length,
@@ -122,7 +122,6 @@ def build_tokenizer(args):
                 use_fast=False,
             )
         else:
-            from transformers import AutoTokenizer
             tokenizer = AutoTokenizer.from_pretrained(
                 args.load,
                 model_max_length=args.seq_length,
