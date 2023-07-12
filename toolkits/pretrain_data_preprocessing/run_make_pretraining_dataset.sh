@@ -25,6 +25,7 @@ python preprocess_data.py \
   --dataset-impl mmap \
   --vocab tokenizer.json \
   --patch-tokenizer-type JiebaBPETokenizer \
+  --load ${load_dir} \
   --workers 16 \
   --append-eod
 
@@ -36,6 +37,7 @@ elif [ $tokenizer = "bloombpe" ]; then
   --output-prefix ${output_data_dir}/wudao_bloombpe \
   --dataset-impl mmap \
   --patch-tokenizer-type BloomTokenizerFromHF \
+  --load ${load_dir} \
   --workers 16 \
   --append-eod
 
@@ -47,6 +49,7 @@ elif [ $tokenizer = "glmchinesebpe" ]; then
   --output-prefix ${output_data_dir}/wudao_glmchinesebpe \
   --dataset-impl mmap \
   --patch-tokenizer-type GLM10BZHTokenizerFromHF \
+  --load ${load_dir} \
   --workers 16 \
   --append-eod
 
@@ -58,6 +61,7 @@ elif [ $tokenizer = "glm130bbpe" ]; then
   --output-prefix ${output_data_dir}/wudao_glm130bbpe \
   --dataset-impl mmap \
   --patch-tokenizer-type IcetkGLM130BTokenizer \
+  --load ${load_dir} \
   --workers 16 \
   --append-eod
 
@@ -81,6 +85,18 @@ elif [ $tokenizer = "falconbpe" ]; then
   --output-prefix ${output_data_dir}/wudao_falconbpe \
   --dataset-impl mmap \
   --patch-tokenizer-type FalconTokenizer \
+  --load ${load_dir} \
+  --workers 16 \
+  --append-eod
+
+elif [ $tokenizer = "galacticabpe" ]; then
+
+  python preprocess_data.py \
+  --input ${INPUT} \
+  --language zh \
+  --output-prefix ${output_data_dir}/wudao_galacticabpe \
+  --dataset-impl mmap \
+  --patch-tokenizer-type OPTTokenizer \
   --load ${load_dir} \
   --workers 16 \
   --append-eod
