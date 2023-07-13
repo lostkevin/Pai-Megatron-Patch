@@ -78,10 +78,11 @@ def build_tokenizer(args):
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(args.load, use_fast=True)
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
+        tokenizer.pad_token = tokenizer.eos_token
 
     elif args.patch_tokenizer_type == 'LLamaTokenizer':
+        import transformers
         if args.load is None:
-            import transformers
             tokenizer = transformers.LlamaTokenizer.from_pretrained(
                 'decapoda-research/llama-7b-hf',
                 model_max_length=args.seq_length,
@@ -89,8 +90,7 @@ def build_tokenizer(args):
                 use_fast=False,
             )
         else:
-            from transformers import AutoTokenizer
-            tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer = transformers.LlamaTokenizer.from_pretrained(
                 args.load,
                 model_max_length=args.seq_length,
                 padding_side='right',
