@@ -783,6 +783,7 @@ class ParallelAttention(MegatronModule):
         # 1, 71, 80, 64
 
         if self.use_flash_attn:
+            from einops import rearrange
             query_layer = query_layer.reshape(batch_size, self.num_attention_heads_per_partition, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
             key_layer = key_layer.reshape(batch_size, self.num_kv, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
             if self.attention_head_type == "multiquery":
