@@ -17,12 +17,13 @@ from functools import partial
 import torch
 import os
 
-from megatron import get_args
+from megatron import get_args, get_timers
 from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.pretrain_dataset import \
     build_pretrain_llama_datasets_from_original, build_pretrain_llama_datasets_from_idxmap
-from megatron_patch.model.galactica.gpt_model import GPTModel
+from megatron.model.gpt_model import GPTModel
+from megatron.utils import get_ltor_masks_and_position_ids
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import pretrain
 
@@ -33,7 +34,7 @@ except ImportError:
 
 
 def get_tasks_args(parser):
-    group = parser.add_argument_group(title='llama')
+    group = parser.add_argument_group(title='gpt3')
 
     group.add_argument('--local-rank', type=int, default=None,
                         help='local rank passed from distributed launcher')
@@ -53,11 +54,6 @@ def get_tasks_args(parser):
                        default=None,
                        help='Number of finetunning epochs. Zero results in '
                        'evaluation only.')
-
-    group.add_argument('--intermediate-size',
-                       type=int,
-                       default=None,
-                       help='--intermediate-size')
 
     group.add_argument('--keep-last',
                        action='store_true',
@@ -129,25 +125,48 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
     return train_ds, valid_ds, test_ds
 
-
-def forward_step(data_iterator, model):
+def get_batch(data_iterator):
+    """Generate a batch"""
+    args = get_args()
     tokenizer = get_tokenizer()
-    keys = ['input_ids', 'labels', 'loss_mask']
+
+    # Items and their type.
+    keys = ['text']
     datatype = torch.int64
+
+    # Broadcast data.
     if data_iterator is not None:
         data = next(data_iterator)
     else:
         data = None
+    data_b = tensor_parallel.broadcast_data(keys, data, datatype)
 
-    batch = tensor_parallel.broadcast_data(keys, data, datatype)
+    # Unpack.
+    tokens_ = data_b['text'].long()
+    labels = tokens_[:, 1:].contiguous()
+    tokens = tokens_[:, :-1].contiguous()
 
-    input_ids = batch['input_ids'].long().cuda().contiguous()
-    labels = batch['labels'].long().cuda().contiguous()
-    loss_mask = batch['loss_mask'].long().cuda()
-    loss_mask = loss_mask[..., 1:].contiguous()
-    attention_mask = input_ids.ne(tokenizer.pad_token_id)
-    output_tensor = model(input_ids=input_ids,
-                          attention_mask=attention_mask,
+    # Get the masks and postition ids.
+    attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
+        tokens,
+        tokenizer.eod,
+        args.reset_position_ids,
+        args.reset_attention_mask,
+        args.eod_mask_loss)
+
+    return tokens, labels, loss_mask, attention_mask, position_ids
+
+def forward_step(data_iterator, model):
+    """Forward step."""
+    args = get_args()
+    timers = get_timers()
+    # Get the batch.
+    timers('batch-generator', log_level=2).start()
+    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
+        data_iterator)
+    timers('batch-generator').stop()
+
+    output_tensor = model(tokens, position_ids, attention_mask,
                           labels=labels)
 
     def loss_func(loss_mask, output_tensor):

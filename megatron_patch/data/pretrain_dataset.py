@@ -254,8 +254,12 @@ class LLamaDataset(torch.utils.data.Dataset):
             else prompt_no_input.format_map(example)
             for example in list_data_dict
         ]
+        if 'output' in list_data_dict[0].keys():
+            temp = 'output'
+        elif 'content' in list_data_dict[0].keys():
+            temp = 'content'
         targets = [
-            f"{example['output']}{self.tokenizer.eos_token}"
+            f"{example[temp]}{self.tokenizer.eos_token}"
             for example in list_data_dict
         ]
         data_dict = self.preprocess(sources, targets, self.tokenizer)
@@ -467,8 +471,12 @@ class StarcoderDataset(torch.utils.data.Dataset):
             else prompt_no_input.format_map(example)
             for example in list_data_dict
         ]
+        if 'output' in list_data_dict[0].keys():
+            temp = 'output'
+        elif 'content' in list_data_dict[0].keys():
+            temp = 'content'
         targets = [
-            f"{example['output']}{self.tokenizer.eos_token}"
+            f"{example[temp]}{self.tokenizer.eos_token}"
             for example in list_data_dict
         ]
         data_dict = self.preprocess(sources, targets, self.tokenizer)

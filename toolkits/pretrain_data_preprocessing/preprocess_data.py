@@ -46,7 +46,7 @@ class Encoder(object):
         ids = {}
         for key in self.args.jsonl_keys:
             doc_ids = []
-            if self.args.patch_tokenizer_type in ['BloomTokenizerFromHF', 'GLM10BZHTokenizerFromHF', 'FalconTokenizer']:
+            if self.args.patch_tokenizer_type in ['BloomTokenizerFromHF', 'GLM10BZHTokenizerFromHF', 'FalconTokenizer', 'OPTTokenizer']:
                 text_ids = Encoder.tokenizer(text)['input_ids']
             elif self.args.patch_tokenizer_type == 'LLamaTokenizer':
                 text_ids = Encoder.tokenizer(text, add_special_tokens=False)['input_ids']
@@ -63,7 +63,7 @@ class Encoder(object):
                         'BloomTokenizerFromHF':
                     doc_ids[-1].append(Encoder.tokenizer.eod)
                 elif self.args.patch_tokenizer_type in \
-                        ['GLM10BZHTokenizerFromHF', 'LLamaTokenizer', 'FalconTokenizer']:
+                        ['GLM10BZHTokenizerFromHF', 'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer']:
                     doc_ids[-1].append(Encoder.tokenizer.eos_token_id)
                 elif self.args.patch_tokenizer_type == \
                         'IcetkGLM130BTokenizer':
@@ -98,7 +98,7 @@ def get_args():
             'JiebaBPETokenizer', 'BloomTokenizerFromHF',
             'ChatGLMTokenizerFromHF', 'GPT2BPETokenizer',
             'GLM10BZHTokenizerFromHF', 'IcetkGLM130BTokenizer',
-            'LLamaTokenizer', 'FalconTokenizer'
+            'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer'
         ],
         help='What type of tokenizer to use.',
     )
@@ -201,7 +201,7 @@ def main():
 
     # use multiprocessing to iterate over input documents
     file_list = os.listdir(args.input)
-    path_list = [args.input + file for file in file_list]
+    path_list = [os.path.join(args.input, file) for file in file_list]
     fin = yield_from_files(path_list, semaphore)
 
     if args.workers > 1:

@@ -32,8 +32,13 @@ def run_preprocess(input_fp, output_fp):
                 file_json = json.load(f)
             except ValueError:
                 file_json = {}
+
+            if 'output' in file_json[0].keys():
+                temp = 'output'
+            elif 'content' in file_json[0].keys():
+                temp = 'content'
             for obj in file_json:
-                text = obj['content']
+                text = obj[temp]
                 text = clean_text(text)
                 di = {'text': text}
                 dumped_di = json.dumps(di, ensure_ascii=False)
