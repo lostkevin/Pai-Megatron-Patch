@@ -112,6 +112,7 @@ def build_tokenizer(args):
             special_tokens_dict['unk_token'] = DEFAULT_UNK_TOKEN
         tokenizer.add_special_tokens(special_tokens_dict)
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
+
     elif args.patch_tokenizer_type == 'FalconTokenizer':
         from transformers import AutoTokenizer
         if args.load is None:
@@ -144,6 +145,40 @@ def build_tokenizer(args):
             special_tokens_dict['unk_token'] = DEFAULT_UNK_TOKEN
         tokenizer.add_special_tokens(special_tokens_dict)
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
+
+    elif args.patch_tokenizer_type == 'BaichuanTokenizer':
+        from .tokenization_baichuan import BaichuanTokenizer
+        if args.load is None:
+            tokenizer = BaichuanTokenizer.from_pretrained(
+                'baichuan-inc/Baichuan-13B-Base',
+                model_max_length=args.seq_length,
+                padding_side='right',
+                use_fast=False,
+            )
+        else:
+            tokenizer = BaichuanTokenizer.from_pretrained(
+                args.load,
+                model_max_length=args.seq_length,
+                padding_side='right',
+                use_fast=False,
+            )
+        DEFAULT_PAD_TOKEN = '[PAD]'
+        DEFAULT_EOS_TOKEN = '</s>'
+        DEFAULT_BOS_TOKEN = '<s>'
+        DEFAULT_UNK_TOKEN = '<unk>'
+
+        special_tokens_dict = dict()
+        if not tokenizer.pad_token:
+            special_tokens_dict['pad_token'] = DEFAULT_PAD_TOKEN
+        if not tokenizer.eos_token:
+            special_tokens_dict['eos_token'] = DEFAULT_EOS_TOKEN
+        if not tokenizer.bos_token:
+            special_tokens_dict['bos_token'] = DEFAULT_BOS_TOKEN
+        if not tokenizer.unk_token:
+            special_tokens_dict['unk_token'] = DEFAULT_UNK_TOKEN
+        tokenizer.add_special_tokens(special_tokens_dict)
+        args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
+
     elif args.patch_tokenizer_type == 'BloomTokenizerFromCustom':
         print_rank_0('Using Customized Bloom tokenizer.')
         from transformers import BloomTokenizerFast as BloomTokenizer
