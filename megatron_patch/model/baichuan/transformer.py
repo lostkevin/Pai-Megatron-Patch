@@ -66,10 +66,10 @@ def _args_to_kwargs():
     return common_kwargs
 
 
-class LlamaRMSNorm(torch.nn.Module):
+class BaichuanRMSNorm(torch.nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
         """
-        LlamaRMSNorm is equivalent to T5LayerNorm
+        BaichuanRMSNorm is equivalent to T5LayerNorm
         """
         super().__init__()
         self.weight = torch.nn.Parameter(torch.ones(hidden_size))
@@ -904,7 +904,7 @@ class ParallelTransformer(MegatronModule):
                 no_persist_layer_norm=args.no_persist_layer_norm,
                 sequence_parallel=args.sequence_parallel)
 
-            # self.final_layernorm = LlamaRMSNorm(args.hidden_size, eps=1e-06)
+            # self.final_layernorm = BaichuanRMSNorm(args.hidden_size, eps=1e-06)
 
     def _get_layer(self, layer_number):
         return self.layers[layer_number]
