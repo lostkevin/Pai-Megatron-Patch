@@ -171,6 +171,8 @@ megatron_options="  \
         --swiglu \
         --untie-embeddings-and-output-weights \
         --position-encoding-2d \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type ChatGLMTokenizerFromHF
         "
 

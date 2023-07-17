@@ -115,6 +115,8 @@ rapidformer_options="  \
        --tensor-model-parallel-size ${TP} \
        --pipeline-model-parallel-size 1 \
        --embed-layernorm \
+       --tokenizer-type NullTokenizer \
+       --vocab-size -1 \
        --position-embedding-type alibi \
        --repetition-penalty ${REPETITION_PENALTY} \
     "

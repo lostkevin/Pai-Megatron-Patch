@@ -87,6 +87,8 @@ megatron_options=" \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type LLamaTokenizer
         "
 

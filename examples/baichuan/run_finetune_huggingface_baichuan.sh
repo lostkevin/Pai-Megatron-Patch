@@ -119,6 +119,8 @@ megatron_options="  \
         --no-load-optim \
         --DDP-impl local\
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type BaichuanTokenizer \
         "
 

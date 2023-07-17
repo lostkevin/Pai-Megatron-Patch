@@ -183,6 +183,8 @@ megatron_options="  \
         --position-embedding-type rotary \
         --swiglu \
         --untie-embeddings-and-output-weights \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type LLamaTokenizer
         "
 

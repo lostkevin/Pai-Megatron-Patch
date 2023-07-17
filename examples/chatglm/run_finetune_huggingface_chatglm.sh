@@ -111,6 +111,8 @@ megatron_options="  \
         --finetune \
         --no-load-optim \
         --DDP-impl local\
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type ChatGLMTokenizerFromHF
         "
 

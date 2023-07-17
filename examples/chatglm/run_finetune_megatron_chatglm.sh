@@ -157,6 +157,8 @@ megatron_options="  \
         --openai-gelu \
         --no-bias-gelu-fusion \
         --position-encoding-2d \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type ChatGLMTokenizerFromHF
         "
 

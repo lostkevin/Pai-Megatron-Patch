@@ -134,6 +134,8 @@ megatron_options=" \
         --position-embedding-type rotary \
         --apply-residual-connection-post-layernorm \
         --glu-activation geglu \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type IcetkGLM130BTokenizer
         "
 
