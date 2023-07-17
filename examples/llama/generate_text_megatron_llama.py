@@ -26,6 +26,9 @@ except ImportError:
 def get_tasks_args(parser):
     group = parser.add_argument_group(title='text generation')
 
+    group.add_argument('--local-rank', type=int, default=None,
+                        help='local rank passed from distributed launcher')
+
     group.add_argument('--text-generate-input-file', type=str, default='')
     group.add_argument('--text-generate-output-file', type=str, default='')
     group.add_argument('--text-generate-gt-file', type=str, default='')
