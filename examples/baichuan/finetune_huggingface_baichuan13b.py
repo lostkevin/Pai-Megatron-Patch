@@ -12,21 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from functools import partial
-
-import torch
-
 from megatron import get_args
 from megatron.initialize import initialize_megatron
-from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.finetune_dataset import LLamaDataset
 from megatron_patch.finetune_utils import finetune
-from megatron_patch.model.galactica.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from transformers import AutoModelForCausalLM
 
 
 def get_tasks_args(parser):
-    group = parser.add_argument_group(title='galactica')
+    """Provide extra arguments required for tasks."""
+    group = parser.add_argument_group(title='chatglm')
 
     group.add_argument('--local-rank', type=int, default=None,
                         help='local rank passed from distributed launcher')
@@ -47,11 +43,6 @@ def get_tasks_args(parser):
                        help='Number of finetunning epochs. Zero results in '
                        'evaluation only.')
 
-    group.add_argument('--intermediate-size',
-                       type=int,
-                       default=None,
-                       help='--intermediate-size')
-
     group.add_argument('--keep-last',
                        action='store_true',
                        help='Keep the last batch (maybe incomplete) in'
@@ -68,6 +59,10 @@ def get_tasks_args(parser):
                        default=None,
                        help='path(s) to the validation data.')
 
+    group.add_argument('--patch-tokenizer-type',
+                       type=str,
+                       help='patch-tokenizer-type')
+
     group.add_argument('--extra-vocab-size',
                        type=int,
                        default=1,
@@ -78,28 +73,20 @@ def get_tasks_args(parser):
                        default=None,
                        help='max-padding-length')
 
-    group.add_argument('--position-embedding-type',
-                       type=str,
-                       default='absolute',
-                       help='Define position embedding type '
-                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
-
-    group.add_argument('--patch-tokenizer-type',
-                       type=str,
-                       help='patch-tokenizer-type')
-
     return parser
 
 
 def model_provider(pre_process=True, post_process=True):
-    model = GPTModel(num_tokentypes=0,
-                     parallel_output=True,
-                     pre_process=pre_process,
-                     post_process=post_process)
+    args = get_args()
+    tokenizer = get_tokenizer()
+    model = AutoModelForCausalLM.from_pretrained(args.load,
+                                                 trust_remote_code=True)
+    model.resize_token_embeddings(len(tokenizer))
     return model
 
 
 def train_valid_datasets_provider():
+    """Build train and validation dataset."""
     args = get_args()
     tokenizer = build_tokenizer(args)
     train_dataset = LLamaDataset(args.train_data, tokenizer,
@@ -117,28 +104,16 @@ def forward_step(data_iterator, model):
     except BaseException:
         data_iterator = data_iterator
 
-    input_ids = data_iterator['input_ids'].long().cuda().contiguous()
-    labels = data_iterator['labels'].long().cuda().contiguous()
-    loss_mask = data_iterator['loss_mask'].long().cuda()
+    input_ids = data_iterator['input_ids'].cuda()
+    labels = data_iterator['labels'].cuda()
     attention_mask = input_ids.ne(tokenizer.pad_token_id)
-    loss_mask = loss_mask[..., 1:].contiguous()
-
     output_tensor = model(input_ids=input_ids,
-                          attention_mask=attention_mask,
-                          labels=labels)
-
-    def loss_func(loss_mask, output_tensor):
-        losses = output_tensor.float()
-        loss_mask = loss_mask.view(-1).float()
-        loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
-        averaged_loss = average_losses_across_data_parallel_group([loss])
-        return loss, {'lm loss': averaged_loss[0]}
-
-    return output_tensor, partial(loss_func, loss_mask)
+                          labels=labels,
+                          attention_mask=attention_mask)
+    return output_tensor.loss
 
 
 if __name__ == '__main__':
-
     initialize_megatron(extra_args_provider=get_tasks_args)
 
     finetune(train_valid_datasets_provider=train_valid_datasets_provider,

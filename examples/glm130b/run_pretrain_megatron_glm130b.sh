@@ -179,6 +179,8 @@ megatron_options=" \
         --geglu \
         --no-position-embedding \
         --use-rotary-position-embeddings \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type IcetkGLM130BTokenizer
         "
 

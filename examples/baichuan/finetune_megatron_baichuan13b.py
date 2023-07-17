@@ -21,12 +21,12 @@ from megatron.initialize import initialize_megatron
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.finetune_dataset import LLamaDataset
 from megatron_patch.finetune_utils import finetune
-from megatron_patch.model.galactica.gpt_model import GPTModel
+from megatron_patch.model.baichuan.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 
 
 def get_tasks_args(parser):
-    group = parser.add_argument_group(title='galactica')
+    group = parser.add_argument_group(title='baichuan')
 
     group.add_argument('--local-rank', type=int, default=None,
                         help='local rank passed from distributed launcher')

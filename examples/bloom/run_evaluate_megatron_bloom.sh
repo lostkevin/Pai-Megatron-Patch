@@ -94,6 +94,8 @@ megatron_options=" \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --patch-tokenizer-type BloomTokenizerFromHF \
         --embed-layernorm \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --position-embedding-type alibi
         "
 

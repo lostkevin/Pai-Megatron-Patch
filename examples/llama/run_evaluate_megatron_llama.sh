@@ -90,6 +90,8 @@ megatron_options=" \
         --dataset LLama-SFT \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --swiglu \
         --position-embedding-type rotary \

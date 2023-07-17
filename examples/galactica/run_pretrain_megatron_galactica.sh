@@ -176,6 +176,8 @@ megatron_options="  \
         --vocab-size -1 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --patch-tokenizer-type OPTTokenizer
         "
 

@@ -37,7 +37,7 @@ except ImportError:
 
 
 def get_tasks_args(parser):
-    group = parser.add_argument_group(title='llama')
+    group = parser.add_argument_group(title='baichuan')
 
     group.add_argument('--local-rank', type=int, default=None,
                         help='local rank passed from distributed launcher')
@@ -100,7 +100,7 @@ def get_model_provider():
         args = get_args()
         tokenizer = build_tokenizer(args)
         model = AutoModelForCausalLM.from_pretrained(args.load,
-                                                     trust_remote_code=False)
+                                                     trust_remote_code=True)
         model.resize_token_embeddings(len(tokenizer))
         return model
 

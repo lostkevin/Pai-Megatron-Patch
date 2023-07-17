@@ -97,6 +97,8 @@ rapidformer_options="  \
         --position-embedding-type rotary \
         --untie-embeddings-and-output-weights \
         --patch-tokenizer-type LLamaTokenizer-ziya \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --repetition-penalty ${REPETITION_PENALTY} \
     "
 

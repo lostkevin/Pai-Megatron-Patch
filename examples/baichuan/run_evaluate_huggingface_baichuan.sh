@@ -1,7 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_huggingface_llama.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 /mnt/llama-datasets/alpaca_data.json /mnt/llama-ckpts/llama-7b-hf/
-# sh run_evaluate_huggingface_llama.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 0 fp16 /mnt/llama-datasets/wudao_train.jsonl /mnt/llama-ckpts/Ziya-LLaMA-13B/
-
+# sh run_evaluate_huggingface_baichuan.sh dsw /workspace/Megatron-LM-23.04/ /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 0 fp16 /mnt/baichuan-datasets/alpaca_data.json /mnt/baichuan-ckpts/baichuan-13b-base
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -35,7 +33,6 @@ PR=$9
 DATASET_PATH=${10}
 PRETRAIN_CHECKPOINT_PATH=${11}
 
-
 if [ $MODEL_SIZE = 7B ]; then
 
 NUM_LAYERS=32
@@ -48,7 +45,7 @@ elif [ $MODEL_SIZE = 13B ]; then
 NUM_LAYERS=40
 HIDDEN_SIZE=5120
 NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13824
+INTERMEDIATE_SIZE=13696
 
 fi
 
@@ -83,16 +80,16 @@ megatron_options=" \
         --DDP-impl local \
         --no-load-optim \
         --num-workers 0 \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --dataset LLama-SFT \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
-        --patch-tokenizer-type LLamaTokenizer
+        --patch-tokenizer-type BaichuanTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_llama.py
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_baichuan13b.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}

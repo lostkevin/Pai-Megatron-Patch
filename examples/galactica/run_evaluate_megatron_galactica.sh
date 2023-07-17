@@ -78,6 +78,8 @@ megatron_options=" \
         --num-workers 0 \
         --dataset LLama-SFT \
         --use-distributed-optimizer \
+        --tokenizer-type NullTokenizer \
+        --vocab-size -1 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --patch-tokenizer-type OPTTokenizer

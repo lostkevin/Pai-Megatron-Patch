@@ -1,7 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_huggingface_llama.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2048 80 1 fp16 /mnt/llama-datasets/alpaca_data.json /mnt/llama-ckpts/llama-7b-hf/
-# sh run_evaluate_huggingface_llama.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 0 fp16 /mnt/llama-datasets/wudao_train.jsonl /mnt/llama-ckpts/Ziya-LLaMA-13B/
-
+# sh run_evaluate_megatron_baichuan.sh dsw /workspace/Megatron-LM-23.04/ /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 0 fp16 1 1 /mnt/baichuan-datasets/alpaca_data.json /mnt/baichuan-ckpts/baichuan-13b-base-hf-to-megatron-tp1-pp1/
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -9,12 +7,12 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=0,1
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=1
+GPUS_PER_NODE=2
 
 elif [ $ENV = dlc ]; then
 
@@ -32,8 +30,10 @@ SEQ_LEN=$6
 PAD_LEN=$7
 EXTRA_VOCAB_SIZE=$8
 PR=$9
-DATASET_PATH=${10}
-PRETRAIN_CHECKPOINT_PATH=${11}
+TP=${10}
+PP=${11}
+DATASET_PATH=${12}
+PRETRAIN_CHECKPOINT_PATH=${13}
 
 
 if [ $MODEL_SIZE = 7B ]; then
@@ -48,7 +48,7 @@ elif [ $MODEL_SIZE = 13B ]; then
 NUM_LAYERS=40
 HIDDEN_SIZE=5120
 NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13824
+INTERMEDIATE_SIZE=13696
 
 fi
 
@@ -67,7 +67,6 @@ fi
 
 
 megatron_options=" \
-        --transformer-type huggingface \
         --data-path ${DATASET_PATH}
         --micro-batch-size ${BATCH_SIZE} \
         --num-layers ${NUM_LAYERS} \
@@ -75,13 +74,16 @@ megatron_options=" \
         --num-attention-heads ${NUM_ATTN_HEADS} \
         --seq-length ${SEQ_LEN} \
         --max-position-embeddings ${SEQ_LEN} \
+        --intermediate-size ${INTERMEDIATE_SIZE} \
         --log-interval 1 \
         --eval-interval 100 \
         --eval-iters 10 \
-        --tensor-model-parallel-size 1 \
-        --pipeline-model-parallel-size 1 \
+        --tensor-model-parallel-size ${TP} \
+        --pipeline-model-parallel-size ${PP} \
         --DDP-impl local \
         --no-load-optim \
+        --no-load-rng \
+        --seed 1234 \
         --num-workers 0 \
         --dataset LLama-SFT \
         --use-distributed-optimizer \
@@ -89,10 +91,15 @@ megatron_options=" \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --tokenizer-type NullTokenizer \
         --vocab-size -1 \
-        --patch-tokenizer-type LLamaTokenizer
+        --position-embedding-type alibi \
+        --swiglu \
+        --untie-embeddings-and-output-weights \
+        --patch-tokenizer-type BaichuanTokenizer \
+        --recompute-activations \
+        --sequence-parallel
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_llama.py
+run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_baichuan13b.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}

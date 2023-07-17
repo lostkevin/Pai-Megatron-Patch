@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_megatron_galactica.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 6.7B 1 1e-5 1e-6 2048 80 0 fp16 1 1 sel true false false  /mnt/llama-datasets/alpaca_data.json /mnt/llama-datasets/alpaca_data.json /mnt/galactica-ckpts/galactica-6.7b-to-megatron-tp1-pp1 2 /mnt/output_galatica
+#sh run_finetune_huggingface_baichuan.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-5 1e-6 2048 80 1 fp16 true /mnt/baichuan-datasets/alpaca_data.json /mnt/baichuan-datasets/alpaca_data.json /mnt/baichuan-ckpts/baichuan-13b-base-hf/ 2 /mnt/output_baichuan
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -32,37 +32,27 @@ SEQ_LEN=$8
 PAD_LEN=$9
 EXTRA_VOCAB_SIZE=${10}
 PR=${11}
-TP=${12}
-PP=${13}
-AC=${14}
-DO=${15}
-FL=${16}
-SP=${17}
-TRAIN_DATASET_PATH=${18}
-VALID_DATASET_PATH=${19}
-PRETRAIN_CHECKPOINT_PATH=${20}
-EPOCH=${21}
-OUTPUT_BASEPATH=${22}
+DO=${12}
+TRAIN_DATASET_PATH=${13}
+VALID_DATASET_PATH=${14}
+PRETRAIN_CHECKPOINT_PATH=${15}
+EPOCH=${16}
+OUTPUT_BASEPATH=${17}
 
-
-if [ $MODEL_SIZE = 6.7B ]; then
+if [ $MODEL_SIZE = 7B ]; then
 
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
+INTERMEDIATE_SIZE=11008
 
-fi
+elif [ $MODEL_SIZE = 13B ]; then
 
-if [ $AC = full ]; then
-    activation_checkpoint_options=" \
-		    --recompute-method uniform \
-		    --recompute-granularity full"
-elif [ $AC = sel ]; then
-    activation_checkpoint_options=" \
-        --recompute-activations"
-elif [ $AC = none ]; then
-    activation_checkpoint_options=" \
-                    "
+NUM_LAYERS=40
+HIDDEN_SIZE=5120
+NUM_ATTN_HEADS=40
+INTERMEDIATE_SIZE=13696
+
 fi
 
 if [ $PR = fp16 ]; then
@@ -82,36 +72,18 @@ elif [ $DO = false ]; then
                     "
 fi
 
-if [ $FL = true ]; then
-    flash_options=" \
-		    --use-flash-attn"
-
-elif [ $FL = false ]; then
-    flash_options=" \
-                    "
-fi
-
-if [ $SP = true ] && [ $TP -gt 1 ]; then
-    sp_options=" \
-		    --sequence-parallel"
-
-elif [ $SP = false ]; then
-    sp_options=" \
-                    "
-fi
-
-FT_NAME="${ENV}-finetune-megatron-galactica-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
-OUTPUT_BASEPATH=/mnt/output_megatron_chatglm
+NAME="${ENV}-finetune-huggingface-baichuan-${MODEL_SIZE}-ep-${EPOCH}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-do-${DO}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
 current_time=$(date "+%Y.%m.%d-%H.%M.%S")
-TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${FT_NAME}_${current_time}"
+TENSORBOARD_DIR="${OUTPUT_BASEPATH}/tensorboard/${NAME}_${current_time}"
 mkdir -p ${TENSORBOARD_DIR}
 
-FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${FT_NAME}"
+FINETUNE_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 
 megatron_options="  \
+        --transformer-type huggingface \
         --load ${PRETRAIN_CHECKPOINT_PATH} \
         --save ${FINETUNE_CHECKPOINT_PATH} \
         --train-data ${TRAIN_DATASET_PATH} \
@@ -120,7 +92,7 @@ megatron_options="  \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
         --seq-length ${SEQ_LEN} \
-        --max-position-embeddings ${SEQ_LEN}  \
+        --max-position-embeddings ${SEQ_LEN} \
         --keep-last \
         --micro-batch-size ${BATCH_SIZE} \
         --epochs ${EPOCH} \
@@ -134,30 +106,26 @@ megatron_options="  \
         --init-method-std 0.01 \
         --num-workers 0\
         --log-interval 1 \
-        --eval-interval 1000 \
+        --eval-interval 100 \
         --eval-iters 10 \
-        --save-interval 1000000 \
+        --save-interval 100000000 \
         --tensorboard-queue-size 1 \
         --tensorboard-dir ${TENSORBOARD_DIR} \
         --log-timers-to-tensorboard \
         --log-batch-size-to-tensorboard \
         --log-validation-ppl-to-tensorboard \
-        --tensor-model-parallel-size ${TP} \
-        --pipeline-model-parallel-size ${PP} \
         --finetune \
-        --DDP-impl local \
-        --no-load-optim \
-        --no-load-rng \
-        --seed 1234 \
         --max-padding-length ${PAD_LEN} \
+        --no-load-optim \
+        --DDP-impl local\
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --tokenizer-type NullTokenizer \
         --vocab-size -1 \
-        --patch-tokenizer-type OPTTokenizer
+        --patch-tokenizer-type BaichuanTokenizer \
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_galactica.py
- ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_huggingface_baichuan13b.py
+${megatron_options} ${do_options} ${pr_options}"
 
 
 echo ${run_cmd}
