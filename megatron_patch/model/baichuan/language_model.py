@@ -484,6 +484,85 @@ class TransformerLanguageModel(MegatronModule):
         mask = self.future_mask[:self.n_head, :seq_length_with_past, :seq_length_with_past]
         return mask
 
+    # Copied from transformers.models.bart.modeling_bart._make_causal_mask
+    def _make_causal_mask(self,
+                          input_ids_shape,
+                          dtype,
+                          device,
+                          past_key_values_length=0):
+        """
+        Make causal mask used for bi-directional self-attention.
+        """
+        bsz, tgt_len = input_ids_shape
+        mask = torch.full((tgt_len, tgt_len),
+                          torch.tensor(torch.finfo(dtype).min, device=device),
+                          device=device)
+        mask_cond = torch.arange(mask.size(-1), device=device)
+        mask.masked_fill_(mask_cond < (mask_cond + 1).view(mask.size(-1), 1),
+                          0)
+        mask = mask.to(dtype)
+
+        if past_key_values_length > 0:
+            mask = torch.cat([
+                torch.zeros(tgt_len,
+                            past_key_values_length,
+                            dtype=dtype,
+                            device=device), mask
+            ],
+                             dim=-1)
+        return mask[None, None, :, :].expand(bsz, 1, tgt_len,
+                                             tgt_len + past_key_values_length)
+
+    # Copied from transformers.models.bart.modeling_bart._expand_mask
+    def _expand_mask(self, mask, dtype, tgt_len=None):
+        """
+        Expands attention_mask from
+         `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
+        """
+
+        if len(mask.size()) == 2:
+            bsz, src_len = mask.size()
+            tgt_len = tgt_len if tgt_len is not None else src_len
+            expanded_mask = mask[:, None,
+                                 None, :].expand(bsz, 1, tgt_len,
+                                                 src_len).to(dtype)
+        elif len(mask.size()) == 4:
+            mask[mask == 0] = True
+            expanded_mask = mask.to(dtype)
+
+        inverted_mask = 1.0 - expanded_mask
+
+        return inverted_mask.masked_fill(inverted_mask.to(torch.bool),
+                                         torch.finfo(dtype).min)
+
+    def _prepare_decoder_attention_mask(self,
+                                        attention_mask,
+                                        input_shape,
+                                        dtype,
+                                        device,
+                                        past_key_values_length=0):
+        # create causal mask
+        # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+        combined_attention_mask = None
+        if input_shape[-1] > 1:
+            combined_attention_mask = self._make_causal_mask(
+                input_shape,
+                dtype,
+                device=device,
+                past_key_values_length=past_key_values_length,
+            )
+
+        if attention_mask is not None:
+            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+            expanded_attn_mask = self._expand_mask(
+                attention_mask, dtype, tgt_len=input_shape[-1]).to(device)
+            combined_attention_mask = (expanded_attn_mask
+                                       if combined_attention_mask is None else
+                                       expanded_attn_mask +
+                                       combined_attention_mask)
+
+        return combined_attention_mask
+
     def forward(self,
                 enc_input_ids,
                 enc_position_ids,
@@ -507,7 +586,18 @@ class TransformerLanguageModel(MegatronModule):
         else:
             encoder_input = None
 
-        enc_attn_mask = self.get_alibi_mask(encoder_input, self.seq_length)
+        #enc_attn_mask = self.get_alibi_mask(encoder_input, self.seq_length)
+
+        if inference_params is None:
+            batch_size = enc_input_ids.shape[0]
+            enc_attn_mask = self._prepare_decoder_attention_mask(
+                enc_attn_mask, (batch_size, self.seq_length),
+                args.params_dtype, enc_input_ids.device)
+        else:
+            batch_size = enc_input_ids.shape[0]
+            enc_attn_mask = self._prepare_decoder_attention_mask(
+                enc_attn_mask, (batch_size, enc_attn_mask.size()[-2]),
+                args.params_dtype, enc_input_ids.device)
 
         if enc_position_ids is None:
             past_key_values_length = 0

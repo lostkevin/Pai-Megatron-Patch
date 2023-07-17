@@ -178,7 +178,7 @@ megatron_options="  \
         --patch-tokenizer-type BaichuanTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_baichuan.py
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_baichuan13b.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 
