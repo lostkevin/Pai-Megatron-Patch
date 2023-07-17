@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_megatron_baichuan.sh dsw /workspace/Megatron-LM-23.04/ /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 0 fp16 1 1 /mnt/llama-datasets/alpaca_data.json /mnt/baichuan-ckpts/baichuan-13b-base-hf-to-megatron-tp1-pp1/
+# sh run_evaluate_megatron_baichuan.sh dsw /workspace/Megatron-LM-23.04/ /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 0 fp16 1 1 /mnt/baichuan-datasets/alpaca_data.json /mnt/baichuan-ckpts/baichuan-13b-base-hf-to-megatron-tp1-pp1/
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -99,7 +99,7 @@ megatron_options=" \
         --sequence-parallel
         "
 
-run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_baichuan.py
+run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_baichuan13b.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}

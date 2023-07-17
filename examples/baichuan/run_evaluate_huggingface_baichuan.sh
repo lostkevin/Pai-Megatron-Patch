@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_huggingface_baichuan.sh dsw /workspace/Megatron-LM-23.04/ /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 1 fp16 /mnt/llama-datasets/alpaca_data.json /mnt/baichuan-ckpts/baichuan-13b-base
+# sh run_evaluate_huggingface_baichuan.sh dsw /workspace/Megatron-LM-23.04/ /workspace/PAI-Megatron-Patch/ 13B 1 2048 80 1 fp16 /mnt/baichuan-datasets/alpaca_data.json /mnt/baichuan-ckpts/baichuan-13b-base
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -33,7 +33,14 @@ PR=$9
 DATASET_PATH=${10}
 PRETRAIN_CHECKPOINT_PATH=${11}
 
-if [ $MODEL_SIZE = 13B ]; then
+if [ $MODEL_SIZE = 7B ]; then
+
+NUM_LAYERS=32
+HIDDEN_SIZE=4096
+NUM_ATTN_HEADS=32
+INTERMEDIATE_SIZE=11008
+
+elif [ $MODEL_SIZE = 13B ]; then
 
 NUM_LAYERS=40
 HIDDEN_SIZE=5120
@@ -82,7 +89,7 @@ megatron_options=" \
         --patch-tokenizer-type BaichuanTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_baichuan.py
+run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_baichuan13b.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}
