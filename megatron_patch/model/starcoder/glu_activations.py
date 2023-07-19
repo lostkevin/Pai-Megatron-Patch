@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 
 
-# NOTE: logging funcionality commented for now as 
+# NOTE: logging funcionality commented for now as
 #      it is not implemented in this version so far
 
 #from megatron import logging

@@ -388,7 +388,7 @@ class MultiQueryCoreAttention(CoreAttention):
                                   (self.hidden_size_per_partition,)
 
         context_layer = context_layer.view(*new_context_layer_shape)
-        """        
+        """
         num_heads = self.num_heads
 
         q_length = query_layer.size(1)
@@ -396,7 +396,7 @@ class MultiQueryCoreAttention(CoreAttention):
         query_layer = query_layer.reshape(-1, num_heads, q_length, head_dim)
         batch_size = query_layer.size(0)
         query_layer_ = query_layer.reshape(batch_size, num_heads, -1, head_dim)
-        
+
         # fix num_kv
         if not self.num_heads % 71:
             self.num_kv = 1
@@ -879,7 +879,7 @@ class ParallelTransformerLayer(MegatronModule):
             eps=args.layernorm_epsilon,
             no_persist_layer_norm=args.no_persist_layer_norm,
             sequence_parallel=args.sequence_parallel)
-        
+
         # add post_attention_layernorm for falcon-40b
         if self.num_layers == 60:
             self.post_attention_layernorm = LayerNorm(

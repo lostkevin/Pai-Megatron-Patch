@@ -30,8 +30,8 @@ from megatron_patch.tokenizer import get_tokenizer
 class GLM130BDataset(torch.utils.data.Dataset):
     """A class for processing a GLM130B text dataset"""
     def __init__(self, path, tokenizer, max_seq_length, generation_length):
-        """ 
-        Initializes the dataset. 
+        """
+        Initializes the dataset.
         Args:
             path(str): The path of the dataset file.
             tokenizer(object): The tokenizer object.
@@ -51,8 +51,8 @@ class GLM130BDataset(torch.utils.data.Dataset):
         self.process_single_file(self.path)
 
     def process_single_file(self, path):
-        """ 
-        Processes a single dataset file. 
+        """
+        Processes a single dataset file.
         Args:
             path(str): The path of the dataset file.
         """
@@ -93,7 +93,7 @@ class GLM130BDataset(torch.utils.data.Dataset):
         Returns:
             A dictionary containing the following tokens, targets, position_ids, attention_mask and loss_mask.
         """
-        
+
         document_idx = bisect_right(self.weights, idx)
         idx = idx - self.left_weights[document_idx]
         start_idx = idx * self.generation_length
@@ -131,8 +131,8 @@ class GLM130BDataset(torch.utils.data.Dataset):
 class BloomDataset(torch.utils.data.Dataset):
     """A class for processing a Bloom text dataset"""
     def __init__(self, datapaths, tokenizer, max_seq_length):
-        """ 
-        Initializes the dataset. 
+        """
+        Initializes the dataset.
         Args:
             path(str): The path of the dataset file.
             tokenizer(object): The tokenizer object.
@@ -166,7 +166,7 @@ class BloomDataset(torch.utils.data.Dataset):
         Returns:
             A numpy array of length `max_length` containing the contents of `array`, truncated if necessary or padded with zeros.
         """
-    
+
         if len(array) < max_length:
             return np.pad(array, (0, max_length - len(array)),
                           constant_values=tokenizer.eod)
@@ -177,7 +177,7 @@ class BloomDataset(torch.utils.data.Dataset):
         """
         Process a single file containing prompt-answer pairs and return a list of samples.
         """
-        
+
         print(' > Processing {} ...'.format(filename))
         samples = []
         total = 0
@@ -200,7 +200,7 @@ class BloomDataset(torch.utils.data.Dataset):
         """
         Convert a single sample containing a prompt-answer pair into a format suitable for GPT training.
         """
-        
+
         tokens = tokenizer(sample['prompt'])
         input_ids = tokens['input_ids']
         input_ids = self.truncate(tokenizer, input_ids, max_seq_length + 1)
@@ -211,8 +211,8 @@ class BloomDataset(torch.utils.data.Dataset):
 class LLamaDataset(torch.utils.data.Dataset):
     """A class for processing a LLama text dataset"""
     def __init__(self, path, tokenizer, max_padding_length):
-        """ 
-        Initializes the dataset. 
+        """
+        Initializes the dataset.
         Args:
             path(str): The path of the dataset file.
             tokenizer(object): The tokenizer object.
@@ -299,7 +299,7 @@ class LLamaDataset(torch.utils.data.Dataset):
         Returns:
             dict: a dictionary containing the input_ids and labels for the examples
         """
-    
+
         examples = [s + t for s, t in zip(sources, targets)]
         examples_tokenized, sources_tokenized = [
             self.tokenize(strings, tokenizer)
@@ -321,7 +321,7 @@ class LLamaDataset(torch.utils.data.Dataset):
         Returns:
             dict: a dictionary containing the input_ids and labels for the tokenized strings
         """
-    
+
         tokenized_list = [
             tokenizer(
                 text,

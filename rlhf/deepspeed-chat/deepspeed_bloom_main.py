@@ -351,7 +351,7 @@ def main():
         print_rank_0(
             f"chosen_last_scores (higher is better) : {reward_score}, acc (higher is better) : {acc}",
             args.global_rank)
-        
+
         rm_model.tput_timer.update_epoch_count()
 
     if args.output_dir is not None:

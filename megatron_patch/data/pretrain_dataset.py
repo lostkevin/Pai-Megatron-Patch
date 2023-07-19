@@ -48,8 +48,8 @@ class GLM130BDataset(torch.utils.data.Dataset):
         self.process_single_file(self.path)
 
     def process_single_file(self, path):
-        """ 
-        Processes a single dataset file. 
+        """
+        Processes a single dataset file.
         Args:
             path(str): The path of the dataset file.
         """
@@ -235,7 +235,7 @@ class LLamaDataset(torch.utils.data.Dataset):
             datapath (str): The path of the dataset.
             max_padding_length (int): The maximum length to pad the input sequences to.
         """
-        
+
         self.IGNORE_INDEX = -100
         self.tokenizer = get_tokenizer()
         self.max_padding_length = max_padding_length
@@ -317,7 +317,7 @@ class LLamaDataset(torch.utils.data.Dataset):
         Returns:
             Dict[str, Any]: A dictionary containing input_ids, labels, input_ids_lens and labels_lens.
         """
-        
+
         tokenized_list = [
             tokenizer(
                 text,
@@ -452,7 +452,7 @@ class StarcoderDataset(torch.utils.data.Dataset):
             datapath (str): The path of the dataset.
             max_padding_length (int): The maximum length to pad the input sequences to.
         """
-        
+
         self.IGNORE_INDEX = -100
         self.tokenizer = get_tokenizer()
         self.max_padding_length = max_padding_length
@@ -534,7 +534,7 @@ class StarcoderDataset(torch.utils.data.Dataset):
         Returns:
             Dict[str, Any]: A dictionary containing input_ids, labels, input_ids_lens and labels_lens.
         """
-        
+
         tokenized_list = [
             tokenizer(
                 text,
@@ -594,7 +594,7 @@ def build_pretrain_glm130b_datasets_from_idxmap(data_prefix,
         skip_warmup (bool): whether to skip the warmup period.
         return_doc_ids (bool): whether to return document IDs along with the input and target sequences.
     Returns:
-        Tuple[Optional[GLM130BIdxMapDataset], Optional[GLM130BIdxMapDataset], Optional[GLM130BIdxMapDataset]]: 
+        Tuple[Optional[GLM130BIdxMapDataset], Optional[GLM130BIdxMapDataset], Optional[GLM130BIdxMapDataset]]:
         The train, validation, and test datasets respectively wrapped in an optional class.
     """
     data_prefix = data_prefix[0]

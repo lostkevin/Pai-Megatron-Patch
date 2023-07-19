@@ -83,6 +83,7 @@ class GPTModel(MegatronModule):
                 input_ids,
                 position_ids,
                 attention_mask,
+                action_mask,
                 labels=None,
                 tokentype_ids=None,
                 inference_params=None):
@@ -90,6 +91,7 @@ class GPTModel(MegatronModule):
         lm_output = self.language_model(input_ids,
                                         position_ids,
                                         attention_mask,
+                                        action_mask,
                                         inference_params=inference_params)
 
         if self.post_process:

@@ -34,7 +34,7 @@ cd /mnt/workspace/
 mkdir bloom-datasets
 cd bloom-datasets
 wget https://atp-modelzoo.oss-cn-hangzhou.aliyuncs.com/release/datasets/WuDaoCorpus2.0_base_sample.tgz
-tar zxvf WuDaoCorpus2.0_base_sample.tgz 
+tar zxvf WuDaoCorpus2.0_base_sample.tgz
 ```
 2. 对Wudao数据执行数据集清洗并打包成zst压缩文件格式。具体流程可参考如下的bash脚本。
 ```bash
@@ -74,7 +74,7 @@ MEGATRON_PATH=$1                   # 设置开源Megatron的代码路径
 MEGATRON_PATCH_PATH=$2             # 设置Megatron Patch的代码路径
 input_data_dir=$3                  # 打包后的wudao数据集的文件夹路径
 tokenizer=$4                       # bloombpe
-output_data_dir=$5                 # 输出到bin和idx文件目录  
+output_data_dir=$5                 # 输出到bin和idx文件目录
 ```
 运行示例如下所示：
 ```bash
@@ -490,7 +490,7 @@ cd /mnt/workspace/hf-to-megatron/bloom
 sh model_convertor_huggingface_megatron.sh \
 /root/Megatron-LM        \
 /mnt/workspace/bloom-ckpts/bloom7b1-hf2mg-tp1-pp1/release  \
-/mnt/workspace/bloom-ckpts/bloom7b1-mg2hf-tp1-pp1  
+/mnt/workspace/bloom-ckpts/bloom7b1-mg2hf-tp1-pp1
 1  \
 1  \
 true

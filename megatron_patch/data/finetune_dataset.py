@@ -28,8 +28,8 @@ class AbstractDataset(ABC, Dataset):
     """GLUE base dataset class."""
     def __init__(self, data_dir, data_name, file_name, tokenizer,
                  max_seq_length):
-        """ 
-        Initializes the dataset. 
+        """
+        Initializes the dataset.
         Args:
             data_dir (str): The directory containing the dataset files.
             data_name (str): The name of the dataset.
@@ -83,7 +83,7 @@ class AbstractDataset(ABC, Dataset):
                                              max_seq_length, cls_id, sep_id,
                                              pad_id):
         """
-        Builds the token types and paddings based on the input text ids, 
+        Builds the token types and paddings based on the input text ids,
         and trims and pads the sequences if necessary.
         Args:
             text_a_ids (list[int]): The token ids of the input text A.
@@ -152,7 +152,7 @@ class AbstractDataset(ABC, Dataset):
 
     def build_sample(self, ids, types, paddings, label, unique_id):
         """
-        Converts the token ids, types, paddings, label, and unique ID to a NumPy array and 
+        Converts the token ids, types, paddings, label, and unique ID to a NumPy array and
         returns a sample to be consumed by the batch producer.
         Args:
             ids (list[int]): The token ids.
@@ -245,7 +245,7 @@ class GPTDataset(AbstractDataset):
         Returns:
             str: The cleaned text.
         """
-    
+
         httpcom = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|['
                              r'!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
         raw = httpcom.sub('', raw)
@@ -762,4 +762,3 @@ class FalconDataset(GPTDataset):
         }
 
         return train_sample
-    

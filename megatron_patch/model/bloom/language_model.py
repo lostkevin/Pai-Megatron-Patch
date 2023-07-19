@@ -448,6 +448,7 @@ class TransformerLanguageModel(MegatronModule):
                 enc_input_ids,
                 enc_position_ids,
                 enc_attn_mask,
+                enc_action_mask,
                 dec_input_ids=None,
                 dec_position_ids=None,
                 dec_attn_mask=None,
@@ -472,6 +473,7 @@ class TransformerLanguageModel(MegatronModule):
                 encoder_output = self.encoder(
                     encoder_input,
                     enc_attn_mask,
+                    enc_action_mask,
                     inference_params=inference_params)
             else:
                 encoder_output = self.encoder_hidden_state

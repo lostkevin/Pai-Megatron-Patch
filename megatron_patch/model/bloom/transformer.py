@@ -472,7 +472,7 @@ class ParallelAttention(MegatronModule):
 
         hidden_states = tensor_parallel.checkpoint(custom_forward, False,
                                                    query_layer, key_layer,
-                                                   value_layer, attention_mask)
+                                                   value_layer, attention_mask, alibi)
 
         return hidden_states
 
@@ -581,11 +581,11 @@ class ParallelAttention(MegatronModule):
         if not self.use_flash_attn:
             if self.checkpoint_core_attention:
                 context_layer = self._checkpointed_attention_forward(
-                    query_layer, key_layer, value_layer, attention_mask, alibi)
+                    query_layer, key_layer, value_layer, attention_mask, alibi=alibi)
             else:
                 context_layer = self.core_attention(query_layer, key_layer,
                                                     value_layer,
-                                                    attention_mask, alibi)
+                                                    attention_mask, alibi=alibi)
         else:
             q, k, v = [
                 rearrange(x, 's b ... -> b s ...').contiguous()
@@ -745,15 +745,44 @@ class ParallelTransformerLayer(MegatronModule):
         alibi = alibi.repeat(batch_size, 1, 1)
         return alibi
 
+    def build_alibi_tensor(self, attention_mask, num_heads, dtype):
+        batch_size, seq_length = attention_mask.shape
+        closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
+        base = torch.tensor(
+            2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
+        )
+        powers = torch.arange(1, 1 + closest_power_of_2, device=attention_mask.device, dtype=torch.int32)
+        slopes = torch.pow(base, powers)
+        if closest_power_of_2 != num_heads:
+            extra_base = torch.tensor(
+                2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
+            )
+            num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
+            extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, device=attention_mask.device, dtype=torch.int32)
+            slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
+        arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[:, None, :]
+        alibi = slopes[..., None] * arange_tensor
+        tp_world_size = mpu.get_tensor_model_parallel_world_size()
+        tp_index = mpu.get_tensor_model_parallel_rank()
+        tp_num_heads = num_heads // tp_world_size
+        alibi = alibi[:, (tp_num_heads*tp_index):(tp_num_heads*tp_index+tp_num_heads), :]
+        alibi = alibi.reshape(tp_num_heads*batch_size, 1, -1).to(dtype)
+        return alibi
+
     def forward(self,
                 hidden_states,
                 attention_mask,
+                action_mask,
                 encoder_output=None,
                 enc_dec_attn_mask=None,
                 inference_params=None):
         # hidden_states: [s, b, h]
         # Layer norm at the beginning of the transformer layer.
         layernorm_output = self.input_layernorm(hidden_states)
+        args = get_args()
+        
+        self.alibi = self.build_alibi_tensor(action_mask, args.num_attention_heads, args.params_dtype).cuda()
+
         # Self attention.
         attention_output, attention_bias = \
             self.self_attention(
@@ -1125,6 +1154,7 @@ class ParallelTransformer(MegatronModule):
     def forward(self,
                 hidden_states,
                 attention_mask,
+                action_mask,
                 encoder_output=None,
                 enc_dec_attn_mask=None,
                 inference_params=None):
@@ -1176,6 +1206,7 @@ class ParallelTransformer(MegatronModule):
                     layer = self._get_layer(index)
                     hidden_states = layer(hidden_states,
                                           attention_mask,
+                                          action_mask,
                                           encoder_output=encoder_output,
                                           enc_dec_attn_mask=enc_dec_attn_mask,
                                           inference_params=inference_params)

@@ -573,7 +573,7 @@ class ParallelAttention(MegatronModule):
         q_len, bsz, _ = hidden_states.size()
         # single: key_layer: torch.Size([1, 32, 80, 128])
         kv_seq_len = key_layer.shape[-2]
-        
+
 
 
         query_layer = query_layer * (self.hidden_size_per_attention_head**-0.5)
