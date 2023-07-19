@@ -203,4 +203,3 @@ if __name__ == "__main__":
         eval_prompts=val_prompts[0:1000],  # sampling 1000 validation prompts for evaluation speed in training
         config=config,
     )
-    

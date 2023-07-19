@@ -67,7 +67,7 @@ class BLOOMRewardModel(nn.Module):
                 continue
 
             # Check if there is any padding otherwise take length of sequence
-            
+
             c_inds = (chosen[i] == self.PAD_ID).nonzero()
             c_ind = c_inds[0].item() if len(c_inds) > 0 else chosen.shape[1]
             r_inds = (rejected[i] == self.PAD_ID).nonzero()

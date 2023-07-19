@@ -99,7 +99,7 @@ def get_tasks_args(parser):
     group.add_argument('--patch-tokenizer-type',
                        type=str,
                        help='patch-tokenizer-type')
-    
+
     group.add_argument('--glu-activation',
                        type=str,
                        help='GLU activations to use.')

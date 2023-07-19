@@ -89,11 +89,11 @@ def get_tasks_args(parser):
     group.add_argument('--patch-tokenizer-type',
                        type=str,
                        help='patch-tokenizer-type')
-    
+
     group.add_argument('--glu-activation',
                        type=str,
                        help='GLU activations to use.')
-                       
+
     group.add_argument('--attention-head-type', type=str, default=None,
                        choices=['multihead', 'multiquery'],
                        help='Type of attention heads. `multihead` is the standard multi-head attention.'
@@ -135,7 +135,7 @@ def forward_step(data_iterator, model):
     input_ids = data_iterator['input_ids'].long().cuda().contiguous()
     labels = input_ids[:, 1:].contiguous()
     tokens = input_ids[:, :-1].contiguous()
-    
+
     args = get_args()
 
     attention_mask, loss_mask, position_ids = \

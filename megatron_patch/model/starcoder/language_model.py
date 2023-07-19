@@ -172,7 +172,7 @@ class Embedding(MegatronModule):
                 self.init_method(self.position_embeddings.weight)
         else:
             self.position_embeddings = None
-        
+
         # Token type embedding.
         # Add this as an optional field that can be added through
         # method call so we can load a pretrain model without
@@ -187,7 +187,7 @@ class Embedding(MegatronModule):
         else:
             self.tokentype_embeddings = None
 
-        self.fp32_residual_connection = args.fp32_residual_connection 
+        self.fp32_residual_connection = args.fp32_residual_connection
         self.sequence_parallel = args.sequence_parallel
         # Embeddings dropout
         self.embedding_dropout = torch.nn.Dropout(embedding_dropout_prob)

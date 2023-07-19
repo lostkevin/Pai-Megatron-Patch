@@ -66,7 +66,7 @@ except ImportError:
 """
 
 class DropPath(MegatronModule):
-    """Drop paths (Stochastic Depth) per sample 
+    """Drop paths (Stochastic Depth) per sample
     (when applied in main path of residual blocks).
     """
 
@@ -174,7 +174,7 @@ class SwitchMLP(MegatronModule):
         output_total = torch.empty_like(hidden_states)
         output_bias_total = torch.empty_like(hidden_states)
         #TODO (rprenger) This does each expert in serial, but it could be parallelized
-        
+
         for expert_num, expert in enumerate(self.experts):
             local_indices = (max_ind == expert_num).nonzero()
             hidden = hidden_states[local_indices,:]
@@ -589,7 +589,7 @@ class ParallelAttention(MegatronModule):
         else:
             self.core_attention = MultiQueryCoreAttention(self.layer_number, self.attn_mask_type)
         self.checkpoint_core_attention = args.recompute_granularity == 'selective'
-        
+
         if self.use_flash_attn:
             if flash_attn_unpadded_func is None:
                 raise ImportError('FlashAttention is not installed, please install with '
@@ -602,7 +602,7 @@ class ParallelAttention(MegatronModule):
                 ('FlashAttention does not support alibi positional embeddings yet')
             if rearrange is None:
                 raise ImportError('einops is not installed, please install with pip install einops')
-            
+
             if self.checkpoint_core_attention:
                 print_rank_0("  Warning, using selective recomputation with flash-attn: this is already handled in the "
                              "flash-attn library and has no effect.")
@@ -1047,12 +1047,12 @@ class ParallelTransformerLayer(MegatronModule):
         slopes = torch.Tensor(get_slopes(num_attention_heads))
         alibi = slopes.unsqueeze(1).unsqueeze(1) * torch.arange(max_seq_len).unsqueeze(0).unsqueeze(0).expand(
             num_attention_heads, -1, -1)
-        
+
         #Select the part of the tensor that corresponds to our tensor parallel index.
         tp_world_size = mpu.get_tensor_model_parallel_world_size()
         tp_index = mpu.get_tensor_model_parallel_rank()
         alibi = alibi.reshape((tp_world_size, -1, *alibi.shape[1:]))[tp_index]
-        
+
         alibi = alibi.repeat(batch_size, 1, 1)
         return alibi
 
@@ -1139,7 +1139,7 @@ class ParallelTransformer(MegatronModule):
     def __init__(self, init_method, output_layer_init_method,
                  layer_type=LayerType.encoder,
                  self_attn_mask_type=AttnMaskType.padding,
-                  post_layer_norm=True, 
+                  post_layer_norm=True,
                  pre_process=True, post_process=True,
                  drop_path_rate=0.0):
         super(ParallelTransformer, self).__init__()
@@ -1320,7 +1320,7 @@ class ParallelTransformer(MegatronModule):
         #   However, we don't explicitly check mbs == 1 here because
         #   make_viewless_tensor() has negligible overhead when its input
         #   is already viewless.
-        # 
+        #
         # - For the 'else' case above, calling make_viewless_tensor() here is
         #   likely redundant, since p2p_communication.py (likely originator)
         #   already creates viewless tensors. That said, make_viewless_tensor()
