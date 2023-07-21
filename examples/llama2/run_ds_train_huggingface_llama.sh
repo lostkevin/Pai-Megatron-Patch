@@ -1,11 +1,8 @@
 #!/bin/bash
-# bash run_ds_train_huggingface_llama.sh dsw /root/Megatron-LM /workspace/PAI-Megatron-Patch/ 7B 1 2 1e-5 2048 fp16 2 true /mnt/llama-datasets/wudao_train.jsonl /mnt/llama-datasets/wudao_valid.jsonl /mnt/llama2-ckpts/llama-2-7b-hf 2 /mnt/output_llama2
+# bash run_ds_train_huggingface_llama.sh dsw 7B 1 2 1e-5 2048 fp16 2 true /mnt/llama-datasets/wudao_train.jsonl /mnt/llama-datasets/wudao_valid.jsonl /mnt/llama2-ckpts/llama-2-7b-hf 2 /mnt/output_llama2
 
 set -e
 ENV=$1
-MEGATRON_PATH=$2
-MEGATRON_PATCH_PATH=$3
-export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
@@ -25,19 +22,19 @@ fi
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-MODEL_SIZE=$4
-BATCH_SIZE=$5
-GA_STEPS=$6
-LR=$7
-SEQ_LEN=$8
-PR=$9
-ZERO=${10}
-GC=${11}
-TRAIN_DATASET_PATH=${12}
-VALID_DATASET_PATH=${13}
-PRETRAIN_CHECKPOINT_PATH=${14}
-EPOCH=${15}
-OUTPUT_BASEPATH=${16}
+MODEL_SIZE=$2
+BATCH_SIZE=$3
+GA_STEPS=$4
+LR=$5
+SEQ_LEN=$6
+PR=$7
+ZERO=$8
+GC=$9
+TRAIN_DATASET_PATH=${10}
+VALID_DATASET_PATH=${11}
+PRETRAIN_CHECKPOINT_PATH=${12}
+EPOCH=${13}
+OUTPUT_BASEPATH=${14}
 
 if [ $MODEL_SIZE = 7B ]; then
 
