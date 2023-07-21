@@ -397,7 +397,7 @@ class FlashSelfAttention(torch.nn.Module):
         return output
 
 
-class ParallelAttention(MegatronModule):
+class ParallelAttention_bak(MegatronModule):
     """Parallel self-attention layer abstract class.
 
     Self-attention layer takes input with size [s, b, h]
@@ -660,7 +660,7 @@ class ParallelAttention(MegatronModule):
 
         return output, bias
 
-class ParallelAttention_bak(MegatronModule):
+class ParallelAttention(MegatronModule):
     """Parallel self-attention layer abstract class.
 
     Self-attention layer takes input with size [s, b, h]
