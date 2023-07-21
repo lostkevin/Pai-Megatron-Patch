@@ -378,12 +378,12 @@ def convert_checkpoint_from_transformers_to_megatron(args):
         if args.model_name == "llama-13b" or args.model_name == "llama-30b":
             num_checkpoints = len(sub_dirs) - 2
             state_dict = merge_transformers_sharded_states_13b(args.load_path, num_checkpoints)
-        elif args.model_name == "llama-7b" or args.model_name == "llama-65b":
+        elif args.model_name == "llama-7b" or args.model_name == "llama-65b" or args.model_name == "llama2-70b":
             num_checkpoints = len(sub_dirs) - 1
             state_dict = merge_transformers_sharded_states_7b(args.load_path, num_checkpoints)
+
     merged_qkv_state_dict = {}
     config = GPT2Config.from_pretrained(args.load_path)
-
     for layer_id in range(config.num_hidden_layers):
         q_name = 'model.layers.'+str(layer_id)+'.self_attn.q_proj.weight'
         k_name = 'model.layers.' + str(layer_id) + '.self_attn.k_proj.weight'
@@ -564,15 +564,15 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                 # handle attention K, V, Q weights
                 elif op_name.startswith("self_attn.query_key_value") and weight == "weight":
                     # transformers stores D X (3*D) but Megatron-LM expects (3*D) X D.
-                    params = transformers_to_megatron_fix_query_key_value_ordering(
-                        params,
-                        3.0,
-                        3,
-                        heads,
-                        hidden_size_per_head,
-                    )
+                    if args.model_name != "llama2-70b":
+                        params = transformers_to_megatron_fix_query_key_value_ordering(
+                            params,
+                            3.0,
+                            3,
+                            heads,
+                            hidden_size_per_head,
+                        )
                     layer_name = f"layers.{layer}.self_attention.query_key_value.{weight}"
-
 
                 # handle attention and mlp weights
                 elif weight == "weight":
