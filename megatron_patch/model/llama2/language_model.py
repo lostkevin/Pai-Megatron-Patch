@@ -22,6 +22,7 @@ from megatron.model.module import MegatronModule
 from megatron.model.utils import (get_linear_layer, init_method_normal,
                                   scaled_init_method_normal)
 
+from megatron.model.rotary_pos_embedding import RotaryEmbedding
 from .transformer import ParallelTransformer
 
 
@@ -370,6 +371,22 @@ class TransformerLanguageModel(MegatronModule):
                                        self.num_tokentypes)
             self._embedding_key = 'embedding'
 
+        # Rotary positional embeddings
+        self.use_rotary_position_embeddings = \
+            args.use_rotary_position_embeddings
+        if args.use_rotary_position_embeddings:
+            self.seq_length = args.seq_length
+            rotary_dim = args.hidden_size // args.num_attention_heads \
+                if args.kv_channels is None else args.kv_channels
+
+            if args.rotary_percent < 1.0:
+                rotary_dim = int(rotary_dim * args.rotary_percent)
+
+            # partial rotary embeddings, which is better than full rotary
+            # Wang and Komatsuzaki et al
+            # https://github.com/kingoflolz/mesh-transformer-jax/
+            self.rotary_pos_emb = RotaryEmbedding(rotary_dim)
+
         # Transformer.
         # Encoder (usually set to True, False if part of an encoder-decoder
         # architecture and in encoder-only stage).
@@ -567,6 +584,15 @@ class TransformerLanguageModel(MegatronModule):
                                         device=device)
             enc_position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
 
+        # Rotary positional embeddings
+        rotary_pos_emb = None
+        if self.use_rotary_position_embeddings:
+            if inference_params is not None:
+                rotary_pos_emb = \
+                    self.rotary_pos_emb(inference_params.max_sequence_len)
+            else:
+                rotary_pos_emb = self.rotary_pos_emb(self.seq_length)
+
         # Run encoder.
         if enc_hidden_states is None:
             if self.encoder is not None:
@@ -574,7 +600,8 @@ class TransformerLanguageModel(MegatronModule):
                     encoder_input,
                     enc_position_ids,
                     enc_attn_mask,
-                    inference_params=inference_params)
+                    inference_params=inference_params,
+                    rotary_pos_emb=rotary_pos_emb)
             else:
                 encoder_output = self.encoder_hidden_state
         else:
