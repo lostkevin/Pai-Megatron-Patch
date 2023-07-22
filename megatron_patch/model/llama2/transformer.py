@@ -28,8 +28,6 @@ from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.module import MegatronModule
 from megatron.model.utils import attention_mask_func, erf_gelu, openai_gelu
 
-# from megatron.model.rotary_pos_embedding import apply_rotary_pos_emb
-# from megatron.model.rotary_pos_embedding import RotaryEmbedding
 from .positional_embeddings import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 try:
@@ -69,57 +67,6 @@ def _args_to_kwargs():
     }
     return common_kwargs
 
-def rotate_half(x):
-    x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]
-    return torch.cat((-x2, x1), dim=x1.ndim - 1)  # dim=-1 triggers a bug in torch < 1.8.0
-
-class RotaryEmbedding(torch.nn.Module):
-    """Implementation of RotaryEmbedding from GPT-NeoX.
-    This implementation is design to operate on queries and keys that are compatible with
-    [batch_size, n_heads_per_partition, seq_len, head_dim] (e.g. MinGPTAttention format).
-    """
-
-    def __init__(
-        self,
-        head_dim: int,
-        base=10000,
-    ):
-        super().__init__()
-        inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2).float() / head_dim))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
-        self.head_dim = head_dim
-        self.seq_len_cached = None
-        self.batch_size_cached = None
-        self.cos_cached: torch.Tensor | None = None
-        self.sin_cached: torch.Tensor | None = None
-
-    def cos_sin(
-        self,
-        seq_len: int,
-        device="cuda",
-        dtype=torch.bfloat16,
-    ) -> torch.Tensor:
-        if seq_len != self.seq_len_cached:
-            self.seq_len_cached = seq_len
-            t = torch.arange(seq_len, device=device).type_as(self.inv_freq)
-            freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-            emb = torch.cat((freqs, freqs), dim=-1).to(device)
-
-            if dtype in [torch.float16, torch.bfloat16]:
-                emb = emb.float()
-
-            self.cos_cached = emb.cos()[None, :, :]
-            self.sin_cached = emb.sin()[None, :, :]
-
-            self.cos_cached = self.cos_cached.type(dtype)
-            self.sin_cached = self.sin_cached.type(dtype)
-
-        return self.cos_cached, self.sin_cached
-
-    def forward(self, q, k):
-        batch, seq_len, head_dim = q.shape
-        cos, sin = self.cos_sin(seq_len, q.device, q.dtype)
-        return (q * cos) + (rotate_half(q) * sin), (k * cos) + (rotate_half(k) * sin)
 
 class LlamaRMSNorm(torch.nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
@@ -396,8 +343,7 @@ class FlashSelfAttention(torch.nn.Module):
         output = rearrange(output, '(b s) ... -> b s ...', b=batch_size)
         return output
 
-
-class ParallelAttention_bak(MegatronModule):
+class ParallelAttention_70b(MegatronModule):
     """Parallel self-attention layer abstract class.
 
     Self-attention layer takes input with size [s, b, h]
@@ -464,7 +410,13 @@ class ParallelAttention_bak(MegatronModule):
         self.checkpoint_core_attention = \
             args.recompute_granularity == 'selective'
 
-        self.rotary_emb = RotaryEmbedding(self.head_dim)
+        if self.position_embedding_type == 'rotary':
+            dim = self.hidden_size_per_attention_head
+            self.rotary_emb = LlamaRotaryEmbedding(
+                dim, args.max_position_embeddings)
+            # self.rotary_emb = RotaryEmbedding(dim)
+        else:
+            self.rotary_emb = None
 
         self.multi_query = True
         self.num_kv = self.n_head_kv
@@ -1010,13 +962,23 @@ class ParallelTransformerLayer(MegatronModule):
             no_persist_layer_norm=args.no_persist_layer_norm,
             sequence_parallel=args.sequence_parallel)
 
-        # Self attention.
-        self.self_attention = ParallelAttention(
-            init_method,
-            output_layer_init_method,
-            layer_number,
-            attention_type=AttnType.self_attn,
-            attn_mask_type=self_attn_mask_type)
+        if args.num_layers == 80:
+            self.self_attention = ParallelAttention_70b(
+                init_method,
+                output_layer_init_method,
+                layer_number,
+                attention_type=AttnType.self_attn,
+                attn_mask_type=self_attn_mask_type)
+
+        else:
+            self.self_attention = ParallelAttention(
+                init_method,
+                output_layer_init_method,
+                layer_number,
+                attention_type=AttnType.self_attn,
+                attn_mask_type=self_attn_mask_type)
+
+
         self.hidden_dropout = args.hidden_dropout
         self.bias_dropout_fusion = args.bias_dropout_fusion
 
