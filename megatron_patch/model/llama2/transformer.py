@@ -355,7 +355,7 @@ class ParallelAttention_70b(MegatronModule):
                  layer_number,
                  attention_type=AttnType.self_attn,
                  attn_mask_type=AttnMaskType.padding):
-        super(ParallelAttention, self).__init__()
+        super(ParallelAttention_70b, self).__init__()
         args = get_args()
         self.layer_number = max(1, layer_number)
         self.attention_type = attention_type
