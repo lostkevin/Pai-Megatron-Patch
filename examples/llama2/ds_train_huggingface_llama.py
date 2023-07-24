@@ -199,8 +199,18 @@ def main():
     transformers.set_seed(training_args.seed)
 
     data_files = {}
-    file_names = [os.path.join(args.train_data, f) for f in os.listdir(args.train_data)]
-    data_files["train"] = file_names
+    if os.path.isdir(args.train_data):
+        file_names = [os.path.join(args.train_data, f) for f in os.listdir(args.train_data)]
+        data_files["train"] = file_names
+    else:
+        data_files["train"] = args.train_data
+
+    if os.path.isdir(args.valid_data):
+        file_names = [os.path.join(args.valid_data, f) for f in os.listdir(args.valid_data)]
+        data_files["validation"] = file_names
+    else:
+        data_files["validation"] = args.valid_data
+
     raw_datasets = load_dataset(
         'json',
         data_files=data_files,
