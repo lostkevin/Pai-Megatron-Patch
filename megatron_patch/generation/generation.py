@@ -18,15 +18,19 @@ from megatron_patch.tokenizer import get_tokenizer
 
 
 def score_and_return_on_first_stage(model, tokens, lengths):
-    """Function for just scoring.
-    Arguments:
+    """
+    Function for just scoring.
+
+    Args:
         model: no interleaving is supported.
         tokens: prompt tokens extended to be of size [b, max_prompt_length]
         lengths: original prompt length, size: [b]
     Note: Outside of model, other parameters only need to be available on
           rank 0.
+
     Outputs:
         output_log_probs: log probability of the selected tokens. size: [b, s]
+
     """
 
     args = get_args()
@@ -116,8 +120,10 @@ def generate_tokens_probs_and_return_on_first_stage(
         stop_on_double_eol=False,
         stop_on_eol=False,
         prevent_newline_after_colon=True):
-    """Main token generation function.
-    Arguments:
+    """
+    Main token generation function.
+
+    Args:
         model: no interleaving is supported.
         tokens: prompt tokens extended to be of size [b, max-sequence-length]
         lengths: original prompt length, size: [b]
@@ -133,8 +139,10 @@ def generate_tokens_probs_and_return_on_first_stage(
         use_eod_token_for_early_termination: if True, do early termination if
             all the sequences have reached this token.
         prevent_newline_after_colon: if True, it will disable generating new line \n after :
+
     Note: Outside of model, other parameters only need to be available on
           rank 0.
+          
     Outputs: Note that is size is adjusted to a lower value than
              max-sequence-length if generation is terminated early.
         tokens: prompt and generated tokens. size: [b, :]

@@ -11,7 +11,19 @@ from megatron_patch.tokenizer import get_tokenizer
 
 def detokenize_generations(tokens_gpu_tensor, lengths_gpu_tensor,
                            return_segments):
-    """Detokenize the generated tokens."""
+    """
+    Detokenize the generated tokens.
+
+    Args:
+        tokens_gpu_tensor (torch.Tensor): The generated tokens as a GPU tensor.
+        lengths_gpu_tensor (torch.Tensor): The lengths of the generated tokens as a GPU tensor.
+        return_segments (bool): Whether to return the tokenized segments or not.
+
+    Returns:
+        tuple: A tuple containing the generated tokens, the detokenized generations,
+                and optionally the tokenized segments.
+
+    """
 
     tokenizer = get_tokenizer()
     args = get_args()
@@ -47,7 +59,19 @@ def tokenize_prompts(prompts=None,
                      tokens_to_generate=None,
                      add_BOS=None,
                      rank=0):
-    """Tokenize prompts and make them avaiable on all ranks."""
+    """
+    Tokenize prompts and make them avaiable on all ranks.
+
+    Args:
+        prompts (list): List of prompts to be tokenized.
+        tokens_to_generate (int): Number of tokens to generate.
+        add_BOS (bool): Whether to add the BOS token or not.
+        rank (int): Rank of the process. Only the process with this rank will tokenize the prompts.
+
+    Returns:
+        tuple: A tuple containing the tokenized prompts and their lengths.
+
+    """
 
     # On all ranks set to None so we can pass them to functions
     sizes_list = None
@@ -85,12 +109,22 @@ def tokenize_prompts(prompts=None,
 
 
 def _tokenize_prompts_and_batch(prompts, tokens_to_generate, add_BOS):
-    """Given a set of prompts and number of tokens to generate:
+    """
+    Given a set of prompts and number of tokens to generate:
         - tokenize prompts
         - set the sequence length to be the max of length of prompts
           plus the number of tokens we would like to generate
         - pad all the sequences to this length so we can convert them
           into a 2D tensor.
+
+    Args:
+        prompts (list): List of prompts to be tokenized.
+        tokens_to_generate (int): Number of tokens to generate.
+        add_BOS (bool): Whether to add the BOS token or not.
+    
+    Returns:
+        tuple: A tuple containing the tokenized prompts and their lengths.
+        
     """
 
     # Tokenize all the prompts.

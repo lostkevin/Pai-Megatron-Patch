@@ -27,8 +27,35 @@ def generate_and_post_process(model,
                               stop_on_eol=False,
                               prevent_newline_after_colon=False,
                               random_seed=-1):
-    """Run inference and post-process outputs, i.e., detokenize,
-    move to cpu and convert to list."""
+    """
+    Run inference and post-process outputs, i.e., detokenize,
+    move to cpu and convert to list.
+
+    Args:
+        model (torch.nn.Module): The model used for text generation.
+        prompts (List[str], optional): A list of prompts to generate text from.
+        tokens_to_generate (int): The maximum number of tokens to generate.
+        return_output_log_probs (bool): A flag indicating whether to return the output log probabilities for each generated token.
+        top_k_sampling (int): The value of k for top-k sampling.
+        top_p_sampling (float): The value of p for top-p sampling.
+        top_p_decay (float): The amount by which to decay the value of p for each token generated.
+        top_p_bound (float): The minimum value of p for top-p sampling.
+        temperature (float): The temperature value to apply during sampling.
+        add_BOS (bool): A flag indicating whether to add a beginning-of-sentence token to the generated output.
+        use_eod_token_for_early_termination (bool): A flag indicating whether to use the end-of-document token for early termination.
+        stop_on_double_eol (bool): A flag indicating whether to stop generating text when a double end-of-line token is generated.
+        stop_on_eol (bool): A flag indicating whether to stop generating text when an end-of-line token is generated.
+        prevent_newline_after_colon (bool): A flag indicating whether to prevent newline characters after a colon.
+        random_seed (int): The random seed to use for text generation.
+
+    Returns:
+        Tuple[List[str], List[str], List[List[float]], List[int]]: A tuple containing the following elements:
+            - prompts_plus_generations (List[str]): A list of prompts followed by the generated text.
+            - prompts_plus_generations_segments (List[str]): A list of segments corresponding to each prompt and generated text.
+            - output_log_probs (List[List[float]]): The output log probabilities for each generated token (if return_output_log_probs is True).
+            - tokens (List[int]): The generated tokens.
+            
+    """
 
     # Main inference.
     tokens, lengths, output_log_probs = generate(
@@ -80,12 +107,32 @@ def generate(model,
              stop_on_eol=False,
              prevent_newline_after_colon=False,
              random_seed=-1):
-    """Given prompts and input parameters, run inference and return:
-       tokens: prompts plus the generated tokens.
-       lengths: length of the prompt + generations. Note that we can
-           discard tokens in the tokens tensor that are after the
-           corresponding length.
-       output_log_probs: log probs of the tokens.
+    """
+    Given prompts and input parameters, run inference and return the generated tokens, 
+    lengths, and output log probabilities.
+
+    Args:
+        model (torch.nn.Module): The model used for text generation.
+        prompts (List[str], optional): A list of prompts to generate text from.
+        tokens_to_generate (int): The maximum number of tokens to generate.
+        return_output_log_probs (bool): A flag indicating whether to return the output log probabilities for each generated token.
+        top_k_sampling (int): The value of k for top-k sampling.
+        top_p_sampling (float): The value of p for top-p sampling.
+        top_p_decay (float): The amount by which to decay the value of p for each token generated.
+        top_p_bound (float): The minimum value of p for top-p sampling.
+        temperature (float): The temperature value to apply during sampling.
+        add_BOS (bool): A flag indicating whether to add a beginning-of-sentence token to the generated output.
+        use_eod_token_for_early_termination (bool): A flag indicating whether to use the end-of-document token for early termination.
+        stop_on_double_eol (bool): A flag indicating whether to stop generating text when a double end-of-line token is generated.
+        stop_on_eol (bool): A flag indicating whether to stop generating text when an end-of-line token is generated.
+        prevent_newline_after_colon (bool): A flag indicating whether to prevent newline characters after a colon.
+        random_seed (int): The random seed to use for text generation.
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: A tuple containing the following elements:
+            - tokens (torch.Tensor): The prompt plus generated tokens.
+            - lengths (torch.Tensor): The lengths of the prompt plus the generated tokens.
+            - output_log_probs (torch.Tensor): The output log probabilities for each generated token.
     """
 
     # Make sure input params are avaialble to all ranks.
@@ -154,8 +201,23 @@ def beam_search_and_post_process(model,
                                  num_return_gen=1,
                                  length_penalty=1,
                                  prevent_newline_after_colon=False):
-    """Run beam search and post-process outputs, i.e., detokenize,
-    move to cpu and convert to list."""
+    """
+    Run beam search and post-process outputs, i.e., detokenize,
+    move to cpu and convert to list.
+    Args:
+        model (torch.nn.Module): The model used for beam search.
+        prompts (List[List[int]], optional): List of prompts.
+        tokens_to_generate (int, optional): Number of tokens to generate.
+        beam_size (int, optional): Beam size for beam search.
+        add_BOS (bool, optional): Whether to add the BOS token to the prompt.
+        stop_token (int, optional): Token that indicates the end of generation.
+        num_return_gen (int, optional): Number of generated sequences to return.
+        length_penalty (float, optional): Length penalty for beam search.
+        prevent_newline_after_colon (bool, optional): Whether to prevent newline after a colon. Defaults to False.
+    Returns:
+        Tuple[List[List[int]], List[List[int]], List[float]]: A tuple containing
+        the post-processed generations, generation segments, and scores.
+    """
 
     # Main inference.
     tokens, scores = beam_search(
@@ -189,6 +251,23 @@ def beam_search(model,
                 num_return_gen=1,
                 length_penalty=1,
                 prevent_newline_after_colon=False):
+    """
+    Perform beam search to generate sequences.
+
+    Args:
+        model (torch.nn.Module): The model used for beam search.
+        prompts (List[List[int]], optional): List of prompts, where each prompt is a list of token ids.
+        tokens_to_generate (int, optional): Number of tokens to generate.
+        beam_size (int, optional): Beam size for beam search.
+        add_BOS (bool, optional): Whether to add the BOS token to the prompt.
+        stop_token (int, optional): Token that indicates the end of generation.
+        num_return_gen (int, optional): Number of generated sequences to return.
+        length_penalty (float, optional): Length penalty for beam search.
+        prevent_newline_after_colon (bool, optional): Whether to prevent newline.
+
+    Returns:
+        torch.Tensor: The generated tokens.
+    """
     # Make sure input params are avaialble to all ranks.
     values = [
         tokens_to_generate, beam_size, add_BOS, stop_token, num_return_gen,
