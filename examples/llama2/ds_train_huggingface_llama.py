@@ -174,6 +174,7 @@ def main():
         logging_dir=args.logging_dir,
         logging_steps=1,
         disable_tqdm=False,
+        ddp_timeout=18000
     )
 
     logging.basicConfig(
@@ -198,9 +199,8 @@ def main():
     transformers.set_seed(training_args.seed)
 
     data_files = {}
-    data_files["train"] = args.train_data
-    data_files['validation'] = args.valid_data
-
+    file_names = [os.path.join(args.train_data, f) for f in os.listdir(args.train_data)]
+    data_files["train"] = file_names
     raw_datasets = load_dataset(
         'json',
         data_files=data_files,
@@ -224,7 +224,8 @@ def main():
         max_length=args.seq_length,
         padding='max_length',
         truncation=True)
-
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     model = AutoModelForCausalLM.from_pretrained(
         args.load,
         from_tf=False,
@@ -253,7 +254,8 @@ def main():
     with training_args.main_process_first(desc="dataset map tokenization"):
         lm_datasets = raw_datasets.map(
             tokenize_function,
-            batched=True
+            batched=True,
+            num_proc=64
         )
 
     trainer = Trainer(
