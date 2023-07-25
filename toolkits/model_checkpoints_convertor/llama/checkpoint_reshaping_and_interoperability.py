@@ -402,8 +402,12 @@ def convert_checkpoint_from_transformers_to_megatron(args):
         k_weight = state_dict[k_name]
         v_weight = state_dict[v_name]
 
-        merged_qkv_state_dict['transformer.layers.'+str(layer_id)+'.self_attn.query.weight'] = q_weight
-        merged_qkv_state_dict['transformer.layers.'+str(layer_id)+'.self_attn.key_value.weight'] = torch.cat((k_weight, v_weight))
+        if args.model_name == "llama2-70b":
+            merged_qkv_state_dict['transformer.layers.'+str(layer_id)+'.self_attn.query.weight'] = q_weight
+            merged_qkv_state_dict['transformer.layers.'+str(layer_id)+'.self_attn.key_value.weight'] = torch.cat((k_weight, v_weight))
+        else:
+            merged_qkv_state_dict['transformer.layers.'+str(layer_id)+'.self_attn.query_key_value.weight'] =\
+                torch.cat((q_weight, k_weight, v_weight))
 
         merged_qkv_state_dict['transformer.layers.' + str(layer_id) + '.self_attn.dense.weight'] = state_dict['model.layers.' + str(layer_id) + '.self_attn.o_proj.weight']
         merged_qkv_state_dict['transformer.layers.' + str(layer_id) + '.mlp.dense_h_to_4h_1.weight'] = state_dict[
@@ -569,8 +573,19 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                 elif op_name.startswith("self_attn.rotary_emb"):
                     layer_name = f"layers.{layer}.self_attention.rotary_emb.inv_freq"
 
+                elif op_name.startswith("self_attn.query_key_value") and weight == "weight" and args.model_name != "llama2-70b":
+                    # transformers stores D X (3*D) but Megatron-LM expects (3*D) X D.
+                    params = transformers_to_megatron_fix_query_key_value_ordering(
+                        params,
+                        3.0,
+                        3,
+                        heads,
+                        hidden_size_per_head,
+                    )
+                    layer_name = f"layers.{layer}.self_attention.query_key_value.{weight}"
+
                 # handle attention K, V, Q weights
-                elif op_name.startswith("self_attn.query") and weight == "weight":
+                elif op_name.startswith("self_attn.query") and weight == "weight" and args.model_name == "llama2-70b":
                     # transformers stores D X (3*D) but Megatron-LM expects (3*D) X D.
                     params = transformers_to_megatron_fix_query_key_value_ordering(
                         params,
@@ -581,7 +596,7 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                     )
                     layer_name = f"layers.{layer}.self_attention.query.{weight}"
 
-                elif op_name.startswith("self_attn.key_value") and weight == "weight":
+                elif op_name.startswith("self_attn.key_value") and weight == "weight" and args.model_name == "llama2-70b":
                     # transformers stores D X (3*D) but Megatron-LM expects (3*D) X D.
                     params = transformers_to_megatron_fix_query_key_value_ordering(
                         params,
