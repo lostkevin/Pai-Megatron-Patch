@@ -15,7 +15,7 @@
 from megatron import get_args
 from megatron.initialize import initialize_megatron
 from megatron_patch.generation.gpt_predictor import GPTPredictor
-from megatron_patch.model.llama.gpt_model import GPTModel
+from megatron_patch.model.falcon40b.gpt_model import GPTModel
 
 try:
     from megatron.model import ModelType
@@ -25,15 +25,7 @@ except ImportError:
 
 def get_tasks_args(parser):
     group = parser.add_argument_group(title='text generation')
-
-    group.add_argument('--local-rank', type=int, default=None,
-                        help='local rank passed from distributed launcher')
-
-    group.add_argument('--n-head-kv',
-                       type=int,
-                       default=None,
-                       help='n-head-kv')
-                       
+    group.add_argument('--local-rank', type=int, default=None)
     group.add_argument('--text-generate-input-file', type=str, default='')
     group.add_argument('--text-generate-output-file', type=str, default='')
     group.add_argument('--text-generate-gt-file', type=str, default='')
@@ -78,10 +70,6 @@ def get_tasks_args(parser):
                        help='Define position embedding type '
                        '("absolute"|"rotary"|"alibi"). "absolute" by default.')
 
-    group.add_argument('--glu-activation',
-                       type=str,
-                       help='GLU activations to use.')
-
     group.add_argument('--extra-vocab-size',
                        type=int,
                        default=1,
@@ -90,15 +78,21 @@ def get_tasks_args(parser):
                        type=int,
                        default=None,
                        help='max-padding-length')
-    group.add_argument('--intermediate-size',
-                       type=int,
-                       default=None,
-                       help='--intermediate-size')
 
     group.add_argument('--repetition-penalty',
                        type=float,
                        default=1.2,
                        help='Repetition_penalty.')
+
+    group.add_argument('--n-head-kv',
+                       type=int,
+                       default=None,
+                       help='n-head-kv')
+
+    group.add_argument('--attention-head-type',
+                       type=str,
+                       default='multihead',
+                       help='attention-head-type')
 
     return parser
 

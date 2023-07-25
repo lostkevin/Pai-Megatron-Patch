@@ -21,7 +21,7 @@ from megatron.initialize import initialize_megatron
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.finetune_dataset import LLamaDataset
 from megatron_patch.finetune_utils import finetune
-from megatron_patch.model.llama.gpt_model import GPTModel
+from megatron_patch.model.llama2.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 
 
@@ -30,6 +30,11 @@ def get_tasks_args(parser):
 
     group.add_argument('--local-rank', type=int, default=None,
                         help='local rank passed from distributed launcher')
+
+    group.add_argument('--n-head-kv',
+                       type=int,
+                       default=None,
+                       help='n-head-kv')
 
     group.add_argument('--transformer-type',
                        type=str,

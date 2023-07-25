@@ -51,6 +51,7 @@ except ImportError:
     tensor of the same size. We use the following arguments:
         hyperparameters: transformer hyperparameters
 """
+from ..llama.positional_embeddings import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 
 def _args_to_kwargs():
@@ -425,7 +426,9 @@ class ParallelAttention(MegatronModule):
         self.checkpoint_core_attention = \
             args.recompute_granularity == 'selective'
 
-        self.maybe_rotary = RotaryEmbedding(self.head_dim)
+        # self.maybe_rotary = RotaryEmbedding(self.head_dim)
+        self.rotary_emb = LlamaRotaryEmbedding(
+                self.head_dim, args.max_position_embeddings)
 
         self.multi_query = True
         self.num_kv = self.n_head_kv
@@ -528,6 +531,7 @@ class ParallelAttention(MegatronModule):
 
     def forward(self,
                 hidden_states,
+                position_ids,
                 attention_mask,
                 encoder_output=None,
                 inference_params=None):
@@ -537,88 +541,99 @@ class ParallelAttention(MegatronModule):
         # =====================
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
 
+        if inference_params:
+            if self.layer_number not in inference_params.key_value_memory_dict:
+                inf_max_seq_len = inference_params.max_sequence_len
+                inf_max_batch_size = inference_params.max_batch_size
+                inference_key_memory = self._allocate_memory(
+                    inf_max_seq_len, inf_max_batch_size)
+                inference_value_memory = self._allocate_memory(
+                    inf_max_seq_len, inf_max_batch_size)
+                inference_params.key_value_memory_dict[self.layer_number] = (
+                    inference_key_memory, inference_value_memory)
+            else:
+                inference_key_memory, inference_value_memory = \
+                    inference_params.key_value_memory_dict[self.layer_number]
+        
         mixed_x_layer, _ = self.query_key_value(hidden_states)
         fused_qkv = mixed_x_layer.transpose(0, 1)
         (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
 
         batch_size, q_length, _, _ = query_layer.shape
-        query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_attention_heads_per_partition, q_length, self.head_dim)
-        key_layer = key_layer.transpose(1, 2).reshape(
-            batch_size * self.num_attention_heads_per_partition,
-            q_length,
-            self.head_dim,
-        )
-        value_layer = value_layer.transpose(1, 2).reshape(batch_size * self.num_attention_heads_per_partition, q_length, self.head_dim)
+        value_layer = value_layer.transpose(0, 1)
+        query_layer = query_layer.transpose(0, 1)
+        key_layer = key_layer.transpose(0, 1)
+        
+        kv_seq_len = key_layer.shape[0]
+        if inference_params:
+            kv_seq_len += inference_params.sequence_len_offset
+            value_layer = value_layer.transpose(0, 1).transpose(1, 2)
+            query_layer = query_layer.transpose(0, 1).transpose(1, 2)
+            key_layer = key_layer.transpose(0, 1).transpose(1, 2)
+            cos, sin = self.rotary_emb(value_layer, kv_seq_len)
+            query_layer, key_layer = apply_rotary_pos_emb(
+                query_layer, key_layer, cos, sin, position_ids)
 
-        query_layer, key_layer = self.maybe_rotary(query_layer, key_layer)
+            value_layer = value_layer.transpose(1, 2).transpose(0, 1)
+            query_layer = query_layer.transpose(1, 2).transpose(0, 1)
+            key_layer = key_layer.transpose(1, 2).transpose(0, 1)
 
-        # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
-        """
-        new_tensor_shape =\
-            mixed_x_layer.size()[:-1] + (
-                self.num_attention_heads_per_partition,
-                3 * self.hidden_size_per_attention_head)
-        mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
-
-        # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
-        # torch.Size([128, 1, 32, 128])
-        (query_layer, key_layer,
-         value_layer) = tensor_parallel.split_tensor_along_last_dim(
-             mixed_x_layer, 3)
-
-        query_layer = query_layer.permute(1, 2, 0, 3)
-        key_layer = key_layer.permute(1, 2, 0, 3)
-        value_layer = value_layer.permute(1, 2, 0, 3)
-
-        q_len, bsz, _ = hidden_states.size()
-        # single: key_layer: torch.Size([1, 32, 80, 128])
-        kv_seq_len = key_layer.shape[-2]
-
-
-
-        query_layer = query_layer * (self.hidden_size_per_attention_head**-0.5)
-        attn_weights = torch.matmul(query_layer, key_layer.transpose(2, 3))
-
-        attn_weights = attn_weights + attention_mask
-        attn_weights = torch.max(
-            attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
-        # upcast attention to fp32
-        attn_weights = torch.nn.functional.softmax(attn_weights,
-                                                   dim=-1,
-                                                   dtype=torch.float32).to(
-                                                       query_layer.dtype)
-
-        if not self.sequence_parallel:
-            with tensor_parallel.get_cuda_rng_tracker().fork():
-                attn_weights = self.attention_dropout(attn_weights)
+            batch_start = inference_params.batch_size_offset
+            batch_end = batch_start + key_layer.size(1)
+            assert batch_end <= inference_key_memory.size(1)
+            sequence_start = inference_params.sequence_len_offset
+            sequence_end = sequence_start + key_layer.size(0)
+            assert sequence_end <= inference_key_memory.size(0)
+            # Copy key and values.
+            inference_key_memory[sequence_start:sequence_end,
+                                 batch_start:batch_end, ...] = key_layer
+            inference_value_memory[sequence_start:sequence_end,
+                                   batch_start:batch_end, ...] = value_layer
+            key_layer = inference_key_memory[
+                :sequence_end, batch_start:batch_end, ...]
+            value_layer = inference_value_memory[
+                :sequence_end, batch_start:batch_end, ...]
         else:
-            attn_weights = self.attention_dropout(attn_weights)
+            value_layer = value_layer.transpose(0, 1).transpose(1, 2)
+            query_layer = query_layer.transpose(0, 1).transpose(1, 2)
+            key_layer = key_layer.transpose(0, 1).transpose(1, 2)
+            cos, sin = self.rotary_emb(value_layer, kv_seq_len)
+            query_layer, key_layer = apply_rotary_pos_emb(
+                query_layer, key_layer, cos, sin, position_ids)
+            value_layer = value_layer.transpose(1, 2).transpose(0, 1)
+            query_layer = query_layer.transpose(1, 2).transpose(0, 1)
+            key_layer = key_layer.transpose(1, 2).transpose(0, 1)
 
-        attn_output = torch.matmul(attn_weights, value_layer)
+        # ==================================
+        # core attention computation
+        # ==================================
 
-        attn_output = attn_output.transpose(1, 2)
-        world_size = mpu.get_tensor_model_parallel_world_size()
-        hidden_size_per_partition = core.utils.divide(self.hidden_size,
-                                                      world_size)
-        attn_output = attn_output.reshape(bsz, kv_seq_len,
-                                          hidden_size_per_partition)
-        attn_output = attn_output.transpose(1, 0)
-        """
+        if not self.use_flash_attn:
+            if self.checkpoint_core_attention:
+                context_layer = self._checkpointed_attention_forward(
+                    query_layer, key_layer, value_layer, attention_mask)
+            else:
+                context_layer = self.core_attention(query_layer, key_layer,
+                                                    value_layer,
+                                                    attention_mask)
+        else:
+            q, k, v = [
+                rearrange(x, 's b ... -> b s ...').contiguous()
+                for x in (query_layer, key_layer, value_layer)
+            ]
+            if not self.sequence_parallel:
+                with tensor_parallel.get_cuda_rng_tracker().fork():
+                    context_layer = self.core_attention_flash(q, k, v)
+            else:
+                context_layer = self.core_attention_flash(q, k, v)
+            context_layer = rearrange(context_layer,
+                                      'b s h d -> s b (h d)').contiguous()
 
-        query_layer_ = query_layer.reshape(batch_size, self.num_attention_heads_per_partition, -1, self.head_dim)
-        key_layer_ = key_layer.reshape(batch_size, self.num_attention_heads_per_partition, -1, self.head_dim)
-        value_layer_ = value_layer.reshape(batch_size, self.num_attention_heads_per_partition, -1, self.head_dim)
-
-        attn_output = F.scaled_dot_product_attention(
-            query_layer_, key_layer_, value_layer_, None, 0.0, is_causal=True
-        )
-
-        x = attn_output.view(batch_size, self.num_attention_heads_per_partition, q_length, self.head_dim)
-        x = x.permute(0, 2, 1, 3)
-        attn_output = x.reshape(batch_size, q_length, self.num_attention_heads_per_partition * self.head_dim)
-        attn_output = attn_output.transpose(1, 0).contiguous()
-        output, bias = self.dense(attn_output)
-
+        # =================
+        # Output. [sq, b, h]
+        # =================
+        output, bias = self.dense(context_layer)
+        
         return output, bias
 
 
@@ -716,6 +731,7 @@ class ParallelTransformerLayer(MegatronModule):
 
     def forward(self,
                 hidden_states,
+                position_ids,
                 attention_mask,
                 encoder_output=None,
                 enc_dec_attn_mask=None,
@@ -732,6 +748,7 @@ class ParallelTransformerLayer(MegatronModule):
         attention_output, attention_bias = \
             self.self_attention(
                 ln_attn,
+                position_ids,
                 attention_mask,
                 inference_params=inference_params)
         # Residual connection.
@@ -971,6 +988,7 @@ class ParallelTransformer(MegatronModule):
 
     def forward(self,
                 hidden_states,
+                position_ids,
                 attention_mask,
                 encoder_output=None,
                 enc_dec_attn_mask=None,
@@ -1022,6 +1040,7 @@ class ParallelTransformer(MegatronModule):
                 for index in range(self.num_layers):
                     layer = self._get_layer(index)
                     hidden_states = layer(hidden_states,
+                                          position_ids,
                                           attention_mask,
                                           encoder_output=encoder_output,
                                           enc_dec_attn_mask=enc_dec_attn_mask,

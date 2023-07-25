@@ -52,6 +52,7 @@ except ImportError:
         hyperparameters: transformer hyperparameters
 """
 
+from ..llama.positional_embeddings import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 def _args_to_kwargs():
     args = get_args()
@@ -303,7 +304,7 @@ class CoreAttention(MegatronModule):
         return context_layer
 
 
-class MultiQueryCoreAttention(CoreAttention):
+class MultiQueryCoreAttention_old(CoreAttention):
 
     def __init__(self, *args, **kwargs) -> None:
         self.num_kv = 1
@@ -314,81 +315,6 @@ class MultiQueryCoreAttention(CoreAttention):
         # ===================================
         # Raw attention scores. [b, np, s, s]
         # ===================================
-
-        """
-        sq = query_layer.size(0)
-        bs = query_layer.size(1)
-        np = query_layer.size(2)
-
-        sk = key_layer.size(0)
-        # Only one head for key and values
-        assert key_layer.size(2) == 1 and value_layer.size(2) == 1
-
-        # [sq, b, np, hn] -> [b, np * sq, hn]
-        query_layer = query_layer.permute([1, 2, 0, 3]).reshape(bs, np * sq, -1)
-        # [sk, b, 1, hn] -> [b, hn, sk]
-        key_layer = key_layer.squeeze(2).permute(1, 2, 0)
-        # [sk, b, 1, hn] -> [sk, b * np, hn]
-        # key_layer = key_layer.expand(output_size[3], output_size[0], np, -1)
-        # key_layer = key_layer.reshape(output_size[3], output_size[0] * np, -1)
-
-        # preallocting input tensor: [b, np * sq, sk]
-        matmul_input_buffer = mpu.get_global_memory_buffer().get_tensor(
-            (bs, np * sq, sk),
-            query_layer.dtype, "mpu")
-
-        # Raw attention scores. [b, np * sq, sk]
-        matmul_result = torch.baddbmm(
-            matmul_input_buffer,
-            query_layer,  # [b, np * sq, hn]
-            key_layer,  # [b, hn, sk]
-            beta=0.0, alpha=(1.0 / self.norm_factor))
-
-        # change view to [b, np, sq, sk]
-        attention_scores = matmul_result.view(bs, np, sq, sk)
-
-        # ===========================
-        # Attention probs and dropout
-        # ===========================
-        attention_mask = attention_mask.to(torch.bool)
-        # attention scores and attention mask [b, np, sq, sk]
-        attention_probs = self.scale_mask_softmax(attention_scores,
-                                                  attention_mask)
-
-        # This is actually dropping out entire tokens to attend to, which might
-        # seem a bit unusual, but is taken from the original Transformer paper.
-
-        if not self.sequence_parallel:
-            with tensor_parallel.get_cuda_rng_tracker().fork():
-                attention_probs = self.attention_dropout(attention_probs)
-        else:
-            attention_probs = self.attention_dropout(attention_probs)
-
-        # =========================
-        # Context layer. [sq, b, hp]
-        # =========================
-
-        # [sk, b, 1, hn] -> [b, sk, hn]
-        value_layer = value_layer.squeeze(2).transpose(0, 1)
-
-        # change view [b, np * sq, sk]
-        attention_probs = attention_probs.view(bs, np * sq, -1)
-
-        # matmul: [b, np * sq, hn]
-        context_layer = torch.bmm(attention_probs, value_layer)
-
-        # change view [b, np, sq, hn]
-        context_layer = context_layer.view(bs, np, sq, -1)
-
-        # [b, np, sq, hn] --> [sq, b, np, hn]
-        context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
-
-        # [sq, b, np, hn] --> [sq, b, hp]
-        new_context_layer_shape = context_layer.size()[:-2] + \
-                                  (self.hidden_size_per_partition,)
-
-        context_layer = context_layer.view(*new_context_layer_shape)
-        """
         num_heads = self.num_heads
 
         q_length = query_layer.size(1)
@@ -396,7 +322,7 @@ class MultiQueryCoreAttention(CoreAttention):
         query_layer = query_layer.reshape(-1, num_heads, q_length, head_dim)
         batch_size = query_layer.size(0)
         query_layer_ = query_layer.reshape(batch_size, num_heads, -1, head_dim)
-
+        
         # fix num_kv
         if not self.num_heads % 71:
             self.num_kv = 1
@@ -419,6 +345,127 @@ class MultiQueryCoreAttention(CoreAttention):
         attn_output = attn_output.transpose(1, 0).contiguous()
 
         return attn_output
+
+
+class MultiQueryCoreAttention(CoreAttention):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+    def forward(self, query_layer, key_layer, value_layer, attention_mask, alibi):
+        # ===================================
+        # Raw attention scores. [b, np, s, s]
+        # ===================================
+        sq = query_layer.size(0)
+        bs = query_layer.size(1)
+        np = query_layer.size(2)
+        sk = key_layer.size(0)
+        # Only one head for key and values
+        assert key_layer.size(2) == 1 and value_layer.size(2) == 1
+
+        # [b, np, sq, sk]
+        output_size = (query_layer.size(1),
+                       query_layer.size(2),
+                       query_layer.size(0),
+                       key_layer.size(0))
+
+        # [sq, b, np, hn] -> [b, np * sq, hn]
+        query_layer = query_layer.permute([1, 2, 0, 3]).reshape(bs, np * sq, -1)
+        # [sk, b, 1, hn] -> [b, hn, sk]
+        key_layer = key_layer.squeeze(2).permute(1, 2, 0)
+        # [sk, b, 1, hn] -> [sk, b * np, hn]
+        # key_layer = key_layer.expand(output_size[3], output_size[0], np, -1)
+        # key_layer = key_layer.reshape(output_size[3], output_size[0] * np, -1)
+
+        if alibi is None:
+            # preallocting input tensor: [b, np * sq, sk]
+            matmul_input_buffer = mpu.get_global_memory_buffer().get_tensor(
+                (bs, np * sq, sk),
+                query_layer.dtype, "mpu")
+        else:
+            # alibi: (batch_size * num_attention_heads, 1, max_seq_len)
+            # TODO: ideally, alibi would have the shape: (1, num_heads * sq, sk)
+            matmul_input_buffer = alibi[:bs * np, :, :sk].view(bs, np, sk)
+            matmul_input_buffer = matmul_input_buffer.repeat(1, sq, 1)  # [b, np * sq, sk]
+
+        if alibi is None:
+            # Raw attention scores. [b, np * sq, sk]
+            matmul_result = torch.baddbmm(
+                matmul_input_buffer,
+                query_layer,   # [b, np * sq, hn]
+                key_layer,  # [b, hn, sk]
+                beta=0.0, alpha=(1.0/self.norm_factor))
+        else:
+            if not hasattr(self, "logged_alibi"):
+                print("Using Alibi.")
+                self.logged_alibi = True
+
+            if self.apply_query_key_layer_scaling:
+                beta = 1.0 / self.layer_number
+            else:
+                beta = 1.0
+
+            matmul_result = torch.baddbmm(
+                matmul_input_buffer,
+                query_layer,
+                key_layer,
+                beta=beta, alpha=(1.0 / self.norm_factor))
+
+        # change view to [b, np, sq, sk]
+        attention_scores = matmul_result.view(bs, np, sq, sk)
+
+        # ===========================
+        # Attention probs and dropout
+        # ===========================
+
+        # attention scores and attention mask [b, np, sq, sk]
+        attention_mask = attention_mask.to(torch.bool)
+        attention_probs = self.scale_mask_softmax(attention_scores,
+                                                  attention_mask)
+
+        # This is actually dropping out entire tokens to attend to, which might
+        # seem a bit unusual, but is taken from the original Transformer paper.
+
+        if not self.sequence_parallel:
+            with tensor_parallel.get_cuda_rng_tracker().fork():
+                attention_probs = self.attention_dropout(attention_probs)
+        else:
+            attention_probs = self.attention_dropout(attention_probs)
+
+        # =========================
+        # Context layer. [sq, b, hp]
+        # =========================
+
+        # value_layer -> context layer.
+        # [sk, b, np, hn] --> [b, np, sq, hn]
+
+        # context layer shape: [b, np, sq, hn]
+        output_size = (value_layer.size(1),
+                       np,
+                       query_layer.size(0),
+                       value_layer.size(3))
+
+        # [sk, b, 1, hn] -> [b, sk, hn]
+        value_layer = value_layer.squeeze(2).transpose(0, 1)
+
+        # change view [b, np * sq, sk]
+        attention_probs = attention_probs.view(bs, np * sq, -1)
+
+        # matmul: [b, np * sq, hn]
+        context_layer = torch.bmm(attention_probs, value_layer)
+
+        # change view [b, np, sq, hn]
+        context_layer = context_layer.view(bs, np, sq, -1)
+
+        # [b, np, sq, hn] --> [sq, b, np, hn]
+        context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
+
+        # [sq, b, np, hn] --> [sq, b, hp]
+        new_context_layer_shape = context_layer.size()[:-2] + \
+            (self.hidden_size_per_partition,)
+        context_layer = context_layer.view(*new_context_layer_shape)
+
+        return context_layer
 
 
 class FlashSelfAttention(torch.nn.Module):
@@ -582,12 +629,13 @@ class ParallelAttention(MegatronModule):
             self.core_attention = CoreAttention(self.layer_number,
                                                 self.attn_mask_type)
         else:
-            self.core_attention = MultiQueryCoreAttention(self.layer_number, self.attn_mask_type, self.num_attention_heads_per_partition)
-
+            self.core_attention = MultiQueryCoreAttention(self.layer_number, self.attn_mask_type)
         self.checkpoint_core_attention = \
             args.recompute_granularity == 'selective'
 
-        self.maybe_rotary = RotaryEmbedding(self.head_dim)
+        # self.maybe_rotary = RotaryEmbedding(self.head_dim)
+        self.rotary_emb = LlamaRotaryEmbedding(
+                self.head_dim, args.max_position_embeddings)
 
         self.multi_query = True
         if self.use_flash_attn:
@@ -624,12 +672,12 @@ class ParallelAttention(MegatronModule):
     def _allocate_memory(self, inference_max_sequence_len, batch_size):
         return torch.empty(inference_max_sequence_len,
                            batch_size,
-                           self.num_attention_heads_per_partition,
+                           self.num_attention_heads_per_partition if self.attention_head_type == "multihead" else 1,
                            self.hidden_size_per_attention_head,
                            dtype=self.params_dtype,
                            device=torch.cuda.current_device())
 
-    def forward(self, hidden_states, attention_mask,
+    def forward(self, hidden_states, position_ids, attention_mask,
                 encoder_output=None, inference_params=None):
         # hidden_states: [sq, b, h]
 
@@ -721,17 +769,32 @@ class ParallelAttention(MegatronModule):
                                (self.num_attention_heads_per_partition,
                                 self.hidden_size_per_attention_head)
             query_layer = query_layer.view(*new_tensor_shape)
-
+        
         # ==================================
         # Adjust key and value for inference
         # ==================================
+        kv_seq_len = key_layer.shape[0]
         if inference_params:
+            kv_seq_len += inference_params.sequence_len_offset
+            # torch.Size([20, 1, 40, 128]) --> torch.Size([1, 40, 20, 128])
+            value_layer = value_layer.transpose(0, 1).transpose(1, 2)
+            query_layer = query_layer.transpose(0, 1).transpose(1, 2)
+            key_layer = key_layer.transpose(0, 1).transpose(1, 2)
+            cos, sin = self.rotary_emb(value_layer, kv_seq_len)
+            query_layer, key_layer = apply_rotary_pos_emb(
+                query_layer, key_layer, cos, sin, position_ids)
+
+            value_layer = value_layer.transpose(1, 2).transpose(0, 1)
+            query_layer = query_layer.transpose(1, 2).transpose(0, 1)
+            key_layer = key_layer.transpose(1, 2).transpose(0, 1)
+
             batch_start = inference_params.batch_size_offset
             batch_end = batch_start + key_layer.size(1)
             assert batch_end <= inference_key_memory.size(1)
             sequence_start = inference_params.sequence_len_offset
             sequence_end = sequence_start + key_layer.size(0)
             assert sequence_end <= inference_key_memory.size(0)
+
             # Copy key and values.
             inference_key_memory[sequence_start:sequence_end,
             batch_start:batch_end, ...] = key_layer
@@ -741,49 +804,20 @@ class ParallelAttention(MegatronModule):
                         :sequence_end, batch_start:batch_end, ...]
             value_layer = inference_value_memory[
                           :sequence_end, batch_start:batch_end, ...]
-        # ==================================
-        # core attention computation
-        # ==================================
-        # query_layer: torch.Size([80, 1, 71, 64]) -> torch.Size([71, 80, 64])
-        # key_layer:torch.Size([80, 1, 1, 64]) -> torch.Size([1, 80, 64])
-        q_length, batch_size, _, _ = query_layer.shape
-        query_layer = query_layer.transpose(0, 2).reshape(batch_size * self.num_attention_heads_per_partition, q_length, self.head_dim)
-        if self.num_kv == 1:
-            key_layer = key_layer.transpose(0, 2).reshape(
-                batch_size * self.num_kv,
-                q_length,
-                self.head_dim,
-            )
-        else:
-            from einops import rearrange
-            key_layer_ = key_layer.reshape(batch_size, -1, self.num_kv, self.head_dim).unsqueeze(3)
-            value_layer_ = value_layer.reshape(batch_size, -1, self.num_kv, self.head_dim).unsqueeze(3)
-            query_layer_shape = query_layer.reshape(batch_size, -1, self.num_kv, self.num_attention_heads_per_partition // self.num_kv, self.head_dim).shape
-            key_layer_ = torch.broadcast_to(key_layer_, query_layer_shape)
-            value_layer_ = torch.broadcast_to(value_layer_, query_layer_shape)
-            key_layer_ = rearrange(
-                key_layer_,
-                "batch seq_len group num_heads head_dim ->\
-                batch seq_len (group num_heads) head_dim",
-                head_dim=self.head_dim,
-            ).transpose(1, 2)
-            key_layer = key_layer_.reshape(
-                batch_size * self.num_attention_heads_per_partition,
-                q_length,
-                self.head_dim,
-            )
-            value_layer = rearrange(
-                value_layer_,
-                "batch seq_len group num_heads head_dim ->\
-                batch seq_len (group num_heads) head_dim",
-                head_dim=self.head_dim,
-            ).transpose(1, 2)
 
-        query_layer, key_layer = self.maybe_rotary(query_layer, key_layer)
-        # 1, 71, 80, 64
+        else:
+            value_layer = value_layer.transpose(0, 1).transpose(1, 2)
+            query_layer = query_layer.transpose(0, 1).transpose(1, 2)
+            key_layer = key_layer.transpose(0, 1).transpose(1, 2)
+            cos, sin = self.rotary_emb(value_layer, kv_seq_len)
+            query_layer, key_layer = apply_rotary_pos_emb(
+                query_layer, key_layer, cos, sin, position_ids)
+
+            value_layer = value_layer.transpose(1, 2).transpose(0, 1)
+            query_layer = query_layer.transpose(1, 2).transpose(0, 1)
+            key_layer = key_layer.transpose(1, 2).transpose(0, 1)
 
         if self.use_flash_attn:
-            from einops import rearrange
             query_layer = query_layer.reshape(batch_size, self.num_attention_heads_per_partition, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
             key_layer = key_layer.reshape(batch_size, self.num_kv, q_length, self.head_dim).transpose(0, 2).transpose(1, 2)
             if self.attention_head_type == "multiquery":
@@ -807,7 +841,7 @@ class ParallelAttention(MegatronModule):
                     query_layer, key_layer, value_layer, attention_mask)
             else:
                 context_layer = self.core_attention(
-                    query_layer, key_layer, value_layer, attention_mask)
+                    query_layer, key_layer, value_layer, attention_mask, None)
 
         # =================
         # Output. [sq, b, h]
@@ -879,7 +913,7 @@ class ParallelTransformerLayer(MegatronModule):
             eps=args.layernorm_epsilon,
             no_persist_layer_norm=args.no_persist_layer_norm,
             sequence_parallel=args.sequence_parallel)
-
+        
         # add post_attention_layernorm for falcon-40b
         if self.num_layers == 60:
             self.post_attention_layernorm = LayerNorm(
@@ -923,6 +957,7 @@ class ParallelTransformerLayer(MegatronModule):
 
     def forward(self,
                 hidden_states,
+                position_ids,
                 attention_mask,
                 encoder_output=None,
                 enc_dec_attn_mask=None,
@@ -935,6 +970,7 @@ class ParallelTransformerLayer(MegatronModule):
         attention_output, attention_bias = \
             self.self_attention(
                 layernorm_output,
+                position_ids,
                 attention_mask,
                 inference_params=inference_params)
         # Residual connection.
@@ -1209,6 +1245,7 @@ class ParallelTransformer(MegatronModule):
 
     def forward(self,
                 hidden_states,
+                position_ids,
                 attention_mask,
                 encoder_output=None,
                 enc_dec_attn_mask=None,
@@ -1260,6 +1297,7 @@ class ParallelTransformer(MegatronModule):
                 for index in range(self.num_layers):
                     layer = self._get_layer(index)
                     hidden_states = layer(hidden_states,
+                                          position_ids,
                                           attention_mask,
                                           encoder_output=encoder_output,
                                           enc_dec_attn_mask=enc_dec_attn_mask,

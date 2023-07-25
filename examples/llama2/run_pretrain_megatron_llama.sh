@@ -24,7 +24,7 @@ fi
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-MODEL_SIZE=$4
+MODEL_SIZE=$4  #7B, 13B, 70B 
 BATCH_SIZE=$5
 GLOBAL_BATCH_SIZE=$6
 LR=$7
@@ -67,6 +67,14 @@ NUM_LAYERS=80
 HIDDEN_SIZE=8192
 NUM_ATTN_HEADS=64
 INTERMEDIATE_SIZE=22016
+
+elif [ $MODEL_SIZE = 70B ]; then
+
+NUM_LAYERS=80
+HIDDEN_SIZE=8192
+NUM_ATTN_HEADS=64
+INTERMEDIATE_SIZE=28672
+NUM_HEAD_KV=8
 
 fi
 
@@ -180,7 +188,9 @@ megatron_options="  \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --tokenizer-type NullTokenizer \
         --vocab-size -1 \
-        --position-embedding-type rotary \
+        --use-rotary-position-embeddings \
+        --no-position-embedding \
+        --n-head-kv ${NUM_HEAD_KV} \
         --swiglu \
         --untie-embeddings-and-output-weights \
         --tokenizer-type NullTokenizer \
