@@ -22,7 +22,7 @@ from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.pretrain_dataset import \
     build_pretrain_llama_datasets_from_original, build_pretrain_llama_datasets_from_idxmap
-from megatron_patch.model.llama.gpt_model import GPTModel
+from megatron_patch.model.llama2.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import pretrain
 
@@ -37,6 +37,11 @@ def get_tasks_args(parser):
 
     group.add_argument('--local-rank', type=int, default=None,
                         help='local rank passed from distributed launcher')
+
+    group.add_argument('--n-head-kv',
+                       type=int,
+                       default=None,
+                       help='n-head-kv')
 
     group.add_argument('--transformer-type',
                        type=str,

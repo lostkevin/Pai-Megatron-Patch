@@ -562,7 +562,9 @@ class ParallelAttention_70b_md(MegatronModule):
                 (self.num_key_value_heads_per_partition, self.hidden_size_per_attention_head)
             value_layer = value_layer.view(*new_tensor_shape)
             """
-
+            # Repeat kv
+            key_layer = self.repeat_kv(key_layer, self.num_key_value_groups)
+            value_layer = self.repeat_kv(value_layer, self.num_key_value_groups)
         else:
             assert not self.use_gqa, 'GQA + cross-attn not tested yet'
 
@@ -646,9 +648,6 @@ class ParallelAttention_70b_md(MegatronModule):
             q_pos_emb, k_pos_emb = rotary_pos_emb
             query_layer = apply_rotary_pos_emb(query_layer, q_pos_emb)
             key_layer = apply_rotary_pos_emb(key_layer, k_pos_emb)
-            # Repeat kv
-            key_layer = self.repeat_kv(key_layer, self.num_key_value_groups)
-            value_layer = self.repeat_kv(value_layer, self.num_key_value_groups)
             # TODO, can apply positional embedding to value_layer so it has
             # absolute positional embedding.
             # otherwise, only relative positional embedding takes effect

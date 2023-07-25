@@ -556,17 +556,6 @@ class TransformerLanguageModel(MegatronModule):
                 enc_attn_mask, (batch_size, enc_attn_mask.size()[-2]),
                 args.params_dtype, enc_input_ids.device)
 
-        if enc_position_ids is None:
-            past_key_values_length = 0
-            seq_length = self.seq_length
-            device = enc_input_ids.device\
-                if enc_input_ids is not None else encoder_input.device
-            position_ids = torch.arange(past_key_values_length,
-                                        seq_length + past_key_values_length,
-                                        dtype=torch.long,
-                                        device=device)
-            enc_position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-
         # Run encoder.
         if enc_hidden_states is None:
             if self.encoder is not None:
@@ -684,7 +673,7 @@ class TransformerLanguageModel(MegatronModule):
                     state_dict_self_attention[key] = state_dict_[key]
             state_dict_ = state_dict_self_attention
 
-            self.encoder.load_state_dict(state_dict_, strict=strict)
+            self.encoder.load_state_dict(state_dict_, strict=False)
 
         # Pooler.
         if self.post_process:
