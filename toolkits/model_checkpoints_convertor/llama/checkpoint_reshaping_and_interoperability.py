@@ -178,6 +178,16 @@ tensor_parallel_params = [
     "mlp.dense_4h_to_h.weight"
 ]
 
+tensor_parallel_params_70b = [
+    # megatron-lm layers to merge across tp ranks
+    "self_attn.query.weight",
+    "self_attn.key_value.weight",
+    "self_attn.dense.weight",
+    "mlp.dense_h_to_4h_1.weight",
+    "mlp.dense_h_to_4h_2.weight",
+    "mlp.dense_4h_to_h.weight"
+]
+
 tensor_parallel_params_mg = [
     # megatron-lm layers to merge across tp ranks
     "self_attention.query_key_value.weight",
@@ -391,11 +401,9 @@ def convert_checkpoint_from_transformers_to_megatron(args):
         q_weight = state_dict[q_name]
         k_weight = state_dict[k_name]
         v_weight = state_dict[v_name]
-        #merged_qkv_state_dict['transformer.layers.' + str(layer_id) + '.self_attn.query.weight'] = q_weight
-        #merged_qkv_state_dict['transformer.layers.' + str(layer_id) + '.self_attn.key.weight'] = k_weight
-        #merged_qkv_state_dict['transformer.layers.' + str(layer_id) + '.self_attn.value.weight'] = v_weight
 
-        merged_qkv_state_dict['transformer.layers.'+str(layer_id)+'.self_attn.query_key_value.weight'] = torch.cat((q_weight, k_weight, v_weight))
+        merged_qkv_state_dict['transformer.layers.'+str(layer_id)+'.self_attn.query.weight'] = q_weight
+        merged_qkv_state_dict['transformer.layers.'+str(layer_id)+'.self_attn.key_value.weight'] = torch.cat((k_weight, v_weight))
 
         merged_qkv_state_dict['transformer.layers.' + str(layer_id) + '.self_attn.dense.weight'] = state_dict['model.layers.' + str(layer_id) + '.self_attn.o_proj.weight']
         merged_qkv_state_dict['transformer.layers.' + str(layer_id) + '.mlp.dense_h_to_4h_1.weight'] = state_dict[
@@ -562,17 +570,27 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                     layer_name = f"layers.{layer}.self_attention.rotary_emb.inv_freq"
 
                 # handle attention K, V, Q weights
-                elif op_name.startswith("self_attn.query_key_value") and weight == "weight":
+                elif op_name.startswith("self_attn.query") and weight == "weight":
                     # transformers stores D X (3*D) but Megatron-LM expects (3*D) X D.
-                    if args.model_name != "llama2-70b":
-                        params = transformers_to_megatron_fix_query_key_value_ordering(
-                            params,
-                            3.0,
-                            3,
-                            heads,
-                            hidden_size_per_head,
-                        )
-                    layer_name = f"layers.{layer}.self_attention.query_key_value.{weight}"
+                    params = transformers_to_megatron_fix_query_key_value_ordering(
+                        params,
+                        3.0,
+                        3,
+                        heads,
+                        hidden_size_per_head,
+                    )
+                    layer_name = f"layers.{layer}.self_attention.query.{weight}"
+
+                elif op_name.startswith("self_attn.key_value") and weight == "weight":
+                    # transformers stores D X (3*D) but Megatron-LM expects (3*D) X D.
+                    params = transformers_to_megatron_fix_query_key_value_ordering(
+                        params,
+                        3.0,
+                        3,
+                        8,
+                        hidden_size_per_head,
+                    )
+                    layer_name = f"layers.{layer}.self_attention.key_value.{weight}"
 
                 # handle attention and mlp weights
                 elif weight == "weight":
@@ -586,16 +604,27 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                 else:
                     continue
 
-                if op_name + "." + weight in tensor_parallel_params:
-                    dim = 1 if op_name in ["self_attn.dense", "mlp.dense_4h_to_h"] else 0
-                    params = torch.chunk(params, args.target_tensor_model_parallel_size, dim=dim)
+                if args.model_name != "llama2-70b":
+                    if op_name + "." + weight in tensor_parallel_params:
+                        dim = 1 if op_name in ["self_attn.dense", "mlp.dense_4h_to_h"] else 0
+                        params = torch.chunk(params, args.target_tensor_model_parallel_size, dim=dim)
+                else:
+                    if op_name + "." + weight in tensor_parallel_params_70b:
+                        dim = 1 if op_name in ["self_attn.dense", "mlp.dense_4h_to_h"] else 0
+                        params = torch.chunk(params, args.target_tensor_model_parallel_size, dim=dim)
 
-                for i in range(args.target_tensor_model_parallel_size):
-                    params_dict = get_element_from_dict_by_path(output_state_dict[i], "model.language_model.encoder")
-                    params_dict[layer_name] = (
-                        params[i] if (op_name + "." + weight in tensor_parallel_params) else params
-                    )
-
+                if args.model_name != "llama2-70b":
+                    for i in range(args.target_tensor_model_parallel_size):
+                        params_dict = get_element_from_dict_by_path(output_state_dict[i], "model.language_model.encoder")
+                        params_dict[layer_name] = (
+                            params[i] if (op_name + "." + weight in tensor_parallel_params) else params
+                        )
+                else:
+                    for i in range(args.target_tensor_model_parallel_size):
+                        params_dict = get_element_from_dict_by_path(output_state_dict[i], "model.language_model.encoder")
+                        params_dict[layer_name] = (
+                            params[i] if (op_name + "." + weight in tensor_parallel_params_70b) else params
+                        )
         if pp_rank == args.target_pipeline_model_parallel_size - 1:
             # handle final layernorm
             for weight_or_bias in ["weight", "bias"]:

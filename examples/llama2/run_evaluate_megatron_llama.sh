@@ -8,7 +8,7 @@ MEGATRON_PATCH_PATH=$3
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=6,7
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
@@ -102,7 +102,8 @@ megatron_options=" \
         --vocab-size -1 \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --swiglu \
-        --position-embedding-type rotary \
+        --use-rotary-position-embeddings \
+        --no-position-embedding \
         --untie-embeddings-and-output-weights \
         --patch-tokenizer-type LLamaTokenizer \
         --recompute-activations \
