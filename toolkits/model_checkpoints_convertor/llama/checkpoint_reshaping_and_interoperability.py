@@ -575,7 +575,7 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                     params = transformers_to_megatron_fix_query_key_value_ordering(
                         params,
                         3.0,
-                        3,
+                        1,
                         heads,
                         hidden_size_per_head,
                     )
@@ -586,7 +586,7 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                     params = transformers_to_megatron_fix_query_key_value_ordering(
                         params,
                         3.0,
-                        3,
+                        2,
                         8,
                         hidden_size_per_head,
                     )
