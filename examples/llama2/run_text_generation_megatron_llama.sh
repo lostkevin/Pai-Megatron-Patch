@@ -2,10 +2,10 @@
 # bash run_text_generation_megatron_llama.sh dsw /workspace/Megatron-LM /workspace/PAI-Megatron-Patch /mnt/llama-ckpts/Ziya-LLaMA-13B-to-megatron-tp1-pp1 13B 1 1 1024 80 0 fp16 0 512 512 /mnt/llama-datasets/gen.jsonl /mnt/llama-datasets/cn_output.txt 0.85 1 1
 set -e
 ENV=$1
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
-GPUS_PER_NODE=2
+GPUS_PER_NODE=4
 NNODES=1
 NODE_RANK=0
 export CUDA_DEVICE_MAX_CONNECTIONS=1
@@ -39,6 +39,7 @@ NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
 INTERMEDIATE_SIZE=11008
+NUM_HEAD_KV=32
 
 elif [ $MODEL_SIZE = 13B ]; then
 
@@ -46,6 +47,7 @@ NUM_LAYERS=40
 HIDDEN_SIZE=5120
 NUM_ATTN_HEADS=40
 INTERMEDIATE_SIZE=13824
+NUM_HEAD_KV=40
 
 elif [ $MODEL_SIZE = 70B ]; then
 
@@ -105,7 +107,7 @@ rapidformer_options="  \
         --use-rotary-position-embeddings \
         --no-position-embedding \
         --untie-embeddings-and-output-weights \
-        --patch-tokenizer-type LLamaTokenizer-ziya \
+        --patch-tokenizer-type LLamaTokenizer \
         --tokenizer-type NullTokenizer \
         --vocab-size -1 \
         --no-position-embedding \
