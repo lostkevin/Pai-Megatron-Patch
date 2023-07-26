@@ -602,6 +602,18 @@ class ParallelAttention_70b(MegatronModule):
         # ==================================
         kv_seq_len = key_layer.shape[0]
         if inference_params:
+            kv_seq_len += inference_params.sequence_len_offset
+            value_layer = value_layer.transpose(0, 1).transpose(1, 2)
+            query_layer = query_layer.transpose(0, 1).transpose(1, 2)
+            key_layer = key_layer.transpose(0, 1).transpose(1, 2)
+            cos, sin = self.rotary_emb(value_layer, kv_seq_len)
+            query_layer, key_layer = apply_rotary_pos_emb(
+                query_layer, key_layer, cos, sin, position_ids)
+
+            value_layer = value_layer.transpose(1, 2).transpose(0, 1)
+            query_layer = query_layer.transpose(1, 2).transpose(0, 1)
+            key_layer = key_layer.transpose(1, 2).transpose(0, 1)
+
             batch_start = inference_params.batch_size_offset
             batch_end = batch_start + key_layer.size(1)
             assert batch_end <= inference_key_memory.size(1)
@@ -618,25 +630,25 @@ class ParallelAttention_70b(MegatronModule):
             value_layer = inference_value_memory[
                           :sequence_end, batch_start:batch_end, ...]
 
-            # adjust the key rotary positional embedding
-            if rotary_pos_emb is not None:
-                q_pos_emb, k_pos_emb = rotary_pos_emb
-                # need to cross check this condition during inference
-                # if not set_inference_key_value_memory:
-                if not is_first_step:
-                    # In inference, we compute one token at a time.
-                    # Select the correct positional embedding
-                    # (only the last token in the sequence)
-                    q_pos_emb = q_pos_emb[sequence_end - 1: sequence_end]
-                else:
-                    # In the first forward pass of inference,
-                    # we use the entire provided prefix.
-                    # q_pos_emb here has the rope embeddings of the entire
-                    # prefix + to-be-generated output so
-                    # we slice to just the prefix.
-                    q_pos_emb = q_pos_emb[:sequence_end, :, :, :]
-                k_pos_emb = k_pos_emb[:sequence_end, :, :, :]
-                rotary_pos_emb = (q_pos_emb, k_pos_emb)
+            # # adjust the key rotary positional embedding
+            # if rotary_pos_emb is not None:
+            #     q_pos_emb, k_pos_emb = rotary_pos_emb
+            #     # need to cross check this condition during inference
+            #     # if not set_inference_key_value_memory:
+            #     if not is_first_step:
+            #         # In inference, we compute one token at a time.
+            #         # Select the correct positional embedding
+            #         # (only the last token in the sequence)
+            #         q_pos_emb = q_pos_emb[sequence_end - 1: sequence_end]
+            #     else:
+            #         # In the first forward pass of inference,
+            #         # we use the entire provided prefix.
+            #         # q_pos_emb here has the rope embeddings of the entire
+            #         # prefix + to-be-generated output so
+            #         # we slice to just the prefix.
+            #         q_pos_emb = q_pos_emb[:sequence_end, :, :, :]
+            #     k_pos_emb = k_pos_emb[:sequence_end, :, :, :]
+            #     rotary_pos_emb = (q_pos_emb, k_pos_emb)
         else:
             value_layer = value_layer.transpose(0, 1).transpose(1, 2)
             query_layer = query_layer.transpose(0, 1).transpose(1, 2)

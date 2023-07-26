@@ -15,7 +15,7 @@
 from megatron import get_args
 from megatron.initialize import initialize_megatron
 from megatron_patch.generation.gpt_predictor import GPTPredictor
-from megatron_patch.model.llama.gpt_model import GPTModel
+from megatron_patch.model.llama2.gpt_model import GPTModel
 
 try:
     from megatron.model import ModelType
@@ -33,7 +33,7 @@ def get_tasks_args(parser):
                        type=int,
                        default=None,
                        help='n-head-kv')
-                       
+
     group.add_argument('--text-generate-input-file', type=str, default='')
     group.add_argument('--text-generate-output-file', type=str, default='')
     group.add_argument('--text-generate-gt-file', type=str, default='')
