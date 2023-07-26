@@ -26,6 +26,21 @@ from .language_model import get_language_model, parallel_lm_logits
 
 def post_language_model_processing(lm_output, labels, logit_weights,
                                    parallel_output, fp16_lm_cross_entropy):
+    """
+    This function is used for post-processing the output of the language model.
+
+    Args:
+        lm_output: The language model output tensor of shape [sequence_length, batch_size, hidden_size].
+        labels: The labels tensor of shape [batch_size, sequence_length].
+        logit_weights: The logit weights tensor of shape [parallel_output_size, hidden_size].
+        parallel_output: The parallel output tensor of shape [parallel_output_size, hidden_size].
+        fp16_lm_cross_entropy: A flag indicating whether to use FP16 for the cross-entropy calculation.
+
+    Returns:
+        If the labels are None, the function returns the output tensor as is, transposed to shape [batch_size, sequence_length, hidden_size].
+        If the labels are provided, the function calculates the cross-entropy loss and returns the loss tensor transposed to shape [batch_size, sequence_length].
+
+    """
 
     # Output. Format [s b h]
     output = parallel_lm_logits(lm_output, logit_weights, parallel_output)
@@ -58,6 +73,15 @@ class GPTModel(MegatronModule):
                  parallel_output=True,
                  pre_process=True,
                  post_process=True):
+        """
+        Initializes the GPTModel object.
+
+        Args:
+            num_tokentypes (int, optional): Number of token types. Defaults to 0.
+            parallel_output (bool, optional): Whether to use parallel output. Defaults to True.
+            pre_process (bool, optional): Whether to perform pre-processing. Defaults to True.
+            post_process (bool, optional): Whether to perform post-processing. Defaults to True.
+        """
         args = get_args()
         super(GPTModel, self).__init__(
             share_word_embeddings=not args.untie_embeddings_and_output_weights)
@@ -92,6 +116,19 @@ class GPTModel(MegatronModule):
                 attention_mask=None,
                 labels=None,
                 inference_params=None):
+        """
+        Performs forward pass computation of the language model.
+
+        Args:
+            input_ids (Tensor): Input tensor representing the token ids.
+            position_ids (Tensor, optional): Input tensor representing the position ids. Defaults to None.
+            attention_mask (Tensor, optional): Input tensor representing the attention mask. Defaults to None.
+            labels (Tensor, optional): Input tensor representing the labels. Defaults to None.
+            inference_params (dict, optional): Additional parameters for inference. Defaults to None.
+
+        Returns:
+            Tensor: Output of the language model.
+        """
 
         lm_output = self.language_model(input_ids,
                                         position_ids,
@@ -108,7 +145,16 @@ class GPTModel(MegatronModule):
             return lm_output
 
     def state_dict_for_save_checkpoint(self, prefix='', keep_vars=False):
+        """
+        Returns a dictionary containing the state of the model for checkpoint saving.
 
+        Args:
+            prefix (str, optional): Prefix to prepend to the state_dict keys. Defaults to ''.
+            keep_vars (bool, optional): Whether to keep variables in the state_dict. Defaults to False.
+
+        Returns:
+            dict: State dictionary of the model.
+        """
         state_dict_ = {}
         state_dict_[self._language_model_key] \
             = self.language_model.state_dict_for_save_checkpoint(
@@ -123,7 +169,12 @@ class GPTModel(MegatronModule):
         return state_dict_
 
     def load_state_dict(self, state_dict, strict=True):
-        """Customized load."""
+        """
+        Customized load.
+        Args:
+            state_dict (dict): State dictionary containing the model state.
+            strict (bool, optional): Whether to strictly enforce that the keys in the state_dict match the keys returned by the model's state_dict() function. Defaults to True.
+        """
 
         # Load word_embeddings.
         if self.post_process and not\
