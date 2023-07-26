@@ -16,6 +16,9 @@ import torch
 
 
 class LlamaRotaryEmbedding(torch.nn.Module):
+    """
+    The LlamaRotaryEmbedding class is a module that implements rotary positional embeddings for Transformer models
+    """
     def __init__(self,
                  dim,
                  max_position_embeddings=2048,

@@ -29,7 +29,18 @@ def parallel_lm_logits(input_,
                        word_embeddings_weight,
                        parallel_output,
                        bias=None):
-    """LM logits using word embedding weights."""
+    """Calculates the logits of a language model using word embedding weights.
+
+    Args:
+        input_ (torch.Tensor): The input tensor.
+        word_embeddings_weight (torch.Tensor): The word embedding weights.
+        parallel_output (bool): Flag to indicate whether to return parallel logits.
+        bias (torch.Tensor, optional): The bias tensor. Defaults to None.
+
+    Returns:
+        torch.Tensor: The calculated logits.
+
+    """
     args = get_args()
     # Parallel logits.
     if args.async_tensor_model_parallel_allreduce or\
@@ -71,7 +82,24 @@ def get_language_model(num_tokentypes,
                        decoder_attn_mask_type=AttnMaskType.causal,
                        pre_process=True,
                        post_process=True):
-    """Build language model and return along with the key to save."""
+    """
+    Build language model and return along with the key to save.
+
+    Args:
+        num_tokentypes (int): The number of token types.
+        add_pooler (bool): Flag to indicate whether to add a pooler.
+        encoder_attn_mask_type (str): The type of attention mask for the encoder.
+        init_method (callable, optional): The initialization method for the model parameters. Defaults to None.
+        scaled_init_method (callable, optional): The scaled initialization method for the model parameters. Defaults to None.
+        add_encoder (bool, optional): Flag to indicate whether to add an encoder. Defaults to True.
+        add_decoder (bool, optional): Flag to indicate whether to add a decoder. Defaults to False.
+        decoder_attn_mask_type (str, optional): The type of attention mask for the decoder. Defaults to AttnMaskType.causal.
+        pre_process (bool, optional): Flag to indicate whether to apply pre-processing. Defaults to True.
+        post_process (bool, optional): Flag to indicate whether to apply post-processing. Defaults to True.
+
+    Returns:
+        tuple: A tuple containing the language model and the key used for saving checkpoints.
+    """
     args = get_args()
 
     if init_method is None:
@@ -105,23 +133,38 @@ class Pooler(MegatronModule):
     Pool hidden states of a specific token (for example start of the
     sequence) and add a linear transformation followed by a tanh.
 
-    Arguments:
+    Args:
         hidden_size: hidden size
         init_method: weight initialization method for the linear layer.
             bias is set to zero.
     """
     def __init__(self, hidden_size, init_method):
+        """
+        Initialize the Pooler layer.
+
+        Args:
+            hidden_size (int): The size of the hidden states.
+            init_method (callable): The weight initialization method for the linear layer.
+
+        """
         super(Pooler, self).__init__()
         args = get_args()
         self.dense = get_linear_layer(hidden_size, hidden_size, init_method)
         self.sequence_parallel = args.sequence_parallel
 
     def forward(self, hidden_states, sequence_index=0):
-        # hidden_states: [s, b, h]
-        # sequence_index: index of the token to pool.
+        """
+        Forward pass of the Pooler layer. Gather data along sequence dimensions. 
+        Same pooler is run on all tensor parallel nodes
 
-        # gather data along sequence dimensions
-        # same pooler is run on all tensor parallel nodes
+        Args:
+            hidden_states (torch.Tensor): The hidden states of the language model.
+            sequence_index (int, optional): The index of the token to pool. Defaults to 0.
+
+        Returns:
+            torch.Tensor: The pooled hidden state.
+
+        """
         if self.sequence_parallel:
             tpg = tensor_parallel.gather_from_sequence_parallel_region
             hidden_states = tpg(hidden_states,
@@ -136,7 +179,7 @@ class Pooler(MegatronModule):
 class Embedding(MegatronModule):
     """Language model embeddings.
 
-    Arguments:
+    Args:
         hidden_size: hidden size
         vocab_size: vocabulary size
         max_sequence_length: maximum size of sequence. This
@@ -153,6 +196,18 @@ class Embedding(MegatronModule):
                  embedding_dropout_prob,
                  init_method,
                  num_tokentypes=0):
+        """
+        Initialize the Language Model Embeddings.
+
+        Args:
+            hidden_size (int): The size of the hidden states.
+            vocab_size (int): The vocabulary size.
+            max_sequence_length (int): The maximum size of a sequence, used for positional embedding.
+            embedding_dropout_prob (float): The dropout probability for the embeddings.
+            init_method (callable): The weight initialization method for the embeddings.
+            num_tokentypes (int, optional): The size of the token-type embeddings. Defaults to 0.
+
+        """
         super(Embedding, self).__init__()
 
         self.hidden_size = hidden_size
@@ -214,7 +269,18 @@ class Embedding(MegatronModule):
             self.tokentype_embeddings.weight.shared = True
 
     def forward(self, input_ids, position_ids, tokentype_ids=None):
-        # Embeddings.
+        """
+        Perform the forward pass of the Embedding layer.
+
+        Args:
+            input_ids (torch.Tensor): The input IDs of the tokens.
+            position_ids (torch.Tensor): The position IDs of the tokens.
+            tokentype_ids (torch.Tensor, optional): The token-type IDs of the tokens. Defaults to None.
+
+        Returns:
+            torch.Tensor: The embeddings tensor.
+
+        """
         words_embeddings = self.word_embeddings(input_ids)
         embeddings = words_embeddings
         if self.add_position_embedding:
@@ -249,7 +315,17 @@ class Embedding(MegatronModule):
         return embeddings
 
     def state_dict_for_save_checkpoint(self, prefix='', keep_vars=False):
-        """For easy load."""
+        """
+        Returns the state dictionary for saving the checkpoint of the Embedding layer.
+
+        Args:
+            prefix (str, optional): A prefix to prepend to the keys in the state dictionary. Defaults to an empty string.
+            keep_vars (bool, optional): Whether to keep the variables in the state dictionary as torch.Tensor or convert them to numpy.ndarray. Defaults to False.
+
+        Returns:
+            dict: The state dictionary.
+
+        """
 
         state_dict_ = {}
         state_dict_[self._word_embeddings_key] \
@@ -268,7 +344,14 @@ class Embedding(MegatronModule):
         return state_dict_
 
     def load_state_dict(self, state_dict, strict=True):
-        """Customized load."""
+        """
+        Loads the state dictionary into the Embedding layer
+
+        Args:
+        state_dict (dict): The state dictionary to load.
+        strict (bool, optional): Whether to strictly enforce that the keys in state_dict match the keys of the model's state_dict. Defaults to True.
+
+        """
         # Word embedding.
         if self._word_embeddings_key in state_dict:
             state_dict_ = state_dict[self._word_embeddings_key]
@@ -316,9 +399,10 @@ class Embedding(MegatronModule):
 
 
 class TransformerLanguageModel(MegatronModule):
-    """Transformer language model.
+    """
+    Transformer language model.
 
-    Arguments:
+    Args:
         transformer_hparams: transformer hyperparameters
         vocab_size: vocabulary size
         max_sequence_length: maximum size of sequence. This
@@ -338,6 +422,22 @@ class TransformerLanguageModel(MegatronModule):
                  add_pooler=False,
                  pre_process=True,
                  post_process=True):
+        """
+        Initialize the TransformerLanguageModel.
+
+        Args:
+            init_method: The initialization method for the model.
+            output_layer_init_method: The initialization method for the output layer.
+            encoder_attn_mask_type: The type of attention mask to be used in the encoder.
+            num_tokentypes (optional): The size of the token-type embeddings. Default is 0.
+            add_encoder (optional): Whether to add an encoder to the model. Default is True.
+            add_decoder (optional): Whether to add a decoder to the model. Default is False.
+            decoder_attn_mask_type (optional): The type of attention mask to be used in the decoder. Default is AttnMaskType.causal.
+            add_pooler (optional): Whether to add a pooler layer to the model. Default is False.
+            pre_process (optional): Whether to apply pre-processing to the input sequence. Default is True.
+            post_process (optional): Whether to apply post-processing to the output sequence. Default is True.
+
+        """
         args = get_args()
         # TODO: passing share_word_embeddings=False
         #  will not work correctly for T5 and embeddings
@@ -413,7 +513,13 @@ class TransformerLanguageModel(MegatronModule):
                 self._output_layer_key = 'output_layer'
 
     def set_input_tensor(self, input_tensor):
-        """ See megatron.model.transformer.set_input_tensor()"""
+        """
+        Set the input tensor for the model, See megatron.model.transformer.set_input_tensor()
+
+        Args:
+            input_tensor: The input tensor.
+            
+        """
 
         # This is usually handled in schedules.py but some inference code still
         # gives us non-lists or None
