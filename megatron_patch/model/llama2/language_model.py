@@ -22,7 +22,6 @@ from megatron.model.module import MegatronModule
 from megatron.model.utils import (get_linear_layer, init_method_normal,
                                   scaled_init_method_normal)
 
-from megatron.model.rotary_pos_embedding import RotaryEmbedding
 from .transformer import ParallelTransformer
 
 
@@ -173,15 +172,17 @@ class Embedding(MegatronModule):
 
         self._word_embeddings_key = 'word_embeddings'
 
-        # Position embedding (serial).
         self.add_position_embedding = args.add_position_embedding
         if self.add_position_embedding:
+            # Position embedding (serial).
             self.position_embeddings = torch.nn.Embedding(
                 max_sequence_length, self.hidden_size)
             self._position_embeddings_key = 'position_embeddings'
             # Initialize the position embeddings.
             if args.perform_initialization:
                 self.init_method(self.position_embeddings.weight)
+        else:
+            self.position_embeddings = None
 
         # Token type embedding.
         # Add this as an optional field that can be added through
@@ -206,38 +207,21 @@ class Embedding(MegatronModule):
         """Zero out all parameters in embedding."""
         self.word_embeddings.weight.data.fill_(0)
         self.word_embeddings.weight.shared = True
-        if self.add_position_embedding:
-            self.position_embeddings.weight.data.fill_(0)
-            self.position_embeddings.weight.shared = True
+        self.position_embeddings.weight.data.fill_(0)
+        self.position_embeddings.weight.shared = True
         if self.num_tokentypes > 0:
             self.tokentype_embeddings.weight.data.fill_(0)
             self.tokentype_embeddings.weight.shared = True
 
-    def add_tokentype_embeddings(self, num_tokentypes):
-        """Add token-type embedding. This function is provided so we can add
-        token-type embeddings in case the pretrained model does not have it.
-        This allows us to load the model normally and then add this embedding.
-        """
-        if self.tokentype_embeddings is not None:
-            raise Exception('tokentype embeddings is already initialized')
-        if torch.distributed.get_rank() == 0:
-            print('adding embedding for {} tokentypes'.format(num_tokentypes),
-                  flush=True)
-        self.num_tokentypes = num_tokentypes
-        self.tokentype_embeddings = torch.nn.Embedding(num_tokentypes,
-                                                       self.hidden_size)
-        # Initialize the token-type embeddings.
-        args = get_args()
-        self.init_method(self.tokentype_embeddings.weight)
-
     def forward(self, input_ids, position_ids, tokentype_ids=None):
         # Embeddings.
         words_embeddings = self.word_embeddings(input_ids)
+        embeddings = words_embeddings
         if self.add_position_embedding:
-            position_embeddings = self.position_embeddings(position_ids)
-            embeddings = words_embeddings + position_embeddings
+            assert self.position_embeddings is not None
+            embeddings = embeddings + self.position_embeddings(position_ids)
         else:
-            embeddings = words_embeddings
+            assert self.position_embeddings is None
 
         if tokentype_ids is not None:
             assert self.tokentype_embeddings is not None
@@ -271,10 +255,11 @@ class Embedding(MegatronModule):
         state_dict_[self._word_embeddings_key] \
             = self.word_embeddings.state_dict(prefix=prefix,
                                               keep_vars=keep_vars)
+
         if self.add_position_embedding:
             state_dict_[self._position_embeddings_key] \
                 = self.position_embeddings.state_dict(prefix=prefix,
-                                                  keep_vars=keep_vars)
+                                                      keep_vars=keep_vars)
         if self.num_tokentypes > 0:
             state_dict_[self._tokentype_embeddings_key] \
                 = self.tokentype_embeddings.state_dict(prefix=prefix,
@@ -284,7 +269,6 @@ class Embedding(MegatronModule):
 
     def load_state_dict(self, state_dict, strict=True):
         """Customized load."""
-
         # Word embedding.
         if self._word_embeddings_key in state_dict:
             state_dict_ = state_dict[self._word_embeddings_key]
@@ -308,7 +292,9 @@ class Embedding(MegatronModule):
                     if 'position_embeddings' in key:
                         state_dict_[key.split('position_embeddings.')[1]] \
                             = state_dict[key]
-            self.position_embeddings.load_state_dict(state_dict_, strict=strict)
+
+            self.position_embeddings.load_state_dict(state_dict_,
+                                                     strict=strict)
 
         # Tokentype embedding.
         if self.num_tokentypes > 0:
@@ -353,9 +339,13 @@ class TransformerLanguageModel(MegatronModule):
                  pre_process=True,
                  post_process=True):
         args = get_args()
-        # TODO: passing share_word_embeddings=False will not work correctly for T5 and embeddings will not be synced. Fix later for T5.
-        if args.untie_embeddings_and_output_weights: assert not add_decoder
-        super(TransformerLanguageModel, self).__init__(share_word_embeddings=not args.untie_embeddings_and_output_weights)
+        # TODO: passing share_word_embeddings=False
+        #  will not work correctly for T5 and embeddings
+        #  will not be synced. Fix later for T5.
+        if args.untie_embeddings_and_output_weights:
+            assert not add_decoder
+        super(TransformerLanguageModel, self).__init__(
+            share_word_embeddings=not args.untie_embeddings_and_output_weights)
 
         self.pre_process = pre_process
         self.post_process = post_process
@@ -368,47 +358,19 @@ class TransformerLanguageModel(MegatronModule):
         self.decoder_attn_mask_type = decoder_attn_mask_type
         self.add_pooler = add_pooler
         self.encoder_hidden_state = None
-        self.untie_embeddings_and_output_weights = args.untie_embeddings_and_output_weights
-
+        self.untie_embeddings_and_output_weights =\
+            args.untie_embeddings_and_output_weights
+        self.seq_length = args.max_padding_length
         # Embeddings.
         if self.pre_process:
             self.embedding = Embedding(self.hidden_size,
                                        args.padded_vocab_size,
                                        args.max_position_embeddings,
-                                       args.hidden_dropout,
-                                       self.init_method,
+                                       args.hidden_dropout, self.init_method,
                                        self.num_tokentypes)
             self._embedding_key = 'embedding'
 
-        # Rotary positional embeddings
-        self.use_rotary_position_embeddings = \
-            args.use_rotary_position_embeddings
-        if args.use_rotary_position_embeddings:
-            self.seq_length = args.seq_length
-            rotary_dim = args.hidden_size // args.num_attention_heads \
-                if args.kv_channels is None else args.kv_channels
-
-            if args.rotary_percent < 1.0:
-                rotary_dim = int(rotary_dim * args.rotary_percent)
-
-            # partial rotary embeddings, which is better than full rotary
-            # Wang and Komatsuzaki et al
-            # https://github.com/kingoflolz/mesh-transformer-jax/
-            self.rotary_emb = RotaryEmbedding(rotary_dim)
-
-        # Retriever (bi-directional transformer with cross attention)
-        if args.retro_add_retriever:
-            self.retriever = ParallelRetroEncoder(
-                self.init_method,
-                output_layer_init_method,
-                self_attn_mask_type=AttnMaskType.padding,
-                pre_process=self.pre_process,
-                post_process=False,
-            )
-            self._retriever_key = 'retriever'
-        else:
-            self.retriever = None
-
+        # Transformer.
         # Encoder (usually set to True, False if part of an encoder-decoder
         # architecture and in encoder-only stage).
         if self.add_encoder:
@@ -417,8 +379,7 @@ class TransformerLanguageModel(MegatronModule):
                 output_layer_init_method,
                 self_attn_mask_type=self.encoder_attn_mask_type,
                 pre_process=self.pre_process,
-                post_process=self.post_process,
-            )
+                post_process=self.post_process)
             self._encoder_key = 'encoder'
         else:
             self.encoder = None
@@ -444,13 +405,11 @@ class TransformerLanguageModel(MegatronModule):
                 self._pooler_key = 'pooler'
 
             if self.untie_embeddings_and_output_weights:
-                self.output_layer = tensor_parallel.ColumnParallelLinear(
-                    args.hidden_size,
-                    args.padded_vocab_size,
-                    bias=False, # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
-                    init_method=self.init_method,
-                    use_cpu_initialization=args.use_cpu_initialization,
-                    perform_initialization=args.perform_initialization)
+                tpc = tensor_parallel.ColumnParallelLinear
+                self.output_layer = tpc(args.hidden_size,
+                                        args.padded_vocab_size,
+                                        bias=False,
+                                        init_method=self.init_method)
                 self._output_layer_key = 'output_layer'
 
     def set_input_tensor(self, input_tensor):
@@ -481,55 +440,141 @@ class TransformerLanguageModel(MegatronModule):
             else:
                 raise Exception('input_tensor must have either length 1 or 2')
         else:
-            raise Exception('Stage must have at least either encoder or decoder')
+            raise Exception(
+                'Stage must have at least either encoder or decoder')
 
-    def forward(self, enc_input_ids, enc_position_ids, enc_attn_mask,
-                dec_input_ids=None, dec_position_ids=None, dec_attn_mask=None,
-                ret_input_ids=None, ret_position_ids=None, ret_attn_mask=None,
-                enc_dec_attn_mask=None, tokentype_ids=None,
+    # Copied from transformers.models.bart.modeling_bart._make_causal_mask
+    def _make_causal_mask(self,
+                          input_ids_shape,
+                          dtype,
+                          device,
+                          past_key_values_length=0):
+        """
+        Make causal mask used for bi-directional self-attention.
+        """
+        bsz, tgt_len = input_ids_shape
+        mask = torch.full((tgt_len, tgt_len),
+                          torch.tensor(torch.finfo(dtype).min, device=device),
+                          device=device)
+        mask_cond = torch.arange(mask.size(-1), device=device)
+        mask.masked_fill_(mask_cond < (mask_cond + 1).view(mask.size(-1), 1),
+                          0)
+        mask = mask.to(dtype)
+
+        if past_key_values_length > 0:
+            mask = torch.cat([
+                torch.zeros(tgt_len,
+                            past_key_values_length,
+                            dtype=dtype,
+                            device=device), mask
+            ],
+                             dim=-1)
+        return mask[None, None, :, :].expand(bsz, 1, tgt_len,
+                                             tgt_len + past_key_values_length)
+
+    # Copied from transformers.models.bart.modeling_bart._expand_mask
+    def _expand_mask(self, mask, dtype, tgt_len=None):
+        """
+        Expands attention_mask from
+         `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
+        """
+
+        if len(mask.size()) == 2:
+            bsz, src_len = mask.size()
+            tgt_len = tgt_len if tgt_len is not None else src_len
+            expanded_mask = mask[:, None,
+                                 None, :].expand(bsz, 1, tgt_len,
+                                                 src_len).to(dtype)
+        elif len(mask.size()) == 4:
+            mask[mask == 0] = True
+            expanded_mask = mask.to(dtype)
+
+        inverted_mask = 1.0 - expanded_mask
+
+        return inverted_mask.masked_fill(inverted_mask.to(torch.bool),
+                                         torch.finfo(dtype).min)
+
+    def _prepare_decoder_attention_mask(self,
+                                        attention_mask,
+                                        input_shape,
+                                        dtype,
+                                        device,
+                                        past_key_values_length=0):
+        # create causal mask
+        # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+        combined_attention_mask = None
+        if input_shape[-1] > 1:
+            combined_attention_mask = self._make_causal_mask(
+                input_shape,
+                dtype,
+                device=device,
+                past_key_values_length=past_key_values_length,
+            )
+
+        if attention_mask is not None:
+            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+            expanded_attn_mask = self._expand_mask(
+                attention_mask, dtype, tgt_len=input_shape[-1]).to(device)
+            combined_attention_mask = (expanded_attn_mask
+                                       if combined_attention_mask is None else
+                                       expanded_attn_mask +
+                                       combined_attention_mask)
+
+        return combined_attention_mask
+
+    def forward(self,
+                enc_input_ids,
+                enc_position_ids,
+                enc_attn_mask,
+                dec_input_ids=None,
+                dec_position_ids=None,
+                dec_attn_mask=None,
+                enc_dec_attn_mask=None,
+                tokentype_ids=None,
                 inference_params=None,
                 pooling_sequence_index=0,
-                enc_hidden_states=None, output_enc_hidden=False):
+                enc_hidden_states=None,
+                output_enc_hidden=False):
 
-        # Retriever embedding.
-        if self.retriever and self.pre_process:
-            retriever_input = self.embedding(ret_input_ids, ret_position_ids,
-                                             tokentype_ids=tokentype_ids)
-        else:
-            retriever_input = None
-
+        args = get_args()
         # Encoder embedding.
         if self.pre_process:
-            encoder_input = self.embedding(enc_input_ids, enc_position_ids,
+            encoder_input = self.embedding(enc_input_ids,
+                                           enc_position_ids,
                                            tokentype_ids=tokentype_ids)
         else:
             encoder_input = None
 
-        # Rotary positional embeddings
-        rotary_pos_emb = None
-        if self.use_rotary_position_embeddings:
-            if inference_params is not None:
-                rotary_pos_emb = \
-                    self.rotary_emb(inference_params.max_sequence_len)
-            else:
-                rotary_pos_emb = self.rotary_emb(self.seq_length)
+        if inference_params is None:
+            batch_size = enc_input_ids.shape[0]
+            enc_attn_mask = self._prepare_decoder_attention_mask(
+                enc_attn_mask, (batch_size, self.seq_length),
+                args.params_dtype, enc_input_ids.device)
+        else:
+            batch_size = enc_input_ids.shape[0]
+            enc_attn_mask = self._prepare_decoder_attention_mask(
+                enc_attn_mask, (batch_size, enc_attn_mask.size()[-2]),
+                args.params_dtype, enc_input_ids.device)
+
+        if enc_position_ids is None:
+            past_key_values_length = 0
+            seq_length = self.seq_length
+            device = enc_input_ids.device\
+                if enc_input_ids is not None else encoder_input.device
+            position_ids = torch.arange(past_key_values_length,
+                                        seq_length + past_key_values_length,
+                                        dtype=torch.long,
+                                        device=device)
+            enc_position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
 
         # Run encoder.
         if enc_hidden_states is None:
             if self.encoder is not None:
-                if self.retriever:
-                    encoder_output = self.encoder(
-                        encoder_input,
-                        enc_attn_mask,
-                        retriever_output=retriever_input,
-                        retriever_attn_mask=ret_attn_mask,
-                        inference_params=inference_params)
-                else:
-                    encoder_output = self.encoder(
-                        encoder_input,
-                        enc_attn_mask,
-                        inference_params=inference_params,
-                        rotary_pos_emb=rotary_pos_emb)
+                encoder_output = self.encoder(
+                    encoder_input,
+                    enc_position_ids,
+                    enc_attn_mask,
+                    inference_params=inference_params)
             else:
                 encoder_output = self.encoder_hidden_state
         else:
@@ -551,19 +596,16 @@ class TransformerLanguageModel(MegatronModule):
 
         # Decoder embedding.
         if self.pre_process:
-            decoder_input = self.embedding(dec_input_ids,
-                                           dec_position_ids)
+            decoder_input = self.embedding(dec_input_ids, dec_position_ids)
         else:
             decoder_input = None
 
         # Run decoder.
-        decoder_output = self.decoder(
-            decoder_input,
-            dec_attn_mask,
-            encoder_output=encoder_output,
-            enc_dec_attn_mask=enc_dec_attn_mask,
-            inference_params=inference_params,
-            rotary_pos_emb=rotary_pos_emb)
+        decoder_output = self.decoder(decoder_input,
+                                      dec_attn_mask,
+                                      encoder_output=encoder_output,
+                                      enc_dec_attn_mask=enc_dec_attn_mask,
+                                      inference_params=inference_params)
 
         if self.add_pooler and self.post_process:
             return decoder_output, encoder_output, pooled_output

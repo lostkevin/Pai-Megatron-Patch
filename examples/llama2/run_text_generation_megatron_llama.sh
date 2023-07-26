@@ -103,6 +103,7 @@ rapidformer_options="  \
         --use-distributed-optimizer \
         --swiglu \
         --use-rotary-position-embeddings \
+        --no-position-embedding \
         --untie-embeddings-and-output-weights \
         --patch-tokenizer-type LLamaTokenizer-ziya \
         --tokenizer-type NullTokenizer \
