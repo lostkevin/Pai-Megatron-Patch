@@ -244,7 +244,7 @@ def main():
         use_auth_token=None,
         low_cpu_mem_usage=False,
     )
-
+    model.to('cuda')
     if args.enable_gradient_checkpointing:
         model.gradient_checkpointing_enable()
 

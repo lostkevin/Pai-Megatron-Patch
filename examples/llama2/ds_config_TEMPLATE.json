@@ -1,7 +1,8 @@
 {
   "train_micro_batch_size_per_gpu": CONFIG_MBSIZE,
   "steps_per_print": 1,
-
+  "train_batch_size":CONFIG_GBSIZE,
+  "gradient_accumulation_steps":CONFIG_GAS,
   "zero_optimization": {
     "stage": CONFIG_ZERO_STATE,
     "allgather_bucket_size": 5e9,
