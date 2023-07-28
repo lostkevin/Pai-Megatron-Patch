@@ -23,7 +23,7 @@ fi
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
 MODEL_SIZE=$2
-BATCH_SIZE=$3
+MICRO_BATCH_SIZE=$3
 GA_STEPS=$4
 LR=$5
 SEQ_LEN=$6
@@ -35,6 +35,8 @@ VALID_DATASET_PATH=${11}
 PRETRAIN_CHECKPOINT_PATH=${12}
 EPOCH=${13}
 OUTPUT_BASEPATH=${14}
+
+GLOBAL_BATCH_SIZE=$(( ${MICRO_BATCH_SIZE} * ${GA_STEPS} * ${GPUS_PER_NODE} ))
 
 if [ $MODEL_SIZE = 7B ]; then
 
@@ -75,7 +77,7 @@ elif [ $GC = false ]; then
                     "
 fi
 
-NAME="${ENV}-dstrain-huggingface-llama-${MODEL_SIZE}-lr-${LR}-bs-${BATCH_SIZE}-epoch-${EPOCH}-zero-${ZERO}"
+NAME="${ENV}-dstrain-huggingface-llama-${MODEL_SIZE}-lr-${LR}-bs-${MICRO_BATCH_SIZE}-epoch-${EPOCH}-zero-${ZERO}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
@@ -95,7 +97,7 @@ hf_options="  \
         --seq-length ${SEQ_LEN} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
         --intermediate-size ${INTERMEDIATE_SIZE} \
-        --micro-batch-size ${BATCH_SIZE} \
+        --micro-batch-size ${MICRO_BATCH_SIZE} \
         --epochs ${EPOCH} \
         --lr ${LR} \
         --num-workers 1 \
@@ -105,8 +107,10 @@ hf_options="  \
 
 template_json="ds_config_TEMPLATE.json"
 config_json="ds_config.json"
-sed "s/CONFIG_MBSIZE/${BATCH_SIZE}/" ${template_json} \
+sed "s/CONFIG_MBSIZE/${MICRO_BATCH_SIZE}/" ${template_json} \
     | sed "s/CONFIG_ZERO_STATE/${ZERO}/" \
+    | sed "s/CONFIG_GBSIZE/${GLOBAL_BATCH_SIZE}/" \
+    | sed "s/CONFIG_GAS/${GA_STEPS}/" \
     | sed "s/CONFIG_FP16_ENABLED/${FP16}/" \
     | sed "s/CONFIG_BF16_ENABLED/${BF16}/" \
     | sed "s/CONFIG_LR/${LR}/" \
