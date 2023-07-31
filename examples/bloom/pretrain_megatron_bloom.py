@@ -101,12 +101,14 @@ def get_batch(data_iterator):
     labels = tokens_[:, 1:].contiguous()
     tokens = tokens_[:, :-1].contiguous()
 
+    action_mask = tokens.not_equal(tokenizer.pad_token_id).long()
+
     # Get the masks and postition ids.
     attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
         tokens, tokenizer.eod, args.reset_position_ids,
         args.reset_attention_mask, args.eod_mask_loss)
 
-    return tokens, labels, loss_mask, attention_mask, position_ids
+    return tokens, labels, loss_mask, attention_mask, action_mask, position_ids
 
 
 def loss_func(loss_mask, output_tensor):
@@ -126,11 +128,11 @@ def forward_step(data_iterator, model):
 
     # Get the batch.
     timers('batch-generator').start()
-    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
+    tokens, labels, loss_mask, attention_mask, action_mask, position_ids = get_batch(
         data_iterator)
     timers('batch-generator').stop()
 
-    output_tensor = model(tokens, position_ids, attention_mask, labels=labels)
+    output_tensor = model(tokens, position_ids, attention_mask, action_mask, labels=labels)
 
     return output_tensor, partial(loss_func, loss_mask)
 
