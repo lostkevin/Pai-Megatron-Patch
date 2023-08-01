@@ -129,8 +129,6 @@ def forward_step(data_iterator, model):
     labels = tokens_[:, 1:].contiguous()
     tokens = tokens_[:, :-1].contiguous()
 
-    action_mask = tokens.not_equal(tokenizer.pad_token_id).long()
-
     attention_mask, loss_mask, position_ids = \
         get_ltor_masks_and_position_ids(tokens,
                                         tokenizer.eod,
@@ -138,7 +136,7 @@ def forward_step(data_iterator, model):
                                         args.reset_attention_mask,
                                         args.eod_mask_loss)
 
-    output_tensor = model(tokens, position_ids, attention_mask, action_mask, labels=labels)
+    output_tensor = model(tokens, position_ids, attention_mask, labels=labels)
 
     def loss_func(loss_mask, output_tensor):
         losses = output_tensor.float()

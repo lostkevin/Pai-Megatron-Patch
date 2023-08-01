@@ -15,7 +15,7 @@
 
 import torch
 
-from megatron import get_args
+from megatron import get_args, get_tokenizer
 from megatron.core import mpu, tensor_parallel
 from megatron.model.enums import AttnMaskType, LayerType
 from megatron.model.module import MegatronModule
@@ -448,7 +448,6 @@ class TransformerLanguageModel(MegatronModule):
                 enc_input_ids,
                 enc_position_ids,
                 enc_attn_mask,
-                enc_action_mask,
                 dec_input_ids=None,
                 dec_position_ids=None,
                 dec_attn_mask=None,
@@ -466,6 +465,8 @@ class TransformerLanguageModel(MegatronModule):
                                            tokentype_ids=tokentype_ids)
         else:
             encoder_input = None
+
+        enc_action_mask = enc_input_ids.not_equal(get_tokenizer().pad_token_id).long()
 
         # Run encoder.
         if enc_hidden_states is None:

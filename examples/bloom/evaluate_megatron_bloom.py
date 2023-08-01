@@ -131,8 +131,6 @@ def forward_step(batch, model):
     tokens_ = batch['input_ids'].long().cuda()
     input_ids = tokens_[:, :-1].contiguous()
 
-    action_mask = tokens.not_equal(tokenizer.pad_token_id).long()
-
     attention_mask, loss_mask, position_ids = \
         get_ltor_masks_and_position_ids(input_ids,
                                         tokenizer.eod,
@@ -150,8 +148,7 @@ def forward_step(batch, model):
     unwrapped_model.set_input_tensor(input_tensor)
     logits = unwrapped_model(input_ids=input_ids,
                              position_ids=position_ids,
-                             attention_mask=attention_mask,
-                             action_mask=action_mask)
+                             attention_mask=attention_mask)
     shift_logits = logits[..., :-1, :].contiguous()
     shift_labels = input_ids[..., 1:].contiguous()
     loss_mask = loss_mask[..., 1:].contiguous()
