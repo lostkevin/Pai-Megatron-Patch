@@ -28,7 +28,7 @@ from megatron import get_timers
 from megatron_patch.checkpointing import load_checkpoint
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
-from megatron_patch.model.gpt3-llama.gpt_model import GPTModel
+from megatron_patch.model.gpt3_llama.gpt_model import GPTModel
 
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import get_model

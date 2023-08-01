@@ -8,13 +8,13 @@ import torch.nn.functional as F
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
 
-from .enums import LayerType, AttnMaskType
-from .module import MegatronModule
-from .retro_transformer import ParallelRetroEncoder, ParallelRetroTransformer
-from .rotary_pos_embedding import apply_rotary_pos_emb, RotaryEmbedding
+from megatron.model.enums import LayerType, AttnMaskType
+from megatron.model.module import MegatronModule
+from megatron.model.retro_transformer import ParallelRetroEncoder, ParallelRetroTransformer
+from megatron.model.rotary_pos_embedding import apply_rotary_pos_emb, RotaryEmbedding
 from .transformer import ParallelTransformer
-from .utils import get_linear_layer
-from .utils import init_method_normal, scaled_init_method_normal
+from megatron.model.utils import get_linear_layer
+from megatron.model.utils import init_method_normal, scaled_init_method_normal
 
 
 def parallel_lm_logits(input_, word_embeddings_weight, parallel_output,

@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from typing import Optional
 
 from megatron import get_timers, get_args, core, get_num_microbatches
-from .module import MegatronModule
+from megatron.model.module import MegatronModule
 from megatron.core import mpu, tensor_parallel
 from megatron.core.enums import ModelType
 from megatron.model import LayerNorm
@@ -1053,7 +1053,7 @@ class ParallelTransformer(MegatronModule):
             else:
                 return transformer_engine.pytorch.TransformerLayer(
                     args.hidden_size,
-                    args.ffn_hidden_size,
+                    args.intermediate_size,
                     args.num_attention_heads,
                     layernorm_epsilon=args.layernorm_epsilon,
                     hidden_dropout=args.hidden_dropout,

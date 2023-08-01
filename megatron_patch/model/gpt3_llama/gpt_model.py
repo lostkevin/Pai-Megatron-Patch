@@ -6,13 +6,13 @@ import torch
 
 from megatron import get_args
 from megatron.core import tensor_parallel
-from .module import MegatronModule
+from megatron.model.module import MegatronModule
 
-from .enums import AttnMaskType
+from megatron.model.enums import AttnMaskType
 from .language_model import parallel_lm_logits
 from .language_model import get_language_model
-from .utils import init_method_normal
-from .utils import scaled_init_method_normal
+from megatron.model.utils import init_method_normal
+from megatron.model.utils import scaled_init_method_normal
 
 
 def post_language_model_processing(lm_output, labels, logit_weights,
