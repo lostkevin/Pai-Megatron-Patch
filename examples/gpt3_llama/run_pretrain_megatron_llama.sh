@@ -53,18 +53,24 @@ if [ $MODEL_SIZE = 7B ]; then
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
+INTERMEDIATE_SIZE=11008
+NUM_HEAD_KV=32
 
 elif [ $MODEL_SIZE = 13B ]; then
 
 NUM_LAYERS=40
-HIDDEN_SIZE=5140
+HIDDEN_SIZE=5120
 NUM_ATTN_HEADS=40
+INTERMEDIATE_SIZE=13824
+NUM_HEAD_KV=40
 
-elif [ $MODEL_SIZE = 175B ]; then
+elif [ $MODEL_SIZE = 70B ]; then
 
-NUM_LAYERS=96
-HIDDEN_SIZE=12288
-NUM_ATTN_HEADS=96
+NUM_LAYERS=80
+HIDDEN_SIZE=8192
+NUM_ATTN_HEADS=64
+INTERMEDIATE_SIZE=28672
+NUM_HEAD_KV=8
 
 fi
 
@@ -155,6 +161,7 @@ megatron_options="  \
         --num-layers ${NUM_LAYERS} \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
+        --intermediate-size ${INTERMEDIATE_SIZE} \
         --seq-length ${SEQ_LEN} \
         --max-position-embeddings ${SEQ_LEN} \
         --log-interval 1 \
@@ -177,6 +184,7 @@ megatron_options="  \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --tokenizer-type NullTokenizer \
         --vocab-size -1 \
+        --n-head-kv ${NUM_HEAD_KV} \
         --swiglu \
         --use-rotary-position-embeddings \
         --no-position-embedding \
