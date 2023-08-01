@@ -210,10 +210,10 @@ class CoreAttention(MegatronModule):
                        query_layer.size(0), key_layer.size(0))
 
         # [sq, b, np, hn] -> [sq, b * np, hn]
-        query_layer = query_layer.view(output_size[2],
+        query_layer = query_layer.contiguous().view(output_size[2],
                                        output_size[0] * output_size[1], -1)
         # [sk, b, np, hn] -> [sk, b * np, hn]
-        key_layer = key_layer.view(output_size[3],
+        key_layer = key_layer.contiguous().view(output_size[3],
                                    output_size[0] * output_size[1], -1)
 
         # preallocting input tensor: [b * np, sq, sk]
@@ -261,7 +261,7 @@ class CoreAttention(MegatronModule):
                        query_layer.size(0), value_layer.size(3))
 
         # change view [sk, b * np, hn]
-        value_layer = value_layer.view(value_layer.size(0),
+        value_layer = value_layer.contiguous().view(value_layer.size(0),
                                        output_size[0] * output_size[1], -1)
 
         # change view [b * np, sq, sk]
