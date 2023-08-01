@@ -141,7 +141,7 @@ def get_batch(data_iterator):
     tokenizer = get_tokenizer()
 
     # Items and their type.
-    keys = ['input_ids']
+    keys = ['input_ids', 'labels']
     datatype = torch.int64
 
     # Broadcast data.
