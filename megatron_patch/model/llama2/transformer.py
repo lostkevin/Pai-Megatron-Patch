@@ -210,10 +210,10 @@ class CoreAttention(MegatronModule):
                        query_layer.size(0), key_layer.size(0))
 
         # [sq, b, np, hn] -> [sq, b * np, hn]
-        query_layer = query_layer.view(output_size[2],
+        query_layer = query_layer.contiguous().view(output_size[2],
                                        output_size[0] * output_size[1], -1)
         # [sk, b, np, hn] -> [sk, b * np, hn]
-        key_layer = key_layer.view(output_size[3],
+        key_layer = key_layer.contiguous().view(output_size[3],
                                    output_size[0] * output_size[1], -1)
 
         # preallocting input tensor: [b * np, sq, sk]
@@ -261,7 +261,7 @@ class CoreAttention(MegatronModule):
                        query_layer.size(0), value_layer.size(3))
 
         # change view [sk, b * np, hn]
-        value_layer = value_layer.view(value_layer.size(0),
+        value_layer = value_layer.contiguous().view(value_layer.size(0),
                                        output_size[0] * output_size[1], -1)
 
         # change view [b * np, sq, sk]
@@ -1273,8 +1273,7 @@ class ParallelTransformer(MegatronModule):
                     output_layer_init_method,
                     layer_number,
                     layer_type=layer_type,
-                    self_attn_mask_type=self_attn_mask_type,
-                    drop_path_rate=self.drop_path_rates[layer_number - 1])
+                    self_attn_mask_type=self_attn_mask_type)
             else:
                 return transformer_engine.pytorch.TransformerLayer(
                     args.hidden_size,
@@ -1526,9 +1525,6 @@ class ParallelTransformer(MegatronModule):
                     hidden_states = layer(hidden_states,
                                           position_ids,
                                           attention_mask,
-                                          encoder_output=encoder_output,
-                                          enc_dec_attn_mask=enc_dec_attn_mask,
-                                          inference_params=inference_params,
                                           **forward_kwargs)
 
             # Skip counter update for eval and activation checkpointing
