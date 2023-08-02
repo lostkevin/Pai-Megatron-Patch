@@ -1273,8 +1273,7 @@ class ParallelTransformer(MegatronModule):
                     output_layer_init_method,
                     layer_number,
                     layer_type=layer_type,
-                    self_attn_mask_type=self_attn_mask_type,
-                    drop_path_rate=self.drop_path_rates[layer_number - 1])
+                    self_attn_mask_type=self_attn_mask_type)
             else:
                 return transformer_engine.pytorch.TransformerLayer(
                     args.hidden_size,
@@ -1526,9 +1525,6 @@ class ParallelTransformer(MegatronModule):
                     hidden_states = layer(hidden_states,
                                           position_ids,
                                           attention_mask,
-                                          encoder_output=encoder_output,
-                                          enc_dec_attn_mask=enc_dec_attn_mask,
-                                          inference_params=inference_params,
                                           **forward_kwargs)
 
             # Skip counter update for eval and activation checkpointing
