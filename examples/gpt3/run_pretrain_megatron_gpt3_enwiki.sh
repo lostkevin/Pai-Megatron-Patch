@@ -1,11 +1,8 @@
 #!/bin/bash
-#sh run_pretrain_megatron_llama.sh dsw {WORK_DIR}/Megatron-LM-23.04/ {WORK_DIR}/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false 100000 {WORK_DIR}/gpt3-datasets/alpaca_data.json {WORK_DIR}/gpt3-ckpts/gpt3-7b-hf-to-megatron-tp1-pp1 100000000 10000 /mnt/output_gpt3
-#sh run_pretrain_megatron_llama.sh dsw /cpfs01/user/ken/llama/Megatron-LM-23.04/ /cpfs01/user/ken/llama/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false 100000 /cpfs01/user/ken/llama/gpt3-datasets/alpaca_data.json none 100000000 10000 /cpfs01/user/ken/llama/output_gpt3
 set -e
 ENV=$1
 MEGATRON_PATH=$2
-MEGATRON_PATCH_PATH=$3
-export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
+export PYTHONPATH=${MEGATRON_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
@@ -23,29 +20,35 @@ GPUS_PER_NODE=${KUBERNETES_CONTAINER_RESOURCE_GPU}
 
 fi
 
+if [ ! -f gpt2-vocab.json ]; then
+    wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-vocab.json
+fi
+
+if [ ! -f gpt2-merges.txt ]; then
+    wget https://easynlp-dev.oss-cn-zhangjiakou.aliyuncs.com/225247/RapidformerPro/gpt2-merges.txt
+fi
+
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-MODEL_SIZE=$4
-BATCH_SIZE=$5
-GLOBAL_BATCH_SIZE=$6
-LR=$7
-MIN_LR=$8
-SEQ_LEN=$9
-PAD_LEN=${10}
-EXTRA_VOCAB_SIZE=${11}
-PR=${12}
-TP=${13}
-PP=${14}
-AC=${15}
-DO=${16}
-FL=${17}
-SP=${18}
-SAVE_INTERVAL=${19}
-DATASET_PATH=${20}
-PRETRAIN_CHECKPOINT_PATH=${21}
-TRAIN_TOKENS=${22}
-WARMUP_TOKENS=${23}
-OUTPUT_BASEPATH=${24}
+MODEL_SIZE=$3
+BATCH_SIZE=$4
+GLOBAL_BATCH_SIZE=$5
+LR=$6
+MIN_LR=$7
+SEQ_LEN=$8
+PR=$9
+TP=${10}
+PP=${11}
+AC=${12}
+DO=${13}
+FL=${14}
+SP=${15}
+SAVE_INTERVAL=${16}
+DATASET_PATH=${17}
+PRETRAIN_CHECKPOINT_PATH=${18}
+TRAIN_TOKENS=${19}
+WARMUP_TOKENS=${20}
+OUTPUT_BASEPATH=${21}
 
 
 if [ $MODEL_SIZE = 7B ]; then
@@ -53,32 +56,18 @@ if [ $MODEL_SIZE = 7B ]; then
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
-INTERMEDIATE_SIZE=11008
-NUM_HEAD_KV=32
 
 elif [ $MODEL_SIZE = 13B ]; then
 
 NUM_LAYERS=40
-HIDDEN_SIZE=5120
+HIDDEN_SIZE=5140
 NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13824
-NUM_HEAD_KV=40
 
-elif [ $MODEL_SIZE = 65B ]; then
+elif [ $MODEL_SIZE = 175B ]; then
 
-NUM_LAYERS=80
-HIDDEN_SIZE=8192
-NUM_ATTN_HEADS=64
-INTERMEDIATE_SIZE=22016
-NUM_HEAD_KV=64
-
-elif [ $MODEL_SIZE = 70B ]; then
-
-NUM_LAYERS=80
-HIDDEN_SIZE=8192
-NUM_ATTN_HEADS=64
-INTERMEDIATE_SIZE=28672
-NUM_HEAD_KV=8
+NUM_LAYERS=96
+HIDDEN_SIZE=12288
+NUM_ATTN_HEADS=96
 
 fi
 
@@ -112,6 +101,7 @@ elif [ $PR = fp8 ]; then
         --fp8-amax-compute-algo max \
         --fp8-amax-history-len 1024 \
         --transformer-impl transformer_engine"
+
 fi
 
 if [ $DO = true ]; then
@@ -176,7 +166,6 @@ megatron_options="  \
         --num-layers ${NUM_LAYERS} \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
-        --intermediate-size ${INTERMEDIATE_SIZE} \
         --seq-length ${SEQ_LEN} \
         --max-position-embeddings ${SEQ_LEN} \
         --log-interval 1 \
@@ -190,26 +179,20 @@ megatron_options="  \
         --log-validation-ppl-to-tensorboard \
         --tensor-model-parallel-size ${TP} \
         --pipeline-model-parallel-size ${PP} \
-        --dataset LLama-SFT \
         --DDP-impl local \
         --no-load-optim \
         --no-load-rng \
-        --num-workers 8 \
+        --num-workers 1 \
         --seed 1234 \
-        --max-padding-length ${PAD_LEN} \
-        --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
-        --n-head-kv ${NUM_HEAD_KV} \
+        --tokenizer-type GPT2BPETokenizer \
+        --vocab-file gpt2-vocab.json \
+        --merge-file gpt2-merges.txt \
+        --position-embedding-type rope \
         --swiglu \
-        --use-rotary-position-embeddings \
-        --no-position-embedding \
         --untie-embeddings-and-output-weights \
-        --patch-tokenizer-type LLamaTokenizer \
-        --disable-bias-linear
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megatron_llama.py
+run_cmd="torchrun $DISTRIBUTED_ARGS $MEGATRON_PATH/pretrain_gpt.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 

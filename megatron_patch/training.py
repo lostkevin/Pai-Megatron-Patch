@@ -230,13 +230,10 @@ def train_step(forward_step_func, data_iterator, model, optimizer,
         data_iterator=data_iterator,
         model=model,
         num_microbatches=get_num_microbatches(),
-        dtype=args.params_dtype,
-        tensor_shape=(args.seq_length, args.micro_batch_size,
-                      args.hidden_size),
-        grad_scaler=optimizer.scale_loss,
-        sequence_parallel=args.sequence_parallel,
-        forward_only=False,
-        timers=fwd_bwd_timers)
+        seq_length=args.seq_length,
+        micro_batch_size=args.micro_batch_size,
+        decoder_seq_length=args.decoder_seq_length,
+        forward_only=False)
     timers('forward-backward').stop()
 
     # Empty unused memory.
@@ -584,6 +581,10 @@ def evaluate(forward_step_func,
 
     total_loss_dict = {}
 
+    eval_batch_size = args.global_batch_size
+    eval_num_microbatches = eval_batch_size // \
+        (args.micro_batch_size * args.data_parallel_size)
+
     with torch.no_grad():
         iteration = 0
         while iteration < args.eval_iters:
@@ -597,13 +598,11 @@ def evaluate(forward_step_func,
                 forward_step_func=forward_step_func,
                 data_iterator=data_iterator,
                 model=model,
-                num_microbatches=get_num_microbatches(),
-                dtype=args.params_dtype,
-                tensor_shape=(args.seq_length, args.micro_batch_size,
-                              args.hidden_size),
-                sequence_parallel=args.sequence_parallel,
-                forward_only=True,
-                timers=None)
+                num_microbatches=eval_num_microbatches,
+                seq_length=args.seq_length,
+                micro_batch_size=args.micro_batch_size,
+                decoder_seq_length=args.decoder_seq_length,
+                forward_only=True)
 
             # Empty unused memory
             if args.empty_unused_memory_level >= 1:
@@ -620,14 +619,17 @@ def evaluate(forward_step_func,
             args.consumed_valid_samples +=\
                 mpu.get_data_parallel_world_size() *\
                 args.micro_batch_size * get_num_microbatches()
+
         collected_non_loss_data = None
         if process_non_loss_data_func is not None and is_last_rank():
             collected_non_loss_data = forward_backward_func(
-                forward_step_func,
-                data_iterator,
-                model,
-                optimizer=None,
-                timers=None,
+                forward_step_func=forward_step_func,
+                data_iterator=data_iterator,
+                model=model,
+                num_microbatches=get_num_microbatches(),
+                seq_length=args.seq_length,
+                micro_batch_size=args.micro_batch_size,
+                decoder_seq_length=args.decoder_seq_length,
                 forward_only=True,
                 collect_non_loss_data=True)
 

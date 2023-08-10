@@ -91,6 +91,14 @@ if [ $PR = fp16 ]; then
 elif [ $PR = bf16 ]; then
     pr_options=" \
         --bf16"
+elif [ $PR = fp8 ]; then
+    pr_options=" \
+        --bf16
+        --fp8-hybrid \
+        --fp8-amax-compute-algo max \
+        --fp8-amax-history-len 1024 \
+        --transformer-impl transformer_engine"
+
 fi
 
 if [ $DO = true ]; then
@@ -171,13 +179,13 @@ megatron_options="  \
         --DDP-impl local \
         --no-load-optim \
         --no-load-rng \
-        --num-workers 8 \
+        --num-workers 1 \
         --seed 1234 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --tokenizer-type NullTokenizer \
         --vocab-size -1 \
-        --position-embedding-type rotary \
+        --position-embedding-type rope \
         --swiglu \
         --untie-embeddings-and-output-weights \
         --patch-tokenizer-type LLamaTokenizer

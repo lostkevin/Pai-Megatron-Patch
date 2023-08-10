@@ -16,7 +16,6 @@ from megatron.tokenizer.tokenizer import _vocab_size_with_padding
 
 _GLOBAL_TOKENIZER = None
 
-
 def build_tokenizer(args):
     """Initialize tokenizer."""
     if args.rank == 0:
@@ -178,11 +177,18 @@ def build_tokenizer(args):
         tokenizer = AutoTokenizer.from_pretrained(args.load)
         tokenizer.pad_token = tokenizer.eos_token
         args.padded_vocab_size = 49152
+    elif args.patch_tokenizer_type == 'GPT2BPETokenizer':
+        from megatron import get_tokenizer
+        tokenizer = get_tokenizer()
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(
                                       args.patch_tokenizer_type))
-    tokenizer.eod = tokenizer.eos_token_id
+
+    if args.patch_tokenizer_type != 'IcetkGLM130BTokenizer' and\
+            args.patch_tokenizer_type != 'GPT2BPETokenizer':
+        tokenizer.eod = tokenizer.eos_token_id
+
     global _GLOBAL_TOKENIZER
     _GLOBAL_TOKENIZER = tokenizer
     return _GLOBAL_TOKENIZER
