@@ -50,6 +50,11 @@ def get_tasks_args(parser):
                        default='megatron',
                        help='transformer-type')
 
+    group.add_argument('--n-head-kv',
+                       type=int,
+                       default=None,
+                       help='n-head-kv')
+
     group.add_argument('--max-padding-length',
                        type=int,
                        default=None,

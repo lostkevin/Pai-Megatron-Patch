@@ -81,11 +81,6 @@ def get_tasks_args(parser):
                        default=None,
                        help='max-padding-length')
 
-    group.add_argument('--position-embedding-type',
-                       type=str,
-                       default='absolute',
-                       help='Define position embedding type '
-                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
 
     group.add_argument('--patch-tokenizer-type',
                        type=str,
@@ -97,10 +92,15 @@ def get_tasks_args(parser):
 def model_provider(pre_process=True, post_process=True):
     args = get_args()
     build_tokenizer(args)
-    model = GPTModel(num_tokentypes=0,
-                     parallel_output=True,
-                     pre_process=pre_process,
-                     post_process=post_process)
+    from megatron.arguments import core_transformer_config_from_args
+    config = core_transformer_config_from_args(get_args())
+    model = GPTModel(
+        config,
+        num_tokentypes=0,
+        parallel_output=True,
+        pre_process=pre_process,
+        post_process=post_process
+    )
     return model
 
 

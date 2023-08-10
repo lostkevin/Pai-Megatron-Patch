@@ -35,9 +35,9 @@ from megatron.training import (build_train_valid_test_data_iterators,
 from megatron.utils import (calc_params_l2_norm,
                             check_adlr_autoresume_termination, report_memory,
                             unwrap_model)
+from megatron.core.pipeline_parallel.schedules import get_forward_backward_func
 
 from .checkpointing import load_checkpoint
-from .schedules import get_forward_backward_func
 
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
@@ -225,18 +225,29 @@ def train_step(forward_step_func, data_iterator, model, optimizer,
            log_level=1).start(barrier=args.barrier_with_L1_time)
     forward_backward_func = get_forward_backward_func()
     fwd_bwd_timers = timers if args.timing_log_level > 1 else None
-    losses_reduced = forward_backward_func(
-        forward_step_func=forward_step_func,
-        data_iterator=data_iterator,
-        model=model,
-        num_microbatches=get_num_microbatches(),
-        dtype=args.params_dtype,
-        tensor_shape=(args.seq_length, args.micro_batch_size,
-                      args.hidden_size),
-        grad_scaler=optimizer.scale_loss,
-        sequence_parallel=args.sequence_parallel,
-        forward_only=False,
-        timers=fwd_bwd_timers)
+    try:
+        losses_reduced = forward_backward_func(
+            forward_step_func=forward_step_func,
+            data_iterator=data_iterator,
+            model=model,
+            num_microbatches=get_num_microbatches(),
+            seq_length=args.seq_length,
+            micro_batch_size=args.micro_batch_size,
+            decoder_seq_length=args.decoder_seq_length,
+            forward_only=False)
+    except:
+        losses_reduced = forward_backward_func(
+            forward_step_func=forward_step_func,
+            data_iterator=data_iterator,
+            model=model,
+            num_microbatches=get_num_microbatches(),
+            dtype=args.params_dtype,
+            tensor_shape=(args.seq_length, args.micro_batch_size,
+                          args.hidden_size),
+            grad_scaler=optimizer.scale_loss,
+            sequence_parallel=args.sequence_parallel,
+            forward_only=False,
+            timers=fwd_bwd_timers)
     timers('forward-backward').stop()
 
     # Empty unused memory.
@@ -584,6 +595,10 @@ def evaluate(forward_step_func,
 
     total_loss_dict = {}
 
+    eval_batch_size = args.global_batch_size
+    eval_num_microbatches = eval_batch_size // \
+        (args.micro_batch_size * args.data_parallel_size)
+
     with torch.no_grad():
         iteration = 0
         while iteration < args.eval_iters:
@@ -593,17 +608,28 @@ def evaluate(forward_step_func,
                     iteration, args.eval_iters))
 
             forward_backward_func = get_forward_backward_func()
-            loss_dicts = forward_backward_func(
-                forward_step_func=forward_step_func,
-                data_iterator=data_iterator,
-                model=model,
-                num_microbatches=get_num_microbatches(),
-                dtype=args.params_dtype,
-                tensor_shape=(args.seq_length, args.micro_batch_size,
-                              args.hidden_size),
-                sequence_parallel=args.sequence_parallel,
-                forward_only=True,
-                timers=None)
+            try:
+                loss_dicts = forward_backward_func(
+                    forward_step_func=forward_step_func,
+                    data_iterator=data_iterator,
+                    model=model,
+                    num_microbatches=eval_num_microbatches,
+                    seq_length=args.seq_length,
+                    micro_batch_size=args.micro_batch_size,
+                    decoder_seq_length=args.decoder_seq_length,
+                    forward_only=True)
+            except:
+                loss_dicts = forward_backward_func(
+                    forward_step_func=forward_step_func,
+                    data_iterator=data_iterator,
+                    model=model,
+                    num_microbatches=get_num_microbatches(),
+                    dtype=args.params_dtype,
+                    tensor_shape=(args.seq_length, args.micro_batch_size,
+                                  args.hidden_size),
+                    sequence_parallel=args.sequence_parallel,
+                    forward_only=True,
+                    timers=None)
 
             # Empty unused memory
             if args.empty_unused_memory_level >= 1:
@@ -620,16 +646,29 @@ def evaluate(forward_step_func,
             args.consumed_valid_samples +=\
                 mpu.get_data_parallel_world_size() *\
                 args.micro_batch_size * get_num_microbatches()
+
         collected_non_loss_data = None
         if process_non_loss_data_func is not None and is_last_rank():
-            collected_non_loss_data = forward_backward_func(
-                forward_step_func,
-                data_iterator,
-                model,
-                optimizer=None,
-                timers=None,
-                forward_only=True,
-                collect_non_loss_data=True)
+            try:
+                collected_non_loss_data = forward_backward_func(
+                    forward_step_func=forward_step_func,
+                    data_iterator=data_iterator,
+                    model=model,
+                    num_microbatches=get_num_microbatches(),
+                    seq_length=args.seq_length,
+                    micro_batch_size=args.micro_batch_size,
+                    decoder_seq_length=args.decoder_seq_length,
+                    forward_only=True,
+                    collect_non_loss_data=True)
+            except:
+                collected_non_loss_data = forward_backward_func(
+                    forward_step_func,
+                    data_iterator,
+                    model,
+                    optimizer=None,
+                    timers=None,
+                    forward_only=True,
+                    collect_non_loss_data=True)
 
     # Move model back to the train mode.
     for model_module in model:
