@@ -28,7 +28,7 @@ from megatron.data.gpt_dataset import (_build_index_mappings,
                                        get_indexed_dataset_,
                                        get_train_valid_test_split_)
 from megatron_patch.tokenizer import get_tokenizer
-
+from megatron import get_args
 
 class GLM130BDataset(torch.utils.data.Dataset):
     """GLM130B dataset class."""
@@ -367,22 +367,30 @@ class LLamaIdxMapDataset(torch.utils.data.Dataset):
                  return_doc_ids=False):
 
         # self.IGNORE_INDEX = -100
+        args = get_args()
         self.tokenizer = get_tokenizer()
         self.max_padding_length = max_padding_length
 
         self.name = name
         self.indexed_dataset = indexed_dataset
         self.return_doc_ids = return_doc_ids
-
+        self.split = args.split
         # Checks
         assert np.min(documents) >= 0
         assert np.max(documents) < indexed_dataset.sizes.shape[0]
 
         # Build index mappings.
-        self.doc_idx, self.sample_idx, self.shuffle_idx, self.index_prefix = \
-            _build_index_mappings(self.name, data_prefix,
+        try:
+            self.doc_idx, self.sample_idx, self.shuffle_idx, self.index_prefix = \
+                _build_index_mappings(self.name, data_prefix,
                                   documents, self.indexed_dataset.sizes,
-                                  num_samples, self.max_padding_length-1, seed)
+                                  num_samples, self.max_padding_length, seed)
+        except:
+            self.doc_idx, self.sample_idx, self.shuffle_idx, self.desc, self.desc_hash = \
+                _build_index_mappings(self.name, data_prefix,
+                                  documents, self.indexed_dataset.sizes,
+                                  self.split, num_samples, self.max_padding_length, seed,
+                                  data_cache_path=None)
 
     def __len__(self):
         # -1 is due to data structure used to retieve the index:
