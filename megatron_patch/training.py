@@ -23,19 +23,20 @@ from megatron import (get_args, get_num_microbatches, get_signal_handler,
                       get_tensorboard_writer, get_timers, is_last_rank,
                       print_rank_0, print_rank_last, update_num_microbatches)
 from megatron.checkpointing import save_checkpoint
-from megatron.core import mpu
+from megatron.core import mpu, tensor_parallel
 from megatron.initialize import (initialize_megatron, set_jit_fusion_options,
                                  write_args_to_tensorboard)
 from megatron.model import DistributedDataParallel as LocalDDP
 from megatron.model import Float16Module
 from megatron.optimizer import get_megatron_optimizer
 from megatron.training import (build_train_valid_test_data_iterators,
-                               get_model, get_optimizer_param_scheduler,
+                               get_optimizer_param_scheduler,
                                print_datetime, save_checkpoint_and_time)
 from megatron.utils import (calc_params_l2_norm,
                             check_adlr_autoresume_termination, report_memory,
                             unwrap_model)
 from megatron.core.pipeline_parallel.schedules import get_forward_backward_func
+from megatron.core.enums import ModelType
 
 from .checkpointing import load_checkpoint
 
@@ -164,6 +165,114 @@ def pretrain(train_valid_test_dataset_provider,
                                    test_data_iterator, model, 0,
                                    process_non_loss_data_func, True)
 
+
+def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap_with_ddp=True):
+    """Build the model."""
+    args = get_args()
+    args.model_type = model_type
+
+    # Build model.
+    if mpu.get_pipeline_model_parallel_world_size() > 1 and \
+       args.virtual_pipeline_model_parallel_size is not None:
+        assert model_type != ModelType.encoder_and_decoder, \
+            "Interleaved schedule not supported for model with both encoder and decoder"
+        model = []
+        for i in range(args.virtual_pipeline_model_parallel_size):
+            mpu.set_virtual_pipeline_model_parallel_rank(i)
+            # Set pre_process and post_process only after virtual rank is set.
+            pre_process = mpu.is_pipeline_first_stage()
+            post_process = mpu.is_pipeline_last_stage()
+            this_model = model_provider_func(
+                pre_process=pre_process,
+                post_process=post_process
+            )
+            this_model.model_type = model_type
+            model.append(this_model)
+    else:
+        pre_process = mpu.is_pipeline_first_stage()
+        post_process = mpu.is_pipeline_last_stage()
+        add_encoder = True
+        add_decoder = True
+        if model_type == ModelType.encoder_and_decoder:
+            if mpu.get_pipeline_model_parallel_world_size() > 1:
+                assert args.pipeline_model_parallel_split_rank is not None, \
+                    "Split rank needs to be specified for model with both encoder and decoder"
+                rank = mpu.get_pipeline_model_parallel_rank()
+                split_rank = args.pipeline_model_parallel_split_rank
+                world_size = mpu.get_pipeline_model_parallel_world_size()
+                pre_process = rank == 0 or rank == split_rank
+                post_process = (rank == (split_rank - 1)) or (
+                        rank == (world_size - 1))
+                add_encoder = mpu.is_pipeline_stage_before_split()
+                add_decoder = mpu.is_pipeline_stage_after_split()
+            model = model_provider_func(
+                pre_process=pre_process,
+                post_process=post_process,
+                add_encoder=add_encoder,
+                add_decoder=add_decoder)
+        else:
+            model = model_provider_func(
+                pre_process=pre_process,
+                post_process=post_process
+            )
+        model.model_type = model_type
+
+    if not isinstance(model, list):
+        model = [model]
+
+    # Disallow training and inference with Transformer Engine
+    # for non-GPT models
+    #args.allow_transformer_engine = all([type(m) == GPTModel for m in model])
+    args.allow_transformer_engine = True
+    assert args.allow_transformer_engine or args.transformer_impl == 'local', \
+        'Transformer Engine is only approved for GPT models'
+
+    # Set tensor model parallel attributes if not set.
+    # Only parameters that are already tensor model parallel have these
+    # attributes set for them. We should make sure the default attributes
+    # are set for all params so the optimizer can use them.
+    for model_module in model:
+        for param in model_module.parameters():
+            tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
+
+    # Print number of parameters.
+    if mpu.get_data_parallel_rank() == 0:
+        print(' > number of parameters on (tensor, pipeline) '
+              'model parallel rank ({}, {}): {}'.format(
+            mpu.get_tensor_model_parallel_rank(),
+            mpu.get_pipeline_model_parallel_rank(),
+            sum([sum([p.nelement() for p in model_module.parameters()])
+                 for model_module in model])), flush=True)
+
+    # GPU allocation.
+    for model_module in model:
+        model_module.cuda(torch.cuda.current_device())
+
+    # Fp16 conversion.
+    if args.fp16 or args.bf16:
+        model = [Float16Module(model_module, args) for model_module in model]
+
+    if wrap_with_ddp:
+        if args.DDP_impl == 'torch':
+            i = torch.cuda.current_device()
+            model = [torchDDP(model_module, device_ids=[i], output_device=i,
+                              process_group=mpu.get_data_parallel_group())
+                     for model_module in model]
+
+        elif args.DDP_impl == 'local':
+            model = [LocalDDP(model_module,
+                              args.accumulate_allreduce_grads_in_fp32,
+                              args.use_contiguous_buffers_in_local_ddp)
+                     for model_module in model]
+            # broad cast params from data parallel src rank to other data parallel ranks
+            if args.data_parallel_random_init:
+                for model_module in model:
+                    model_module.broadcast_params()
+        else:
+            raise NotImplementedError('Unknown DDP implementation specified: '
+                                      '{}. Exiting.'.format(args.DDP_impl))
+
+    return model
 
 def setup_model_and_optimizer(model_provider_func,
                               model_type,
