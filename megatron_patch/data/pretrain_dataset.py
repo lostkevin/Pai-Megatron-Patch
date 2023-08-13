@@ -433,8 +433,8 @@ class LLamaIdxMapDataset(torch.utils.data.Dataset):
 
         tokens = sample.tolist()
         sample = []
-        sample.append(np.array(tokens + [self.tokenizer.pad_token_id] * (self.max_padding_length - 1 - len(tokens))))
-        sample.append(np.array(tokens + [self.tokenizer.pad_token_id] * (self.max_padding_length - 1 - len(tokens))))
+        sample.append(np.array(tokens))
+        sample.append(np.array(tokens))
 
         return self.gpt_convert_example_to_feature(sample)
 

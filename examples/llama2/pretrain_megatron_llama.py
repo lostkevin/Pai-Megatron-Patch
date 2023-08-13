@@ -145,9 +145,9 @@ def forward_step(data_iterator, model):
         data = None
 
     batch = tensor_parallel.broadcast_data(keys, data, datatype)
-
-    input_ids = batch['input_ids'].long().cuda().contiguous()
-    labels = batch['labels'].long().cuda().contiguous()
+    tokens_ = batch['input_ids'].long().cuda().contiguous()
+    labels = tokens_[:, 1:].contiguous()
+    input_ids = tokens_[:, :-1].contiguous()
     loss_mask = batch['loss_mask'].long().cuda()
     loss_mask = loss_mask[..., 1:].contiguous()
     attention_mask = input_ids.ne(tokenizer.pad_token_id)

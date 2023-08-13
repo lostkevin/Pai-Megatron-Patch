@@ -122,11 +122,12 @@ def forward_step(data_iterator, model):
     except BaseException:
         data_iterator = data_iterator
 
-    input_ids = data_iterator['input_ids'].long().cuda().contiguous()
-    labels = data_iterator['labels'].long().cuda().contiguous()
+    tokens_ = data_iterator['input_ids'].long().cuda().contiguous()
+    labels = tokens_[:, 1:].contiguous()
+    input_ids = tokens_[:, :-1].contiguous()
     loss_mask = data_iterator['loss_mask'].long().cuda()
-    attention_mask = input_ids.ne(tokenizer.pad_token_id)
     loss_mask = loss_mask[..., 1:].contiguous()
+    attention_mask = input_ids.ne(tokenizer.pad_token_id)
 
     output_tensor = model(input_ids=input_ids,
                           attention_mask=attention_mask,
