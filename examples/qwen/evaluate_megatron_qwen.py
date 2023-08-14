@@ -25,10 +25,11 @@ from megatron.model import Float16Module
 from megatron.utils import unwrap_model
 from megatron.utils import get_ltor_masks_and_position_ids
 from megatron import get_timers
+from megatron.arguments import core_transformer_config_from_args
 from megatron_patch.checkpointing import load_checkpoint
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
-from megatron_patch.model.gpt3_llama.gpt_model import GPTModel
+from megatron_patch.model.qwen.gpt_model import GPTModel
 
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import get_model
@@ -111,7 +112,6 @@ def get_model_provider():
         """Build the model."""
         args = get_args()
         build_tokenizer(args)
-        from megatron.arguments import core_transformer_config_from_args
         config = core_transformer_config_from_args(get_args())
         model = GPTModel(
             config,
@@ -125,66 +125,30 @@ def get_model_provider():
 
     return model_provider
 
-def get_batch(batch):
-    """Generate a batch"""
-    args = get_args()
-    tokenizer = get_tokenizer()
-
-    # Items and their type.
-    keys = ['input_ids', 'labels']
-    datatype = torch.int64
-
-    # Broadcast data.
-    # if data_iterator is not None:
-    #     data = next(data_iterator)
-    # else:
-    #     data = None
-    data_b = tensor_parallel.broadcast_data(keys, batch, datatype)
-
-    # Unpack.
-    tokens_ = data_b['input_ids'].long()
-    labels = data_b['labels'].long().cuda()
-    tokens = tokens_.contiguous().cuda()
-
-    # Get the masks and postition ids.
-    attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
-        tokens,
-        tokenizer.eos_token,   # eod
-        args.reset_position_ids,
-        args.reset_attention_mask,
-        args.eod_mask_loss)
-
-    return tokens, labels, loss_mask, attention_mask, position_ids
 def forward_step(batch, model):
     """Forward step."""
-    args = get_args()
+    tokenizer = get_tokenizer()
     # Get the batch.
-    # input_ids = batch['input_ids'].long().cuda()
-    # labels = batch['labels'].long().cuda()
-    # loss_mask = batch['loss_mask'].long().cuda()
-    # attention_mask = input_ids.ne(tokenizer.pad_token_id)
-
-    timers = get_timers()
-    # Get the batch.
-    timers('batch-generator', log_level=2).start()
-    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
-        batch)
-    timers('batch-generator').stop()
-
+    input_ids = batch['input_ids'].long().cuda()
+    labels = batch['labels'].long().cuda()
+    loss_mask = batch['loss_mask'].long().cuda()
+    attention_mask = input_ids.ne(tokenizer.pad_token_id)
     # Tell the model what our actual batch size will be
+    args = get_args()
     args.micro_batch_size = len(labels)
-    input_tensor = recv_forward(tokens.shape, tokens.dtype)
+    input_tensor = recv_forward(input_ids.shape, input_ids.dtype)
 
     # Forward pass through the model.
     unwrapped_model = unwrap_model(model, (torchDDP, LocalDDP, Float16Module))
     unwrapped_model.set_input_tensor(input_tensor)
-    logits = unwrapped_model(input_ids=tokens,
-                             position_ids=position_ids,
-                             attention_mask=attention_mask)
+    logits = unwrapped_model(input_ids=input_ids,
+                             attention_mask=attention_mask,
+                             position_ids=None)
     shift_logits = logits[..., :-1, :].contiguous()
     shift_labels = labels[..., 1:].contiguous()
     loss_mask = loss_mask[..., 1:].contiguous()
-    send_forward(shift_logits)
+    config = core_transformer_config_from_args(get_args())
+    send_forward(shift_logits, config)
     if parallel_state.is_pipeline_last_stage():
         losses = tensor_parallel.vocab_parallel_cross_entropy(
             shift_logits.contiguous().float(), shift_labels.contiguous())

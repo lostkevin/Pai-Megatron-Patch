@@ -162,6 +162,25 @@ def build_tokenizer(args):
         tokenizer.add_special_tokens(special_tokens_dict)
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
 
+    elif args.patch_tokenizer_type == 'QwenTokenizer':
+        from .tokenization_qwen import QWenTokenizer
+        if args.load is None:
+            tokenizer = QWenTokenizer.from_pretrained(
+                'Qwen/Qwen-7B',
+                model_max_length=args.seq_length,
+                padding_side='right',
+                use_fast=False,
+            )
+        else:
+            tokenizer = QWenTokenizer.from_pretrained(
+                args.load,
+                model_max_length=args.seq_length,
+                padding_side='right',
+                use_fast=False,
+            )
+        tokenizer.pad_token_id = tokenizer.eod_id
+        args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
+
     elif args.patch_tokenizer_type == 'BloomTokenizerFromCustom':
         print_rank_0('Using Customized Bloom tokenizer.')
         from transformers import BloomTokenizerFast as BloomTokenizer
