@@ -1,8 +1,4 @@
 #!/bin/bash
-# megatron to transformers: You need to copy the tokenizer files into the save_path
-# bash model_convertor.sh ../../Megatron-LM/ ../../llama-hf2mg-test-2-2/release/ ../../llama_mg2hf 1 1 llama-7b 1 true
-# transformers to megatron
-# bash model_convertor.sh ../../Megatron-LM/ ../../llama-7b-hf ../../llama-hf2mg 1 1 llama-7b 1 false
 set -e
 START_TIME=$SECONDS
 
