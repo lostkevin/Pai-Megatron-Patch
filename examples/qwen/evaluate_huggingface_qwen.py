@@ -12,26 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
-from megatron import get_args, print_rank_0
-from megatron.core import parallel_state, tensor_parallel
-from megatron.core.pipeline_parallel.p2p_communication import (recv_forward,
-                                                               send_forward)
+from megatron import get_args, is_last_rank, print_rank_0
+from megatron.core import parallel_state
+from megatron.core.pipeline_parallel.p2p_communication import send_forward
+from megatron.arguments import core_transformer_config_from_args
 from megatron.initialize import initialize_megatron
 from megatron.model import DistributedDataParallel as LocalDDP
 from megatron.model import Float16Module
 from megatron.utils import unwrap_model
-from megatron.utils import get_ltor_masks_and_position_ids
-from megatron import get_timers
-from megatron_patch.checkpointing import load_checkpoint
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
-from megatron_patch.model.gpt3_llama.gpt_model import GPTModel
-
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.training import get_model
+from megatron_patch.model.qwen.modeling_qwen import QWenLMHeadModel
 
 try:
     from megatron.model import ModelType
@@ -49,11 +47,6 @@ def get_tasks_args(parser):
                        type=str,
                        default='megatron',
                        help='transformer-type')
-
-    group.add_argument('--n-head-kv',
-                       type=int,
-                       default=None,
-                       help='n-head-kv')
 
     group.add_argument('--max-padding-length',
                        type=int,
@@ -73,16 +66,6 @@ def get_tasks_args(parser):
                        help='Number of finetunning epochs. Zero results in '
                        'evaluation only.')
 
-    group.add_argument('--intermediate-size',
-                       type=int,
-                       default=None,
-                       help='--intermediate-size')
-
-    group.add_argument('--extra-vocab-size',
-                       type=int,
-                       default=1,
-                       help='--extra-vocab-size')
-
     group.add_argument('--keep-last',
                        action='store_true',
                        help='Keep the last batch (maybe incomplete) in'
@@ -99,6 +82,11 @@ def get_tasks_args(parser):
                        default=None,
                        help='path(s) to the validation data.')
 
+    group.add_argument('--extra-vocab-size',
+                       type=int,
+                       default=1,
+                       help='--extra-vocab-size')
+
     group.add_argument('--patch-tokenizer-type',
                        type=str,
                        help='patch-tokenizer-type')
@@ -107,92 +95,40 @@ def get_tasks_args(parser):
 
 
 def get_model_provider():
+    """Based on evaluation metric set the parallel-output flag and
+    return the model provider."""
     def model_provider(pre_process=True, post_process=True):
-        """Build the model."""
         args = get_args()
-        build_tokenizer(args)
-        from megatron.arguments import core_transformer_config_from_args
-        config = core_transformer_config_from_args(get_args())
-        model = GPTModel(
-            config,
-            num_tokentypes=0,
-            parallel_output=True,
-            pre_process=pre_process,
-            post_process=post_process
-        )
-
+        tokenizer = build_tokenizer(args)
+        model = QWenLMHeadModel.from_pretrained(args.load, trust_remote_code=False)
+        model.resize_token_embeddings(len(tokenizer))
         return model
 
     return model_provider
 
-def get_batch(batch):
-    """Generate a batch"""
-    args = get_args()
-    tokenizer = get_tokenizer()
 
-    # Items and their type.
-    keys = ['input_ids', 'labels']
-    datatype = torch.int64
-
-    # Broadcast data.
-    # if data_iterator is not None:
-    #     data = next(data_iterator)
-    # else:
-    #     data = None
-    data_b = tensor_parallel.broadcast_data(keys, batch, datatype)
-
-    # Unpack.
-    tokens_ = data_b['input_ids'].long()
-    labels = data_b['labels'].long().cuda()
-    tokens = tokens_.contiguous().cuda()
-
-    # Get the masks and postition ids.
-    attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
-        tokens,
-        tokenizer.eos_token,   # eod
-        args.reset_position_ids,
-        args.reset_attention_mask,
-        args.eod_mask_loss)
-
-    return tokens, labels, loss_mask, attention_mask, position_ids
 def forward_step(batch, model):
     """Forward step."""
-    args = get_args()
+    tokenizer = get_tokenizer()
     # Get the batch.
-    # input_ids = batch['input_ids'].long().cuda()
-    # labels = batch['labels'].long().cuda()
-    # loss_mask = batch['loss_mask'].long().cuda()
-    # attention_mask = input_ids.ne(tokenizer.pad_token_id)
-
-    timers = get_timers()
-    # Get the batch.
-    timers('batch-generator', log_level=2).start()
-    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
-        batch)
-    timers('batch-generator').stop()
+    input_ids = batch['input_ids'].long().cuda()
+    labels = batch['labels'].long().cuda()
+    attention_mask = input_ids.ne(tokenizer.pad_token_id)
 
     # Tell the model what our actual batch size will be
+    args = get_args()
     args.micro_batch_size = len(labels)
-    input_tensor = recv_forward(tokens.shape, tokens.dtype)
 
     # Forward pass through the model.
     unwrapped_model = unwrap_model(model, (torchDDP, LocalDDP, Float16Module))
-    unwrapped_model.set_input_tensor(input_tensor)
-    logits = unwrapped_model(input_ids=tokens,
-                             position_ids=position_ids,
+    output = unwrapped_model(input_ids=input_ids,
+                             labels=labels,
                              attention_mask=attention_mask)
-    shift_logits = logits[..., :-1, :].contiguous()
-    shift_labels = labels[..., 1:].contiguous()
-    loss_mask = loss_mask[..., 1:].contiguous()
-    send_forward(shift_logits)
+    config = core_transformer_config_from_args(get_args())
+    send_forward(output, config)
     if parallel_state.is_pipeline_last_stage():
-        losses = tensor_parallel.vocab_parallel_cross_entropy(
-            shift_logits.contiguous().float(), shift_labels.contiguous())
-        loss = torch.sum(
-            losses.view(-1) *
-            loss_mask.contiguous().view(-1).float()) / loss_mask.sum()
-        print_rank_0(loss)
-        return loss
+        print_rank_0(output.loss)
+        return output.loss
 
     return None
 
@@ -223,6 +159,44 @@ def evaluate(data_loader, model):
     return total_output
 
 
+def evaluate_and_print_results(task, data_loader, model, eval_metric):
+    """Evaluate and print results on screen."""
+
+    # Evaluate and get results.
+    output = evaluate(data_loader, model, eval_metric)
+
+    string = ' validation results on {} | '.format(task)
+    if is_last_rank():
+        if eval_metric == 'loss':
+            num_tokenized_tokens = data_loader.dataset.num_tokenized_tokens
+            num_original_tokens = data_loader.dataset.num_original_tokens
+            val_loss = output / (num_tokenized_tokens - 1)
+            ppl = math.exp(min(20, val_loss))
+            token_ratio = (num_tokenized_tokens - 1) / (num_original_tokens -
+                                                        1)
+            adjusted_ppl = math.exp(min(20, val_loss * token_ratio))
+            string += 'avg loss: {:.4E} | '.format(val_loss)
+            string += 'ppl: {:.4E} | '.format(ppl)
+            string += 'adjusted ppl: {:.4E} | '.format(adjusted_ppl)
+            string += 'token ratio: {} |'.format(token_ratio)
+
+        elif eval_metric == 'accuracy':
+            num_examples = len(data_loader.dataset)
+            acc = output / num_examples
+            string += 'number correct: {:.4E} | '.format(output)
+            string += 'total examples: {:.4E} | '.format(num_examples)
+            string += 'avg accuracy: {:.4E}'.format(acc)
+
+        else:
+            raise NotImplementedError('evaluation method for {} metric is not '
+                                      'implemented yet.'.format(eval_metric))
+
+        length = len(string) + 1
+        print('-' * length)
+        print(string)
+        print('-' * length)
+
+
 def main():
     """Main program."""
     args = get_args()
@@ -235,9 +209,6 @@ def main():
     model = get_model(get_model_provider(),
                       model_type=ModelType.encoder_or_decoder,
                       wrap_with_ddp=False)
-
-    if args.load is not None:
-        load_checkpoint(model, None, None)
 
     assert len(model) == 1, 'Above condition should have caught this'
     model = model[0]
