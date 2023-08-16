@@ -179,6 +179,7 @@ def build_tokenizer(args):
                 use_fast=False,
             )
         tokenizer.pad_token_id = tokenizer.eod_id
+        tokenizer.eos_token_id = tokenizer.eod_id
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
 
     elif args.patch_tokenizer_type == 'BloomTokenizerFromCustom':
