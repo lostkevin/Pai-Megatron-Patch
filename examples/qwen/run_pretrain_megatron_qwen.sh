@@ -1,6 +1,6 @@
 #!/bin/bash
-#sh run_pretrain_megatron_llama.sh dsw {WORK_DIR}/Megatron-LM-23.04/ {WORK_DIR}/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false 100000 {WORK_DIR}/gpt3-datasets/alpaca_data.json {WORK_DIR}/gpt3-ckpts/gpt3-7b-hf-to-megatron-tp1-pp1 100000000 10000 /mnt/output_gpt3
-#sh run_pretrain_megatron_llama.sh dsw /cpfs01/user/ken/llama/Megatron-LM-23.04/ /cpfs01/user/ken/llama/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false 100000 /cpfs01/user/ken/llama/gpt3-datasets/alpaca_data.json none 100000000 10000 /cpfs01/user/ken/llama/output_gpt3
+# sh run_pretrain_megatron_qwen.sh dsw /root/Megatron-LM-main/ ${WORK_DIR}/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 0 fp16 1 1 sel true false false 100000 ${WORK_DIR}/qwen-datasets/wudao/wudao_qwenbpe_text_document ${WORK_DIR}/qwen-ckpts/qwen-7b-hf-to-megatron-tp1-pp1 100000000 10000 ${WORK_DIR}/output_megatron_qwen/
+
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -145,7 +145,7 @@ TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
 LR_WARMUP_ITERS=$(( ${WARMUP_TOKENS}  / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
 LR_DECAY_ITERS=$(( ${TRAIN_TOKENS} /  ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
 
-NAME="${ENV}-pretrain-megatron-gpt3-${MODEL_SIZE}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}-tt-${TRAIN_TOKENS}-wt-${WARMUP_TOKENS}"
+NAME="${ENV}-pretrain-megatron-qwen-${MODEL_SIZE}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}-tt-${TRAIN_TOKENS}-wt-${WARMUP_TOKENS}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"

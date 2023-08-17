@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_megatron_llama.sh dsw /root/Megatron-LM-23.04/ /workspace/PAI-Megatron-Patch/ 7B 1 1e-5 1e-6 2048 80 0 fp16 1 1 sel true false false  /mnt/llama2-datasets/wudao_train.json /mnt/llama2-datasets/wudao_valid.json /mnt/llama2-ckpts/llama-2-7b-hf-to-megatron-tp1-pp1 2 /mnt/output_llama2
+#sh run_finetune_megatron_qwen.sh  dsw  /root/Megatron-LM-main  ${WORK_DIR}/PAI-Megatron-Patch  7B     1      1e-5   1e-6   2048   80     85      bf16   1      1      sel    true   false  false  ${WORK_DIR}/qwen-datasets/wudao_train.json   ${WORK_DIR}/qwen-datasets/wudao_valid.json   ${WORK_DIR}/qwen-ckpts/qwen-7b-hf-to-megatron-tp1-pp1   2   ${WORK_DIR}/output_megatron_qwen/
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -118,7 +118,7 @@ elif [ $SP = false ]; then
                     "
 fi
 
-FT_NAME="${ENV}-finetune-megatron-llama-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
+FT_NAME="${ENV}-finetune-megatron-qwen-${MODEL_SIZE}-lr-${LR}-ep-${EPOCH}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}--do-${DO}-tp-${TP}-ac-${AC}-sp-${SP}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_evaluate_megatron_qwen.sh dsw /workspace/Megatron-LM-main /workspace/PAI-Megatron-Patch/ 7B 1 2048 2048 85 fp16 1 1 /mnt/llama-datasets/wudao_train.json /mnt/qwen-ckpts/Qwen-7B-hf-to-megatron-tp1-pp1
+# sh run_evaluate_megatron_qwen.sh dsw /root/Megatron-LM-main ${WORK_DIR}/PAI-Megatron-Patch/ 7B 1 2048 2048 85 fp16 1 1 ${WORK_DIR}/qwen-datasets/wudao_train.json ${WORK_DIR}/qwen-ckpts/qwen-7b-hf-to-megatron-tp1-pp1
 set -e
 ENV=$1
 MEGATRON_PATH=$2

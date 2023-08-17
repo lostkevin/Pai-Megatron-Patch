@@ -101,6 +101,18 @@ elif [ $tokenizer = "galacticabpe" ]; then
   --workers 16 \
   --append-eod
 
+  elif [ $tokenizer = "qwenbpe" ]; then
+
+  python preprocess_data.py \
+  --input ${INPUT} \
+  --language zh \
+  --output-prefix ${output_data_dir}/wudao_qwenbpe \
+  --dataset-impl mmap \
+  --patch-tokenizer-type QwenTokenizer \
+  --load ${load_dir} \
+  --workers 16 \
+  --append-eod
+
 fi
 
 ELAPSED_TIME=$(($SECONDS - $START_TIME))
