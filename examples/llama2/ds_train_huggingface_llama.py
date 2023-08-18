@@ -20,15 +20,43 @@ import os
 os.environ["WANDB_DISABLED"] = "true"
 import datasets
 import transformers
+import torch
 from transformers import (
-    AutoModelForCausalLM,
+    LlamaModel,
+    LlamaForCausalLM,
+    LlamaConfig,
     LlamaTokenizer,
     TrainingArguments,
     TrainerCallback,
     default_data_collator,
     Trainer,
 )
+from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb, LlamaDecoderLayer
+from torch import nn
 from datasets import load_dataset
+from torch import Tensor, cat, stack, arange, int32
+from typing import List, Optional, Tuple, Union
+from einops import rearrange
+
+try:
+    # flash_attn>=1.0.2
+    from flash_attn.bert_padding import unpad_input, pad_input
+    from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
+
+    support_flash_attn = True
+except ImportError:
+    def dummy_function(*args, **kwargs):
+        return None
+
+
+    def dummy_unpad_function(*args, **kwargs):
+        return None, None, None, None
+
+
+    unpad_input = dummy_unpad_function
+    pad_input = dummy_function
+    flash_attn_unpadded_qkvpacked_func = dummy_function
+    support_flash_attn = False
 
 def get_tasks_args(parser):
 
@@ -101,6 +129,8 @@ def get_tasks_args(parser):
                        help='Initial learning rate. Depending on decay style '
                        'and initial warmup, the learing rate at each '
                        'iteration would be different.')
+    parser.add_argument('--flash', type=bool, default=False,
+                        help='use flash attention.')
 
 
     return parser
@@ -109,6 +139,101 @@ logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser(description='PyTorch LLaMA Training')
 parser = get_tasks_args(parser)
 args = parser.parse_args()
+
+class LlamaAttentionWithFlash(LlamaAttention):
+    def forward(
+            self,
+            hidden_states: torch.Tensor,
+            attention_mask: Optional[torch.Tensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            past_key_value: Optional[Tuple[torch.Tensor]] = None,
+            output_attentions: bool = False,
+            use_cache: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        bsz, q_len, _ = hidden_states.size()
+        query_states = (
+            self.q_proj(hidden_states)
+            .view(bsz, q_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        key_states = (
+            self.k_proj(hidden_states)
+            .view(bsz, q_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        value_states = (
+            self.v_proj(hidden_states)
+            .view(bsz, q_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        kv_seq_len = key_states.shape[-2]
+        assert past_key_value is None, "past_key_value is not supported"
+        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        query_states, key_states = apply_rotary_pos_emb(
+            query_states, key_states, cos, sin, position_ids
+        )
+        assert not output_attentions, "output_attentions is not supported"
+        if past_key_value is not None:
+            key_states = cat([past_key_value[0], key_states], dim=2)
+            value_states = cat([past_key_value[1], value_states], dim=2)
+        past_key_value = (key_states, value_states) if use_cache else None
+        qkv = stack([query_states, key_states, value_states], dim=2)
+        qkv = qkv.transpose(1, 3)
+        key_padding_mask = attention_mask
+        if key_padding_mask is None:
+            qkv = rearrange(qkv, "b s ... -> (b s) ...")
+            max_s = q_len
+            cu_q_lens = arange(
+                0, (bsz + 1) * q_len,
+                step=q_len,
+                dtype=int32,
+                device=qkv.device)
+            output = flash_attn_unpadded_qkvpacked_func(
+                qkv, cu_q_lens, max_s, 0.0, softmax_scale=None, causal=True
+            )
+            output = rearrange(output, "(b s) ... -> b s ...", b=bsz)
+        else:
+            nheads = qkv.shape[-2]
+            x = rearrange(qkv, "b s three h d -> b s (three h d)")
+            x_unpad, indices, cu_q_lens, max_s = unpad_input(x, key_padding_mask)
+            x_unpad = rearrange(
+                x_unpad, "nnz (three h d) -> nnz three h d", three=3, h=nheads
+            )
+            output_unpad = flash_attn_unpadded_qkvpacked_func(
+                x_unpad, cu_q_lens, max_s, 0.0, softmax_scale=None, causal=True
+            )
+            output = rearrange(
+                pad_input(
+                    rearrange(output_unpad, "nnz h d -> nnz (h d)"), indices, bsz, q_len
+                ),
+                "b s (h d) -> b s h d",
+                h=nheads,
+            )
+        return self.o_proj(rearrange(output, "b s h d -> b s (h d)")), None, past_key_value
+
+
+class LlamaDecoderLayerWithFlash(LlamaDecoderLayer):
+    def __init__(self, config: LlamaConfig):
+        super().__init__(config)
+        self.self_attn = LlamaAttentionWithFlash(config=config)
+class LlamaModelWithFlash(LlamaModel):
+    def __init__(self, config: LlamaConfig):
+        super().__init__(config)
+        # replace by layer with flash attention
+        self.layers = nn.ModuleList([LlamaDecoderLayerWithFlash(config) for _ in range(config.num_hidden_layers)])
+        self.post_init()
+
+    def _prepare_decoder_attention_mask(self, attention_mask, input_shape, inputs_embeds, past_key_values_length):
+        return attention_mask
+
+
+class LlamaForCausalLMWithFlash(LlamaForCausalLM):
+    def __init__(self, config):
+        super().__init__(config)
+        self.model = LlamaModelWithFlash(config)
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        # initialize weights again and apply final processing after the replacement
+        self.post_init()
 
 
 def tokenize(strings, tokenizer):
@@ -236,14 +361,35 @@ def main():
         truncation=True)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-    model = AutoModelForCausalLM.from_pretrained(
-        args.load,
-        from_tf=False,
-        config=config,
-        revision='main',
-        use_auth_token=None,
-        low_cpu_mem_usage=False,
-    )
+    from transformers.deepspeed import is_deepspeed_zero3_enabled, deepspeed_config
+    from transformers.utils import ContextManagers
+    from transformers.modeling_utils import no_init_weights
+
+    init_contexts = [no_init_weights(_enable=False)]
+    if is_deepspeed_zero3_enabled():
+        import deepspeed
+        logger.info("Detected DeepSpeed ZeRO-3: activating zero.init() for this model")
+        init_contexts = [deepspeed.zero.Init(config_dict_or_path=deepspeed_config())] + init_contexts
+    if args.flash:
+        if not support_flash_attn:
+            raise ImportError('FlashAttention 1.0 is not available, please install with '
+                              'pip install flash-attn')
+        logger.info("enable flash attention 1.0(no-pretrain)")
+        with ContextManagers(init_contexts):
+            model = LlamaForCausalLMWithFlash(config)
+    else:
+        logger.info("disable flash attention 1.0(no-pretrain)")
+        with ContextManagers(init_contexts):
+            model = LlamaForCausalLM(config)
+    # TODO: from_pretrain
+    # model = AutoModelForCausalLM.from_pretrained(
+    #     args.load,
+    #     from_tf=False,
+    #     config=config,
+    #     revision='main',
+    #     use_auth_token=None,
+    #     low_cpu_mem_usage=False,
+    # )
     model.to('cuda')
     if args.enable_gradient_checkpointing:
         model.gradient_checkpointing_enable()
