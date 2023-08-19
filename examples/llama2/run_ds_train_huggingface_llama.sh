@@ -1,5 +1,5 @@
 #!/bin/bash
-# bash run_ds_train_huggingface_llama.sh dsw 7B 1 2 1e-5 2048 fp16 2 true /mnt/llama2-datasets/wudao_train.json /mnt/llama2-datasets/wudao_valid.json /mnt/llama2-ckpts/llama-2-7b-hf 2 /mnt/output_llama2
+# bash run_ds_train_huggingface_llama.sh dsw 7B 1 2 1e-5 2048 bf16 2 true true ${WORK_DIR}/llama2-datasets/wudao_train.json ${WORK_DIR}/llama2-datasets/wudao_valid.json ${WORK_DIR}/llama2-ckpts/Llama-2-7b-hf 2 ${WORK_DIR}/output_llama2
 
 set -e
 ENV=$1
@@ -30,13 +30,14 @@ SEQ_LEN=$6
 PR=$7
 ZERO=$8
 GC=$9
-TRAIN_DATASET_PATH=${10}
-VALID_DATASET_PATH=${11}
-PRETRAIN_CHECKPOINT_PATH=${12}
-EPOCH=${13}
-OUTPUT_BASEPATH=${14}
+FLASH=${10}
+TRAIN_DATASET_PATH=${11}
+VALID_DATASET_PATH=${12}
+PRETRAIN_CHECKPOINT_PATH=${13}
+EPOCH=${14}
+OUTPUT_BASEPATH=${15}
 
-GLOBAL_BATCH_SIZE=$(( ${MICRO_BATCH_SIZE} * ${GA_STEPS} * ${GPUS_PER_NODE} ))
+GLOBAL_BATCH_SIZE=$(( ${MICRO_BATCH_SIZE} * ${GA_STEPS} * ${GPUS_PER_NODE} * ${NNODES}))
 
 if [ $MODEL_SIZE = 7B ]; then
 
@@ -103,6 +104,7 @@ hf_options="  \
         --num-workers 1 \
         --gradient-accumulation-steps ${GA_STEPS} \
         --logging-dir ${LOGGING_DIR} \
+        --flash ${FLASH}
         "
 
 template_json="ds_config_TEMPLATE.json"
