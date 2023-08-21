@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_pretrain_megatron_starcoder.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false 100000 /mnt/llama-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron-tp1-pp1 100000000 10000 /mnt/output_llama
+#sh run_pretrain_megatron_starcoder.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 2048 0 fp16 1 1 sel true false false 100000 /mnt/llama-datasets/alpaca_data.json /mnt/alpaca-ckpts/llama-7b-hf-to-megatron-tp1-pp1 100000000 10000 /mnt/output_llama
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -54,12 +54,26 @@ HIDDEN_SIZE=6144
 NUM_ATTN_HEADS=48
 INTERMEDIATE_SIZE=24576
 
-elif [ $MODEL_SIZE = 13B ]; then
+elif [ $MODEL_SIZE = 7B ]; then
 
-NUM_LAYERS=40
-HIDDEN_SIZE=5120
-NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13824
+NUM_LAYERS=42
+HIDDEN_SIZE=4096
+NUM_ATTN_HEADS=32
+INTERMEDIATE_SIZE=16384
+
+elif [ $MODEL_SIZE = 3B ]; then
+
+NUM_LAYERS=36
+HIDDEN_SIZE=2816
+NUM_ATTN_HEADS=22
+INTERMEDIATE_SIZE=11264
+
+elif [ $MODEL_SIZE = 1B ]; then
+
+NUM_LAYERS=24
+HIDDEN_SIZE=2048
+NUM_ATTN_HEADS=16
+INTERMEDIATE_SIZE=8192
 
 fi
 

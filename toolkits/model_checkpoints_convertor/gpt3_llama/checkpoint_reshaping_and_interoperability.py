@@ -155,8 +155,7 @@ def add_transformers_checkpoint_args(parser):
 # The simple map of names for "automated" rules.
 megatron_to_transformers = {
     "self_attention.dense": ".self_attn.o_proj.",
-    "mlp.dense_h_to_4h_1": ".mlp.gate_proj.",
-    "mlp.dense_h_to_4h_2": ".mlp.up_proj.",
+    "mlp.dense_h_to_4h": [".mlp.gate_proj.",".mlp.up_proj."],
     "mlp.dense_4h_to_h": ".mlp.down_proj.",
     "self_attention.rotary_emb":".self_attn.rotary_emb.inv_freq"
 }
@@ -188,6 +187,8 @@ tensor_parallel_params_70b = [
 tensor_parallel_params_mg = [
     # megatron-lm layers to merge across tp ranks
     "self_attention.query_key_value.weight",
+    "self_attention.query.weight",
+    "self_attention.key_value.weight",
     "self_attention.dense.weight",
     "mlp.dense_h_to_4h.weight",
     "mlp.dense_4h_to_h.weight"
@@ -733,7 +734,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
     else:
         dtype = torch.float32
 
-    intermediate_size_map = {4096:11008,5120:13824,6656:17920,8192:22016}
+    intermediate_size_map = {4096:11008,5120:13824,6656:17920,8192:22016 if args.model_name != "llama2-70b" else 28672}
     config = LlamaConfig(
         vocab_size=vocab_size,
         hidden_size=megatron_args.hidden_size,
@@ -753,7 +754,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
 
     output_state_dict = {}
 
-    checkpoint_version = state_dict.get("checkpoint_version", 0.0)
+    checkpoint_version = state_dict.get("checkpoint_version", 3.0)
     tp_size = megatron_args.tensor_model_parallel_size
     pp_size = megatron_args.pipeline_model_parallel_size
 
@@ -773,7 +774,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
     )
 
     if position_embeddings:
-        output_state_dict["transformer.position_embeddings.weight"] = position_embeddings.to(dtype)
+        output_state_dict["transformer.position_embeddings.weight"] = position_embeddings.to(dtype).clone()
 
     # Convert and store the word embeddings.
     word_embeddings = []
@@ -796,7 +797,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
 
     word_embeddings = torch.cat(word_embeddings, dim=0)
     word_embeddings = word_embeddings.to(dtype)
-    output_state_dict["model.embed_tokens.weight"] = word_embeddings
+    output_state_dict["model.embed_tokens.weight"] = word_embeddings.to(dtype).clone()
     # Reset the vocab size
     config.vocab_size = word_embeddings.shape[0]
 
@@ -857,12 +858,12 @@ def convert_checkpoint_from_megatron_to_transformers(args):
             # For layernorm(s), simply store the layer norm.
             if op_name.endswith("layernorm") and weight_or_bias == 'weight':
                 ln_name = "input_layernorm" if op_name.startswith("input") else "post_attention_layernorm"
-                output_state_dict[layer_name + "." + ln_name + "." + weight_or_bias] = params
+                output_state_dict[layer_name + "." + ln_name + "." + weight_or_bias] = params.clone()
 
             # Transpose the QKV matrix.
             elif (
                 op_name == "attention.query_key_value" or op_name == "self_attention.query_key_value"
-            ) and weight_or_bias == "weight":
+            ) and weight_or_bias == "weight" and args.model_name != "llama2-70b":
 
                 out_val = megatron_to_transformers_fix_query_key_value_ordering(
                     params,
@@ -879,24 +880,59 @@ def convert_checkpoint_from_megatron_to_transformers(args):
                 # Split to QKV matrix
                 QKV = {0:'q_proj',1:'k_proj',2:'v_proj'}
                 for index, matrix in enumerate(torch.split(out_val, out_val.shape[1], 0)):
-                    output_state_dict[layer_name + f".self_attn.{QKV[index]}.weight"] = matrix
+                    output_state_dict[layer_name + f".self_attn.{QKV[index]}.weight"] = matrix.clone()                    
 
-            # Transpose the bias.
-            # Not applicable
+            # Transpose the Q matrix for query for Llama70b.
             elif (
-                op_name == "attention.query_key_value" or op_name == "self_attention.query_key_value"
-            ) and weight_or_bias == "bias":
+                op_name == "attention.query" or op_name == "self_attention.query"
+            ) and weight_or_bias == "weight" and args.model_name == "llama2-70b":
+
                 out_val = megatron_to_transformers_fix_query_key_value_ordering(
-                    params, checkpoint_version, 3, heads, hidden_size_per_head
+                    params,
+                    checkpoint_version,
+                    1,
+                    heads,
+                    hidden_size_per_head,
                 )
 
-                # Store. No change of shape.
-                output_state_dict[layer_name + ".attn.c_attn.bias"] = out_val
+                # Megatron stores (3*D) x D but transformers-GPT2 expects D x 3*D.
+                # out_val = out_val.transpose(0, 1).contiguous()
+                # Store.
+
+                # Split to QKV matrix
+                output_state_dict[layer_name + f".self_attn.q_proj.weight"] = out_val.clone()                  
+            
+            # Transpose the KV matrix for query for Llama70b.
+            elif (
+                op_name == "attention.key_value" or op_name == "self_attention.key_value"
+            ) and weight_or_bias == "weight" and args.model_name == "llama2-70b":
+
+                out_val = megatron_to_transformers_fix_query_key_value_ordering(
+                    params,
+                    checkpoint_version,
+                    2,
+                    8,
+                    hidden_size_per_head,
+                )
+
+                # Megatron stores (3*D) x D but transformers-GPT2 expects D x 3*D.
+                # out_val = out_val.transpose(0, 1).contiguous()
+                # Store.
+
+                # Split to QKV matrix
+                KV = {0:'k_proj',1:'v_proj'}
+                for index, matrix in enumerate(torch.split(out_val, out_val.shape[0]//2, 0)):
+                    output_state_dict[layer_name + f".self_attn.{KV[index]}.weight"] = matrix.clone()                  
 
             # Transpose the weights.
             elif weight_or_bias == "weight":
-                out_name = megatron_to_transformers[op_name]
-                output_state_dict[layer_name + out_name + "weight"] = params
+                if 'dense_h_to_4h' in op_name:
+                    out_name = megatron_to_transformers[op_name]
+                    for index, mat in enumerate(torch.split(params, params.shape[0]//2)):
+                        output_state_dict[layer_name + out_name[index] + "weight"] = mat.clone()
+                else:
+                    out_name = megatron_to_transformers[op_name]
+                    output_state_dict[layer_name + out_name + "weight"] = params.clone()
 
             # Copy the bias.
             # Ignore them
@@ -906,7 +942,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
             # Copy the Rotary Embedding
             else:
                 out_name = megatron_to_transformers[op_name]
-                output_state_dict[layer_name + out_name] = params
+                output_state_dict[layer_name + out_name] = params.clone()
 
     if config.num_hidden_layers != (layer_idx + 1):
         raise ValueError(f"Expected {config.num_hidden_layers} layers but found {layer_idx + 1}")
@@ -914,7 +950,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
     # The final layernorm.
     print("Converting final layernorm")
     params = get_element_from_dict_by_path(tp_state_dicts[0], str(path))
-    output_state_dict["model.norm.weight"] = params["final_layernorm.weight"].to(dtype)
+    output_state_dict["model.norm.weight"] = params["final_layernorm.weight"].to(dtype).clone()
 
     # For LM head, transformers' wants the matrix to weight embeddings.
     print("Converting LM head")
@@ -922,7 +958,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
                         get_element_from_dict_by_path(tp_state_dicts[i], 'model.language_model.output_layer.weight')
                         for i in range(tp_size)]
         )
-    output_state_dict["lm_head.weight"] = params.to(dtype)
+    output_state_dict["lm_head.weight"] = params.to(dtype).clone()
 
     # It should be done!
     print("Conversion from Megatron-LM to Transformers is done!")

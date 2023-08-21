@@ -350,7 +350,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
             " manually specify all the details. Please save Megatron-LM checkpoint along with all the megatron"
             " arguments to use this utility."
         )
-
+    
     # Saving config and tokenzier files
     if args.load_path.endswith('/'):
         config_path = '/'.join(args.load_path.split('/')[:-1])
@@ -359,7 +359,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
     os.system("cp -rf "+config_path+"/*.json " + args.save_path)
 
     activation_function = "gelu"
-
+    
     vocab_size = (
         megatron_args.padded_vocab_size
         if getattr(megatron_args, "orig_vocab_size", None) is None
@@ -430,6 +430,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
     word_embeddings = torch.cat(word_embeddings, dim=0)
     word_embeddings = word_embeddings.to(dtype)
     output_state_dict["transformer.wte.weight"] = word_embeddings
+    output_state_dict["lm_head.weight"] = word_embeddings
 
     # Convert and store the position embeddings.
     position_embeddings = get_element_from_dict_by_path(
@@ -440,7 +441,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
             position_embeddings = position_embeddings['position_embeddings.weight']
     else:
         position_embeddings = position_embeddings['position_embeddings']['weight']
-
+    
     output_state_dict["transformer.wpe.weight"] = position_embeddings.to(dtype)
 
     # Reset the vocab size
@@ -460,7 +461,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
             tp_state_dicts = get_megatron_sharded_states(args, tp_size, pp_size, pp_rank)
 
         # The transformer.
-
+        
         path = (
             "model.language_model.transformer"
             if "transformer" in get_element_from_dict_by_path(tp_state_dicts[0], "model.language_model").keys()
@@ -468,7 +469,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
         )
         # Extract the layers.
         for key, val in get_element_from_dict_by_path(tp_state_dicts[0], path).items():
-
+            
             # Match the name.
             m = layer_re.match(key)
             # Stop if that's not a layer
@@ -608,7 +609,7 @@ def convert_checkpoint_from_transformers_to_megatron(args):
         if k.replace('transformer.', '') != k:
             state_dict[k.replace('transformer.', '')] = state_dict[k]
             state_dict.pop(k)
-
+    
     # megatron args
     megatron_args = {
         'pad_token_id': config.pad_token_id,
@@ -711,7 +712,7 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                 layer_name for layer_name in state_dict.keys()
                 if layer_name.startswith(f'h.{pp_layer_id}.')
             ]
-
+            
             for layer_name in layers_to_copy:
                 m = layer_re.match(layer_name)
                 # Stop if that's not a layer
@@ -726,7 +727,7 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                 weight_or_bias = m.group(3)
                 params = state_dict[layer_name].to(dtype)
                 # handle layernorm
-
+                
                 if op_name.startswith('ln_'):
                     out_name = 'input_layernorm' if op_name=='ln_1' else 'post_attention_layernorm'
                     layer_name = f'layers.{layer}.{out_name}.{weight_or_bias}'
@@ -758,7 +759,7 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                 # skip
                 else:
                     continue
-
+                
                 if op_name + '.' + weight_or_bias in tensor_parallel_params_hf:
                     dim = 1 if op_name in [
                         'attn.c_proj', 'mlp.c_proj'
@@ -776,13 +777,9 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                                 dim=dim), params[params.shape[1]:])
                         else:
                             params = (torch.chunk(
-                                params[:6144],
+                                params[:config.hidden_size],
                                 args.target_tensor_model_parallel_size,
-                                dim=dim), params[6144:])
-
-                    # print(layer_name)
-                    # import pdb
-                    # pdb.set_trace()
+                                dim=dim), params[config.hidden_size:])
 
                 for i in range(args.target_tensor_model_parallel_size):
                     params_dict = get_element_from_dict_by_path(
@@ -797,7 +794,6 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                             weight_or_bias in tensor_parallel_params_hf) else params[0])
                         params_dict[layer_name.replace('query', 'key_value')] = params[1]
 
-
         if pp_rank == args.target_pipeline_model_parallel_size - 1:
             # handle final layernorm
             for weight_or_bias in ['weight', 'bias']:
@@ -807,7 +803,7 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                     params_dict = get_element_from_dict_by_path(
                         output_state_dict[i], 'model.language_model.encoder')
                     params_dict[layer_name] = params
-
+        
         # saving the state dict as per the tp_rank and pp_rank
         for tp_rank in range(args.target_tensor_model_parallel_size):
             output_state_dict[tp_rank]['checkpoint_version'] = 3.0

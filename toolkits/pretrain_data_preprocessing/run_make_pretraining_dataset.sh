@@ -101,8 +101,18 @@ elif [ $tokenizer = "galacticabpe" ]; then
   --workers 16 \
   --append-eod
 
-  elif [ $tokenizer = "qwenbpe" ]; then
-
+elif [ $tokenizer = "starcoderbpe" ]; then
+  python preprocess_data.py \
+  --input ${INPUT} \
+  --language zh \
+  --output-prefix ${output_data_dir}/wudao_starcoderbpe \
+  --dataset-impl mmap \
+  --patch-tokenizer-type StarcoderTokenizerFromHF \
+  --load ${load_dir} \
+  --workers 16 \
+  --append-eod
+  
+elif [ $tokenizer = "qwenbpe" ]; then
   python preprocess_data.py \
   --input ${INPUT} \
   --language zh \

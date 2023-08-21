@@ -1,5 +1,5 @@
 #!/bin/bash
-#sh run_finetune_megatron_starcoder_wgbs.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 16B 8 64 1e-5 1e-6 2048 1024 1 fp16 4 1 sel true false false 100000 /mnt/starcoder-datasets/alpaca_data.json /mnt/alpaca-ckpts/starcoder-16b-hf-to-megatron-tp4-pp1 1000 10 /mnt/output_starcoder
+#sh run_finetune_megatron_starcoder_wgbs.sh dsw /workspace/Megatron-LM/ /workspace/PAI-Megatron-Patch/ 16B 8 64 1e-5 1e-6 2048 1024 0 fp16 4 1 sel true false false 100000 /mnt/starcoder-datasets/alpaca_data.json /mnt/alpaca-ckpts/starcoder-16b-hf-to-megatron-tp4-pp1 1000 0 /mnt/output_starcoder
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -46,13 +46,33 @@ TRAIN_ITERS=${22}
 LR_WARMUP_ITERS=${23}
 OUTPUT_BASEPATH=${24}
 
-
 if [ $MODEL_SIZE = 16B ]; then
 
 NUM_LAYERS=40
 HIDDEN_SIZE=6144
 NUM_ATTN_HEADS=48
 INTERMEDIATE_SIZE=24576
+
+elif [ $MODEL_SIZE = 7B ]; then
+
+NUM_LAYERS=42
+HIDDEN_SIZE=4096
+NUM_ATTN_HEADS=32
+INTERMEDIATE_SIZE=16384
+
+elif [ $MODEL_SIZE = 3B ]; then
+
+NUM_LAYERS=36
+HIDDEN_SIZE=2816
+NUM_ATTN_HEADS=22
+INTERMEDIATE_SIZE=11264
+
+elif [ $MODEL_SIZE = 1B ]; then
+
+NUM_LAYERS=24
+HIDDEN_SIZE=2048
+NUM_ATTN_HEADS=16
+INTERMEDIATE_SIZE=8192
 
 fi
 
