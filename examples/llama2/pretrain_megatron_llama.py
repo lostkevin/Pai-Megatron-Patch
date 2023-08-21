@@ -115,7 +115,8 @@ def model_provider(pre_process=True, post_process=True):
 
 def train_valid_test_datasets_provider(train_val_test_num_samples):
     args = get_args()
-    if os.path.isfile(args.data_path[0]):
+    args.data_path = args.data_path[0].split(',')
+    if os.path.isfile(args.data_path[-1]):
         train_ds, valid_ds, test_ds = \
             build_pretrain_llama_datasets_from_original(
                 data_prefix=args.data_path,
