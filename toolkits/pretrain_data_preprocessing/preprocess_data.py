@@ -46,7 +46,7 @@ class Encoder(object):
         ids = {}
         for key in self.args.jsonl_keys:
             doc_ids = []
-            if self.args.patch_tokenizer_type in ['BloomTokenizerFromHF', 'GLM10BZHTokenizerFromHF', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF']:
+            if self.args.patch_tokenizer_type in ['BloomTokenizerFromHF', 'GLM10BZHTokenizerFromHF', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF', 'QwenTokenizer']:
                 text_ids = Encoder.tokenizer(text)['input_ids']
             elif self.args.patch_tokenizer_type == 'LLamaTokenizer':
                 text_ids = Encoder.tokenizer(text, add_special_tokens=False)['input_ids']
@@ -68,6 +68,9 @@ class Encoder(object):
                 elif self.args.patch_tokenizer_type == \
                         'IcetkGLM130BTokenizer':
                     doc_ids[-1].append(Encoder.tokenizer.get_command('eod'))
+                elif self.args.patch_tokenizer_type == \
+                        'QwenTokenizer':
+                    doc_ids[-1].append(Encoder.tokenizer.eod_id)
                 else:
                     raise ValueError('please setting correct tokenier')
             ids[key] = doc_ids
@@ -98,7 +101,7 @@ def get_args():
             'JiebaBPETokenizer', 'BloomTokenizerFromHF',
             'ChatGLMTokenizerFromHF', 'GPT2BPETokenizer',
             'GLM10BZHTokenizerFromHF', 'IcetkGLM130BTokenizer',
-            'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF'
+            'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF','QwenTokenizer'
         ],
         help='What type of tokenizer to use.',
     )

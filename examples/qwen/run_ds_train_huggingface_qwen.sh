@@ -1,6 +1,5 @@
 #!/bin/bash
-# bash run_ds_train_huggingface_llama.sh dsw 7B 1 2 1e-5 2048 bf16 2 true true ${WORK_DIR}/llama2-datasets/wudao_train.json ${WORK_DIR}/llama2-datasets/wudao_valid.json ${WORK_DIR}/llama2-ckpts/Llama-2-7b-hf 2 ${WORK_DIR}/output_llama2
-
+#bash run_ds_train_huggingface_qwen.sh dsw 7B 1 2 1e-5 2048 fp16 2 true ${WORK_DIR}/qwen-datasets/wudao_train.json ${WORK_DIR}/qwen-datasets/wudao_valid.json ${WORK_DIR}/qwen-ckpts/qwen-7b-hf 2 ${WORK_DIR}/output_qwen
 set -e
 ENV=$1
 export CUDA_DEVICE_MAX_CONNECTIONS=1
@@ -30,14 +29,13 @@ SEQ_LEN=$6
 PR=$7
 ZERO=$8
 GC=$9
-FLASH=${10}
-TRAIN_DATASET_PATH=${11}
-VALID_DATASET_PATH=${12}
-PRETRAIN_CHECKPOINT_PATH=${13}
-EPOCH=${14}
-OUTPUT_BASEPATH=${15}
+TRAIN_DATASET_PATH=${10}
+VALID_DATASET_PATH=${11}
+PRETRAIN_CHECKPOINT_PATH=${12}
+EPOCH=${13}
+OUTPUT_BASEPATH=${14}
 
-GLOBAL_BATCH_SIZE=$(( ${MICRO_BATCH_SIZE} * ${GA_STEPS} * ${GPUS_PER_NODE} * ${NNODES}))
+GLOBAL_BATCH_SIZE=$(( ${MICRO_BATCH_SIZE} * ${GA_STEPS} * ${GPUS_PER_NODE} ))
 
 if [ $MODEL_SIZE = 7B ]; then
 
@@ -52,20 +50,6 @@ NUM_LAYERS=40
 HIDDEN_SIZE=5120
 NUM_ATTN_HEADS=40
 INTERMEDIATE_SIZE=13824
-
-elif [ $MODEL_SIZE = 65B ]; then
-
-NUM_LAYERS=80
-HIDDEN_SIZE=8192
-NUM_ATTN_HEADS=64
-INTERMEDIATE_SIZE=22016
-
-elif [ $MODEL_SIZE = 70B ]; then
-
-NUM_LAYERS=80
-HIDDEN_SIZE=8192
-NUM_ATTN_HEADS=64
-INTERMEDIATE_SIZE=28672
 
 fi
 
@@ -92,7 +76,7 @@ elif [ $GC = false ]; then
                     "
 fi
 
-NAME="${ENV}-dstrain-huggingface-llama-${MODEL_SIZE}-lr-${LR}-bs-${MICRO_BATCH_SIZE}-epoch-${EPOCH}-zero-${ZERO}"
+NAME="${ENV}-dstrain-huggingface-qwen-${MODEL_SIZE}-lr-${LR}-bs-${MICRO_BATCH_SIZE}-epoch-${EPOCH}-zero-${ZERO}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
@@ -118,7 +102,6 @@ hf_options="  \
         --num-workers 1 \
         --gradient-accumulation-steps ${GA_STEPS} \
         --logging-dir ${LOGGING_DIR} \
-        --flash ${FLASH}
         "
 
 template_json="ds_config_TEMPLATE.json"
@@ -132,7 +115,7 @@ sed "s/CONFIG_MBSIZE/${MICRO_BATCH_SIZE}/" ${template_json} \
     | sed "s/CONFIG_LR/${LR}/" \
 	  > ${config_json}
 
-run_cmd="torchrun $DISTRIBUTED_ARGS ds_train_huggingface_llama.py ${hf_options} ${pr_options} ${gc_options}"
+run_cmd="torchrun $DISTRIBUTED_ARGS ds_train_huggingface_qwen.py ${hf_options} ${pr_options} ${gc_options}"
 
 
 echo ${run_cmd}

@@ -22,6 +22,7 @@ from megatron.utils import average_losses_across_data_parallel_group
 from megatron_patch.data.finetune_dataset import LLamaDataset
 from megatron_patch.finetune_utils import finetune
 from megatron_patch.model.qwen.gpt_model import GPTModel
+from megatron.utils import get_ltor_masks_and_position_ids
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 
 
@@ -122,13 +123,20 @@ def forward_step(data_iterator, model):
 
     tokens_ = data_iterator['input_ids'].long().cuda().contiguous()
     labels = tokens_[:, 1:].contiguous()
-    input_ids = tokens_[:, :-1].contiguous()
-    loss_mask = data_iterator['loss_mask'].long().cuda()
-    loss_mask = loss_mask[..., 1:].contiguous()
-    attention_mask = input_ids.ne(tokenizer.pad_token_id)
+    tokens = tokens_[:, :-1].contiguous()
+    # loss_mask = data_iterator['loss_mask'].long().cuda()
+    # loss_mask = loss_mask[..., 1:].contiguous()
+    # attention_mask = input_ids.ne(tokenizer.pad_token_id)
+    args = get_args()
+    # Get the masks and postition ids.
+    attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
+        tokens,
+        tokenizer.eos_token,
+        args.reset_position_ids,
+        args.reset_attention_mask,
+        args.eod_mask_loss)
 
-    output_tensor = model(input_ids=input_ids,
-                          attention_mask=attention_mask,
+    output_tensor = model(tokens, position_ids, attention_mask,
                           labels=labels)
 
     def loss_func(loss_mask, output_tensor):
