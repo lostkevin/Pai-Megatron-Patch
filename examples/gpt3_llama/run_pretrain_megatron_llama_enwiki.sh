@@ -87,7 +87,8 @@ INTERMEDIATE_SIZE=28672
 NUM_HEAD_KV=8
 
 gqa_options=" \
-		    --group-query-attention"
+		    --group-query-attention \
+		    --num-query-groups 8"
 
 fi
 

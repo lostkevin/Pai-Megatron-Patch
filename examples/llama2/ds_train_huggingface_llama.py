@@ -12,8 +12,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse
 import logging
+logger = logging.getLogger(__name__)
+
+def dummy_function(*args, **kwargs):
+    return None
+
+try:
+    from flash_attn.bert_padding import unpad_input, pad_input
+
+    support_flash_attn = True
+except ImportError:
+    logger.info("flash attention unavailable")
+    unpad_input = dummy_function
+    pad_input = dummy_function
+    flash_attn_varlen_qkvpacked_func = dummy_function
+    support_flash_attn = False
+if support_flash_attn:
+    try:
+        from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
+
+        flash_attn_varlen_qkvpacked_func = flash_attn_unpadded_qkvpacked_func
+        logger.info("import from flash attention 1.0")
+    except ImportError:
+        try:
+            from flash_attn.flash_attn_interface import flash_attn_varlen_qkvpacked_func, flash_attn_varlen_func, \
+                flash_attn_varlen_kvpacked_func
+            import flash_attn
+            flash_attn.flash_attn_interface.flash_attn_unpadded_func = flash_attn_varlen_func
+            flash_attn.flash_attn_interface.flash_attn_unpadded_qkvpacked_func = flash_attn_varlen_qkvpacked_func
+            flash_attn.flash_attn_interface.flash_attn_unpadded_kvpacked_func = flash_attn_varlen_kvpacked_func
+
+            logger.info("import from flash attention 2.0")
+        except ImportError:
+            flash_attn_varlen_qkvpacked_func = dummy_function
+
+
+import argparse
 import sys
 import copy
 import os
@@ -38,25 +73,6 @@ from torch import Tensor, cat, stack, arange, int32
 from typing import List, Optional, Tuple, Union
 from einops import rearrange
 
-try:
-    # flash_attn>=1.0.2
-    from flash_attn.bert_padding import unpad_input, pad_input
-    from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
-
-    support_flash_attn = True
-except ImportError:
-    def dummy_function(*args, **kwargs):
-        return None
-
-
-    def dummy_unpad_function(*args, **kwargs):
-        return None, None, None, None
-
-
-    unpad_input = dummy_unpad_function
-    pad_input = dummy_function
-    flash_attn_unpadded_qkvpacked_func = dummy_function
-    support_flash_attn = False
 
 def get_tasks_args(parser):
 
@@ -135,7 +151,7 @@ def get_tasks_args(parser):
 
     return parser
 
-logger = logging.getLogger(__name__)
+
 parser = argparse.ArgumentParser(description='PyTorch LLaMA Training')
 parser = get_tasks_args(parser)
 args = parser.parse_args()
@@ -188,7 +204,7 @@ class LlamaAttentionWithFlash(LlamaAttention):
                 step=q_len,
                 dtype=int32,
                 device=qkv.device)
-            output = flash_attn_unpadded_qkvpacked_func(
+            output = flash_attn_varlen_qkvpacked_func(
                 qkv, cu_q_lens, max_s, 0.0, softmax_scale=None, causal=True
             )
             output = rearrange(output, "(b s) ... -> b s ...", b=bsz)
@@ -199,7 +215,7 @@ class LlamaAttentionWithFlash(LlamaAttention):
             x_unpad = rearrange(
                 x_unpad, "nnz (three h d) -> nnz three h d", three=3, h=nheads
             )
-            output_unpad = flash_attn_unpadded_qkvpacked_func(
+            output_unpad = flash_attn_varlen_qkvpacked_func(
                 x_unpad, cu_q_lens, max_s, 0.0, softmax_scale=None, causal=True
             )
             output = rearrange(
@@ -288,7 +304,6 @@ def main():
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         do_eval=False,
         per_device_eval_batch_size=args.micro_batch_size,
-        evaluation_strategy="epoch",
         dataloader_num_workers=args.num_workers,
         learning_rate=args.lr,
         adam_beta1=0.9,
@@ -418,7 +433,6 @@ def main():
         model=model,
         args=training_args,
         train_dataset=lm_datasets["train"],
-        eval_dataset=lm_datasets["validation"],
         tokenizer=tokenizer,
         data_collator=default_data_collator,
     )
