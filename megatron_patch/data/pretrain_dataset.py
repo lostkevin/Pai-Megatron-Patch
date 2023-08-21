@@ -28,6 +28,8 @@ from megatron.data.gpt_dataset import (_build_index_mappings,
                                        get_indexed_dataset_,
                                        get_train_valid_test_split_)
 from megatron_patch.tokenizer import get_tokenizer
+from megatron.data.dataset_utils import get_datasets_weights_and_num_samples
+from megatron.data.blendable_dataset import BlendableDataset
 from megatron import get_args
 
 class GLM130BDataset(torch.utils.data.Dataset):
@@ -686,7 +688,59 @@ def build_pretrain_llama_datasets_from_idxmap(data_prefix,
     Returns:
         A tuple of three LLamaIdxMapDataset objects: train_dataset, valid_dataset, and test_dataset.
     """
-    data_prefix = data_prefix[0]
+    if len(data_prefix) == 1:
+        return _build_train_valid_test_datasets(data_prefix[0],max_padding_length,
+                                                data_impl, splits_string,
+                                                train_valid_test_num_samples,
+                                                seed, skip_warmup, return_doc_ids)
+
+    # Blending dataset.
+    # Parse the values.
+    output = get_datasets_weights_and_num_samples(data_prefix,
+                                                  train_valid_test_num_samples)
+    prefixes, weights, datasets_train_valid_test_num_samples = output
+    train_num_samples, valid_num_samples, test_num_samples = map(
+        sum,
+        zip(*datasets_train_valid_test_num_samples)
+    )
+
+    # Build individual datasets.
+    train_datasets = []
+    valid_datasets = []
+    test_datasets = []
+    for i in range(len(prefixes)):
+        train_ds, valid_ds, test_ds = _build_train_valid_test_datasets(
+            prefixes[i], max_padding_length, data_impl, splits_string,
+            datasets_train_valid_test_num_samples[i],
+            seed, skip_warmup,
+            return_doc_ids)
+        if train_ds:
+            train_datasets.append(train_ds)
+        if valid_ds:
+            valid_datasets.append(valid_ds)
+        if test_ds:
+            test_datasets.append(test_ds)
+
+    # Blend.
+    blending_train_dataset = None
+    if train_datasets:
+        blending_train_dataset = BlendableDataset(train_datasets, weights, train_num_samples)
+    blending_valid_dataset = None
+    if valid_datasets:
+        blending_valid_dataset = BlendableDataset(valid_datasets, weights, valid_num_samples)
+    blending_test_dataset = None
+    if test_datasets:
+        blending_test_dataset = BlendableDataset(test_datasets, weights, test_num_samples)
+
+    return (blending_train_dataset, blending_valid_dataset,
+            blending_test_dataset)
+
+
+
+def _build_train_valid_test_datasets(data_prefix, max_padding_length, data_impl, splits_string,
+                                     train_valid_test_num_samples,
+                                     seed, skip_warmup,
+                                     return_doc_ids=False):
     # Indexed dataset.
     indexed_dataset = get_indexed_dataset_(data_prefix, data_impl, skip_warmup)
     total_num_of_documents = indexed_dataset.sizes.shape[0]
