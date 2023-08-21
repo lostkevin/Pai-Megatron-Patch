@@ -46,7 +46,7 @@ class Encoder(object):
         ids = {}
         for key in self.args.jsonl_keys:
             doc_ids = []
-            if self.args.patch_tokenizer_type in ['BloomTokenizerFromHF', 'GLM10BZHTokenizerFromHF', 'FalconTokenizer', 'OPTTokenizer']:
+            if self.args.patch_tokenizer_type in ['BloomTokenizerFromHF', 'GLM10BZHTokenizerFromHF', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF']:
                 text_ids = Encoder.tokenizer(text)['input_ids']
             elif self.args.patch_tokenizer_type == 'LLamaTokenizer':
                 text_ids = Encoder.tokenizer(text, add_special_tokens=False)['input_ids']
@@ -63,7 +63,7 @@ class Encoder(object):
                         'BloomTokenizerFromHF':
                     doc_ids[-1].append(Encoder.tokenizer.eod)
                 elif self.args.patch_tokenizer_type in \
-                        ['GLM10BZHTokenizerFromHF', 'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer']:
+                        ['GLM10BZHTokenizerFromHF', 'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF']:
                     doc_ids[-1].append(Encoder.tokenizer.eos_token_id)
                 elif self.args.patch_tokenizer_type == \
                         'IcetkGLM130BTokenizer':
@@ -81,7 +81,7 @@ def get_args():
     group.add_argument(
         '--jsonl-keys',
         nargs='+',
-        default=['text'],
+        default=['content'],
         help='space separate listed of keys to extract from jsonl. Defa',
     )
     group.add_argument(
@@ -98,7 +98,7 @@ def get_args():
             'JiebaBPETokenizer', 'BloomTokenizerFromHF',
             'ChatGLMTokenizerFromHF', 'GPT2BPETokenizer',
             'GLM10BZHTokenizerFromHF', 'IcetkGLM130BTokenizer',
-            'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer'
+            'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF'
         ],
         help='What type of tokenizer to use.',
     )
