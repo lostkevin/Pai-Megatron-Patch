@@ -47,7 +47,6 @@ if support_flash_attn:
         except ImportError:
             flash_attn_varlen_qkvpacked_func = dummy_function
 
-
 import argparse
 import sys
 import copy
@@ -75,7 +74,6 @@ from einops import rearrange
 
 
 def get_tasks_args(parser):
-
     group = parser.add_argument_group(title='llama2')
 
     group.add_argument('--local-rank', type=int, default=None,
@@ -232,6 +230,8 @@ class LlamaDecoderLayerWithFlash(LlamaDecoderLayer):
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
         self.self_attn = LlamaAttentionWithFlash(config=config)
+
+
 class LlamaModelWithFlash(LlamaModel):
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
@@ -290,6 +290,7 @@ def preprocess(sources, targets, tokenizer):
                                  sources_tokenized['input_ids_lens']):
         label[:source_len] = -100
     return dict(input_ids=input_ids, labels=labels)
+
 
 def main():
     training_args = TrainingArguments(
@@ -391,20 +392,33 @@ def main():
                               'pip install flash-attn')
         logger.info("enable flash attention 1.0(no-pretrain)")
         with ContextManagers(init_contexts):
-            model = LlamaForCausalLMWithFlash(config)
+            if args.load:
+                model = LlamaForCausalLMWithFlash.from_pretrained(
+                    args.load,
+                    from_tf=False,
+                    config=config,
+                    revision='main',
+                    use_auth_token=None,
+                    low_cpu_mem_usage=False,
+                )
+            else:
+                model = LlamaForCausalLMWithFlash(config)
+
     else:
         logger.info("disable flash attention 1.0(no-pretrain)")
         with ContextManagers(init_contexts):
-            model = LlamaForCausalLM(config)
-    # TODO: from_pretrain
-    # model = AutoModelForCausalLM.from_pretrained(
-    #     args.load,
-    #     from_tf=False,
-    #     config=config,
-    #     revision='main',
-    #     use_auth_token=None,
-    #     low_cpu_mem_usage=False,
-    # )
+            if args.load:
+                model = LlamaForCausalLM.from_pretrained(
+                    args.load,
+                    from_tf=False,
+                    config=config,
+                    revision='main',
+                    use_auth_token=None,
+                    low_cpu_mem_usage=False,
+                )
+            else:
+                model = LlamaForCausalLM(config)
+
     model.to('cuda')
     if args.enable_gradient_checkpointing:
         model.gradient_checkpointing_enable()
