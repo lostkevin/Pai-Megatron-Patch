@@ -629,26 +629,6 @@ class ParallelAttention_70b(MegatronModule):
                         :sequence_end, batch_start:batch_end, ...]
             value_layer = inference_value_memory[
                           :sequence_end, batch_start:batch_end, ...]
-
-            # # adjust the key rotary positional embedding
-            # if rotary_pos_emb is not None:
-            #     q_pos_emb, k_pos_emb = rotary_pos_emb
-            #     # need to cross check this condition during inference
-            #     # if not set_inference_key_value_memory:
-            #     if not is_first_step:
-            #         # In inference, we compute one token at a time.
-            #         # Select the correct positional embedding
-            #         # (only the last token in the sequence)
-            #         q_pos_emb = q_pos_emb[sequence_end - 1: sequence_end]
-            #     else:
-            #         # In the first forward pass of inference,
-            #         # we use the entire provided prefix.
-            #         # q_pos_emb here has the rope embeddings of the entire
-            #         # prefix + to-be-generated output so
-            #         # we slice to just the prefix.
-            #         q_pos_emb = q_pos_emb[:sequence_end, :, :, :]
-            #     k_pos_emb = k_pos_emb[:sequence_end, :, :, :]
-            #     rotary_pos_emb = (q_pos_emb, k_pos_emb)
         else:
             value_layer = value_layer.transpose(0, 1).transpose(1, 2)
             query_layer = query_layer.transpose(0, 1).transpose(1, 2)

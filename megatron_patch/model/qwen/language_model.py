@@ -1,4 +1,16 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023 Alibaba PAI Team.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 """Transformer based language model."""
 
@@ -54,7 +66,23 @@ def get_language_model(config, num_tokentypes, add_pooler,
                        add_decoder=False,
                        decoder_attn_mask_type=AttnMaskType.causal,
                        pre_process=True, post_process=True):
-    """Build language model and return along with the key to save."""
+    """
+    Build and return a language model along with the key to save.
+
+    Args:
+        config: an object of Config class specifying the configuration for the language model
+        num_tokentypes (int): The number of token types.
+        add_pooler (bool): Flag to indicate whether to add a pooler.
+        encoder_attn_mask_type (str): The type of attention mask for the encoder.
+        add_encoder (bool, optional): Flag to indicate whether to add an encoder. Defaults to True.
+        add_decoder (bool, optional): Flag to indicate whether to add a decoder. Defaults to False.
+        decoder_attn_mask_type (str, optional): The type of attention mask for the decoder. Defaults to AttnMaskType.causal.
+        pre_process (bool, optional): Flag to indicate whether to apply pre-processing. Defaults to True.
+        post_process (bool, optional): Flag to indicate whether to apply post-processing. Defaults to True.
+
+    Returns:
+        tuple: A tuple containing the language model and the key used for saving checkpoints.
+    """
     args = get_args()
     if config.init_method is None:
         config.init_method = init_method_normal(config.init_method_std)
@@ -101,11 +129,6 @@ class Pooler(MegatronModule):
 
 
     def forward(self, hidden_states, sequence_index=0):
-        # hidden_states: [s, b, h]
-        # sequence_index: index of the token to pool.
-
-        # gather data along sequence dimensions
-        # same pooler is run on all tensor parallel nodes
         if self.sequence_parallel:
             hidden_states = tensor_parallel.gather_from_sequence_parallel_region(
                 hidden_states,
@@ -120,7 +143,7 @@ class Pooler(MegatronModule):
 class Embedding(MegatronModule):
     """Language model embeddings.
 
-    Arguments:
+    Args:
         hidden_size: hidden size
         vocab_size: vocabulary size
         max_sequence_length: maximum size of sequence. This
@@ -129,10 +152,6 @@ class Embedding(MegatronModule):
         init_method: weight initialization method
         num_tokentypes: size of the token-type embeddings. 0 value
                         will ignore this embedding
-        embedding_weights_in_fp32: casts word embedding weights to
-                                   fp32 before sampling. Required to
-                                   maintain reproducibility when
-                                   training in bf16.
     """
 
     def __init__(self,
@@ -199,9 +218,20 @@ class Embedding(MegatronModule):
             self.tokentype_embeddings.weight.shared = True
 
     def add_tokentype_embeddings(self, num_tokentypes):
-        """Add token-type embedding. This function is provided so we can add
-        token-type embeddings in case the pretrained model does not have it.
+        """
+        Add token-type embeddings to the language model.
+
+        This function is provided so we can add token-type embeddings in case the pretrained model does not have it. 
         This allows us to load the model normally and then add this embedding.
+
+        Args:
+            num_tokentypes: the number of token types
+
+        Raises:
+            Exception: if the tokentype embeddings are already initialized
+
+        Returns:
+            None
         """
         if self.tokentype_embeddings is not None:
             raise Exception('tokentype embeddings is already initialized')

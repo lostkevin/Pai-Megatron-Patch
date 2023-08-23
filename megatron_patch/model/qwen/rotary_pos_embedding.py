@@ -1,4 +1,16 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023 Alibaba PAI Team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import importlib.util
 
@@ -17,6 +29,13 @@ apply_rotary_emb_func = None
 rms_norm = None
 class RotaryEmbedding(torch.nn.Module):
     def __init__(self, dim, base=10000):
+        """
+        Initializes the RotaryEmbedding module.
+
+        Args:
+            dim: The dimensionality of the embeddings.
+            base: The base used for the frequency scaling.
+        """
         super().__init__()
         self.dim = dim
         self.base = base
@@ -29,6 +48,14 @@ class RotaryEmbedding(torch.nn.Module):
         self._ntk_alpha_cached = 1.0
 
     def update_rotary_pos_emb_cache(self, max_seq_len, offset=0, ntk_alpha=1.0):
+        """
+        Updates the cache of rotary positional embeddings based on the given parameters.
+
+        Args:
+            max_seq_len: The maximum sequence length for which to compute embeddings.
+            offset: An optional offset for the embedding indices.
+            ntk_alpha: An optional scaling factor for the base.
+        """
         seqlen = max_seq_len + offset
         if seqlen > self._seq_len_cached or ntk_alpha != self._ntk_alpha_cached:
             base = self.base * ntk_alpha ** (self.dim / (self.dim - 2))
@@ -54,6 +81,15 @@ class RotaryEmbedding(torch.nn.Module):
 
 
 def _rotate_half(x):
+    """
+    Performs a half rotation on the input tensor.
+
+    Args:
+        x: The input tensor to rotate.
+
+    Returns:
+        The rotated tensor.
+    """
     from einops import rearrange
 
     x = rearrange(x, "... (j d) -> ... j d", j=2)
@@ -62,6 +98,16 @@ def _rotate_half(x):
 
 
 def apply_rotary_pos_emb(t, freqs):
+    """
+    Applies rotary positional embeddings to the input tensor.
+
+    Args:
+        t: The input tensor.
+        freqs: The rotary positional embeddings.
+
+    Returns:
+        The tensor with rotary positional embeddings applied.
+    """
     if apply_rotary_emb_func is not None and t.is_cuda:
         t_ = t.float()
         freqs = freqs.squeeze(0).squeeze(1)
