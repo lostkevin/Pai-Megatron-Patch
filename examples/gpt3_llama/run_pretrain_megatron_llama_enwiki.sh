@@ -1,4 +1,6 @@
 #!/bin/bash
+# export WORK_DIR=/mnt/workspace/jerry.lp
+#sh run_pretrain_megatron_llama_enwiki.sh dsw /root/Megatron-LM-main/ ../../../PAI-Megatron-Patch/ 7B 2 2048 1e-5 1e-6 2048 2048 1 bf16 1 1 sel true true true true 100000 ${WORK_DIR}/wiki/enwiki-20230526-pages-articles ${WORK_DIR}/llama2-ckpts/Llama-2-7b-hf 10000000000 100000000 ${WORK_DIR}/output_patch
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -46,12 +48,13 @@ AC=${15}
 DO=${16}
 FL=${17}
 SP=${18}
-SAVE_INTERVAL=${19}
-DATASET_PATH=${20}
-PRETRAIN_CHECKPOINT_PATH=${21}
-TRAIN_TOKENS=${22}
-WARMUP_TOKENS=${23}
-OUTPUT_BASEPATH=${24}
+TE=${19}
+SAVE_INTERVAL=${20}
+DATASET_PATH=${21}
+PRETRAIN_CHECKPOINT_PATH=${22}
+TRAIN_TOKENS=${23}
+WARMUP_TOKENS=${24}
+OUTPUT_BASEPATH=${25}
 
 
 if [ $MODEL_SIZE = 7B ]; then
@@ -142,6 +145,15 @@ elif [ $FL = false ]; then
                     "
 fi
 
+if [ $TE = true ]; then
+    te_options=" \
+		    --transformer-impl transformer_engine"
+
+elif [ $TE = false ]; then
+    te_options=" \
+                    "
+fi
+
 if [ $SP = true ] && [ $TP -gt 1 ]; then
     sp_options=" \
 		    --sequence-parallel"
@@ -203,7 +215,7 @@ megatron_options="  \
         --DDP-impl local \
         --no-load-optim \
         --no-load-rng \
-        --num-workers 1 \
+        --num-workers 8 \
         --seed 1234 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
@@ -220,7 +232,7 @@ megatron_options="  \
         "
 
 run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megatron_llama.py
- ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options} ${gqa_options}"
+ ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options} ${gqa_options} ${te_options}"
 
 
 echo ${run_cmd}

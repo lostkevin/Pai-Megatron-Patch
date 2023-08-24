@@ -1,6 +1,6 @@
 #!/bin/bash
-#sh run_pretrain_megatron_llama.sh dsw {WORK_DIR}/Megatron-LM-23.04/ {WORK_DIR}/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false 100000 {WORK_DIR}/gpt3-datasets/alpaca_data.json {WORK_DIR}/gpt3-ckpts/gpt3-7b-hf-to-megatron-tp1-pp1 100000000 10000 /mnt/output_gpt3
-#sh run_pretrain_megatron_llama.sh dsw /cpfs01/user/ken/llama/Megatron-LM-23.04/ /cpfs01/user/ken/llama/PAI-Megatron-Patch/ 7B 1 8 1e-5 1e-6 2048 80 1 fp16 1 1 sel true false false 100000 /cpfs01/user/ken/llama/gpt3-datasets/alpaca_data.json none 100000000 10000 /cpfs01/user/ken/llama/output_gpt3
+# export WORK_DIR=/mnt/workspace/jerry.lp
+#sh run_pretrain_megatron_llama.sh dsw /root/Megatron-LM-main/ ../../../PAI-Megatron-Patch/ 7B 2 2048 1e-5 1e-6 2048 2048 1 bf16 1 1 sel true true true true 100000 ${WORK_DIR}/wudao/wudao_llamabpe_text_document ${WORK_DIR}/llama2-ckpts/Llama-2-7b-hf 10000000000 100000000 ${WORK_DIR}/output_patch
 set -e
 ENV=$1
 MEGATRON_PATH=$2
@@ -40,12 +40,13 @@ AC=${15}
 DO=${16}
 FL=${17}
 SP=${18}
-SAVE_INTERVAL=${19}
-DATASET_PATH=${20}
-PRETRAIN_CHECKPOINT_PATH=${21}
-TRAIN_TOKENS=${22}
-WARMUP_TOKENS=${23}
-OUTPUT_BASEPATH=${24}
+TE=${19}
+SAVE_INTERVAL=${20}
+DATASET_PATH=${21}
+PRETRAIN_CHECKPOINT_PATH=${22}
+TRAIN_TOKENS=${23}
+WARMUP_TOKENS=${24}
+OUTPUT_BASEPATH=${25}
 
 
 if [ $MODEL_SIZE = 7B ]; then
@@ -79,6 +80,10 @@ HIDDEN_SIZE=8192
 NUM_ATTN_HEADS=64
 INTERMEDIATE_SIZE=28672
 NUM_HEAD_KV=8
+
+gqa_options=" \
+		    --group-query-attention \
+		    --num-query-groups 8"
 
 fi
 
@@ -132,6 +137,15 @@ elif [ $FL = false ]; then
                     "
 fi
 
+if [ $TE = true ]; then
+    te_options=" \
+		    --transformer-impl transformer_engine"
+
+elif [ $TE = false ]; then
+    te_options=" \
+                    "
+fi
+
 if [ $SP = true ] && [ $TP -gt 1 ]; then
     sp_options=" \
 		    --sequence-parallel"
@@ -180,7 +194,7 @@ megatron_options="  \
         --seq-length ${SEQ_LEN} \
         --max-position-embeddings ${SEQ_LEN} \
         --log-interval 1 \
-        --eval-interval 100 \
+        --eval-interval 10000 \
         --eval-iters 10 \
         --save-interval ${SAVE_INTERVAL} \
         --tensorboard-queue-size 1 \
@@ -210,7 +224,7 @@ megatron_options="  \
         "
 
 run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megatron_llama.py
- ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
+ ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options} ${gqa_options} ${te_options}"
 
 
 echo ${run_cmd}
