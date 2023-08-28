@@ -1,3 +1,16 @@
+# Copyright (c) 2023 Alibaba PAI Team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -91,6 +104,15 @@ class GLM130BTokenizer:
         byte_fallback: bool,
         encode_special_tokens=False,
     ):
+        """
+        Configure the text tokenizer with special tokens, whitespace tokens, and byte fallback tokens.
+        Args:
+            text_tokenizer (TextTokenizer): The text tokenizer to configure.
+            special_tokens (List[str]): The list of special tokens to add to the tokenizer.
+            max_blank_length (int): The maximum length of whitespace tokens to add to the tokenizer.
+            byte_fallback (bool): Whether to add byte fallback tokens to the tokenizer.
+            encode_special_tokens (bool): Whether to encode the special tokens as a separate token type.
+        """
         # special token
         special_token_type = 4\
             if encode_special_tokens else 3

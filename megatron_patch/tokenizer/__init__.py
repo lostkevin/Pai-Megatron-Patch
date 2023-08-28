@@ -17,7 +17,14 @@ from megatron.tokenizer.tokenizer import _vocab_size_with_padding
 _GLOBAL_TOKENIZER = None
 
 def build_tokenizer(args):
-    """Initialize tokenizer."""
+    """
+    Initialize tokenizer.
+    Args:
+        args (argparse.Namespace): Arguments containing the type of tokenizer to be used.
+
+    Returns:
+        tokenizer object: Initialized tokenizer object based on the provided arguments.
+    """
     if args.rank == 0:
         print('> building {} tokenizer ...'.format(args.patch_tokenizer_type))
     # Select and instantiate the tokenizer.
