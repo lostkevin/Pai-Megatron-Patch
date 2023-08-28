@@ -158,7 +158,19 @@ def _build_train_valid_dataloaders(train_dataset,
 
 def _train(model, optimizer, opt_param_scheduler, forward_step,
            train_dataloader, valid_dataloader, end_of_epoch_callback):
-    """Train the model."""
+    """
+    Train the model.
+
+    Args:
+        model (nn.Module): The model to train.
+        optimizer (Optimizer): The optimizer to use for gradient updates.
+        opt_param_scheduler (Optional): The optimizer parameter scheduler.
+        forward_step (callable): The forward step function for the model.
+        train_dataloader (DataLoader): The dataloader for training data.
+        valid_dataloader (DataLoader): The dataloader for validation data.
+        end_of_epoch_callback (Optional[callable]): The callback function to call at the end of each epoch.
+    """
+    
     args = get_args()
     timers = get_timers()
 
@@ -259,7 +271,17 @@ def finetune(train_valid_datasets_provider,
              forward_step=_cross_entropy_forward_step,
              end_of_epoch_callback_provider=None,
              task_collate_fn=None):
-    """Main finetune function used across all tasks."""
+    """
+    Main finetune function used across all tasks.
+    Args:
+        model (nn.Module): The model to fine-tune.
+        optimizer (Optimizer): The optimizer to use for gradient updates.
+        opt_param_scheduler (Optional): The optimizer parameter scheduler.
+        forward_step (callable): The forward step function for the model.
+        train_dataloader (DataLoader): The dataloader for training data.
+        valid_dataloader (DataLoader): The dataloader for validation data.
+        end_of_epoch_callback (Optional[callable]): The callback function to call at the end of each epoch.
+    """
     args = get_args()
     timers = get_timers()
     assert args.rampup_batch_size is None, \
