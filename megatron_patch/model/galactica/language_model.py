@@ -391,7 +391,7 @@ class TransformerLanguageModel(MegatronModule):
         self.encoder_hidden_state = None
         self.untie_embeddings_and_output_weights =\
             args.untie_embeddings_and_output_weights
-        self.seq_length = args.max_padding_length
+        self.seq_length = args.seq_length
         # Embeddings.
         if self.pre_process:
             self.embedding = Embedding(self.hidden_size,
