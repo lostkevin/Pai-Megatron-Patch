@@ -554,7 +554,7 @@ class ParallelAttention(MegatronModule):
             else:
                 inference_key_memory, inference_value_memory = \
                     inference_params.key_value_memory_dict[self.layer_number]
-        
+
         mixed_x_layer, _ = self.query_key_value(hidden_states)
         fused_qkv = mixed_x_layer.transpose(0, 1)
         (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
@@ -563,7 +563,7 @@ class ParallelAttention(MegatronModule):
         value_layer = value_layer.transpose(0, 1)
         query_layer = query_layer.transpose(0, 1)
         key_layer = key_layer.transpose(0, 1)
-        
+
         kv_seq_len = key_layer.shape[0]
         if inference_params:
             kv_seq_len += inference_params.sequence_len_offset
@@ -633,7 +633,7 @@ class ParallelAttention(MegatronModule):
         # Output. [sq, b, h]
         # =================
         output, bias = self.dense(context_layer)
-        
+
         return output, bias
 
 

@@ -7,7 +7,7 @@
 我们提供了部分样例数据作为示例，用户可通过以下命令下载和解压：
 ```bash
 wget https://atp-modelzoo.oss-cn-hangzhou.aliyuncs.com/release/datasets/WuDaoCorpus2.0_base_sample.tgz
-tar zxvf WuDaoCorpus2.0_base_sample.tgz 
+tar zxvf WuDaoCorpus2.0_base_sample.tgz
 ```
 以"wudao_200g"作为解压后的目标文件夹命名，
 我们为HuggingFace&DeepSpeed训练和MegatronLM训练分别准备了数据预处理流程，您可以根据自己的需要选择不同的处理方式。
@@ -39,7 +39,7 @@ rm -rf ${dataset_dir}/cleaned_wudao_dataset
 脚本执行完成后，qwen-datasets内部文件结构如下，新增一个wudao文件夹：
 ```plain
 qwen-datasets
-├── wudao_200g 
+├── wudao_200g
 └── wudao
     └── merged_wudao_cleaned.json
 ```
@@ -102,7 +102,7 @@ rm -rf ${dataset_dir}/cleaned_wudao_dataset
 
 ```plain
 qwen-datasets
-├── wudao_200g 
+├── wudao_200g
 └── wudao
     └── merged_wudao_cleaned.json
 ```
@@ -161,7 +161,7 @@ MEGATRON_PATH=$1                   # 设置开源Megatron的代码路径
 MEGATRON_PATCH_PATH=$2             # 设置Megatron Patch的代码路径
 input_data_dir=$3                  # 打包后的wudao数据集的文件夹路径
 tokenizer=$4                       # llamabpe
-output_data_dir=$5                 # 输出到bin和idx文件目录  
+output_data_dir=$5                 # 输出到bin和idx文件目录
 load_dir=$6                        # tokenizer_config.json文件路径
 ```
 

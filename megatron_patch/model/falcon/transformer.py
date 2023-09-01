@@ -322,7 +322,7 @@ class MultiQueryCoreAttention_old(CoreAttention):
         query_layer = query_layer.reshape(-1, num_heads, q_length, head_dim)
         batch_size = query_layer.size(0)
         query_layer_ = query_layer.reshape(batch_size, num_heads, -1, head_dim)
-        
+
         # fix num_kv
         if not self.num_heads % 71:
             self.num_kv = 1
@@ -769,7 +769,7 @@ class ParallelAttention(MegatronModule):
                                (self.num_attention_heads_per_partition,
                                 self.hidden_size_per_attention_head)
             query_layer = query_layer.view(*new_tensor_shape)
-        
+
         # ==================================
         # Adjust key and value for inference
         # ==================================
@@ -913,7 +913,7 @@ class ParallelTransformerLayer(MegatronModule):
             eps=args.layernorm_epsilon,
             no_persist_layer_norm=args.no_persist_layer_norm,
             sequence_parallel=args.sequence_parallel)
-        
+
         # add post_attention_layernorm for falcon-40b
         if self.num_layers == 60:
             self.post_attention_layernorm = LayerNorm(

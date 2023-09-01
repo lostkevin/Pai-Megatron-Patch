@@ -880,7 +880,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
                 # Split to QKV matrix
                 QKV = {0:'q_proj',1:'k_proj',2:'v_proj'}
                 for index, matrix in enumerate(torch.split(out_val, out_val.shape[1], 0)):
-                    output_state_dict[layer_name + f".self_attn.{QKV[index]}.weight"] = matrix.clone()                    
+                    output_state_dict[layer_name + f".self_attn.{QKV[index]}.weight"] = matrix.clone()
 
             # Transpose the Q matrix for query for Llama70b.
             elif (
@@ -900,8 +900,8 @@ def convert_checkpoint_from_megatron_to_transformers(args):
                 # Store.
 
                 # Split to QKV matrix
-                output_state_dict[layer_name + f".self_attn.q_proj.weight"] = out_val.clone()                  
-            
+                output_state_dict[layer_name + f".self_attn.q_proj.weight"] = out_val.clone()
+
             # Transpose the KV matrix for query for Llama70b.
             elif (
                 op_name == "attention.key_value" or op_name == "self_attention.key_value"
@@ -922,7 +922,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
                 # Split to QKV matrix
                 KV = {0:'k_proj',1:'v_proj'}
                 for index, matrix in enumerate(torch.split(out_val, out_val.shape[0]//2, 0)):
-                    output_state_dict[layer_name + f".self_attn.{KV[index]}.weight"] = matrix.clone()                  
+                    output_state_dict[layer_name + f".self_attn.{KV[index]}.weight"] = matrix.clone()
 
             # Transpose the weights.
             elif weight_or_bias == "weight":

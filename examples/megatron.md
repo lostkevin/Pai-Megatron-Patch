@@ -85,7 +85,7 @@ ${WORK_DIR}/llama2-datasets/wudao/wudao_llamabpe_text_document   \
 ${WORK_DIR}/llama2-ckpts/llama2-7b-hf-to-megatron-tp1-pp1   \
 100000000   \
 10000   \
-${WORK_DIR}/output_megatron_llama2/   
+${WORK_DIR}/output_megatron_llama2/
 ```
 
 ### 有监督微调
@@ -140,6 +140,5 @@ ${WORK_DIR}/llama2-datasets/wudao_train.json   \
 ${WORK_DIR}/llama2-datasets/wudao_valid.json   \
 ${WORK_DIR}/llama2-ckpts/llama2-7b-hf-to-megatron-tp1-pp1   \
 2   \
-${WORK_DIR}/output_megatron_llama2/   
+${WORK_DIR}/output_megatron_llama2/
 ```
-

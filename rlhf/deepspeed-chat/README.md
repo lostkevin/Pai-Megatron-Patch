@@ -3,7 +3,7 @@
 
 ### 安装指南
 
-下载安装开源社区trlx源代码：
+下载安装开源社区DeepSpeed-Chat源代码：
 ```bash
 git clone https://github.com/microsoft/DeepSpeedExamples.git
 cd DeepSpeedExamples/applications/DeepSpeed-Chat/

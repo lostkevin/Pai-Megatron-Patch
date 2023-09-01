@@ -54,7 +54,7 @@ def generate_and_post_process(model,
             - prompts_plus_generations_segments (List[str]): A list of segments corresponding to each prompt and generated text.
             - output_log_probs (List[List[float]]): The output log probabilities for each generated token (if return_output_log_probs is True).
             - tokens (List[int]): The generated tokens.
-            
+
     """
 
     # Main inference.
@@ -108,7 +108,7 @@ def generate(model,
              prevent_newline_after_colon=False,
              random_seed=-1):
     """
-    Given prompts and input parameters, run inference and return the generated tokens, 
+    Given prompts and input parameters, run inference and return the generated tokens,
     lengths, and output log probabilities.
 
     Args:
