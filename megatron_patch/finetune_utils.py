@@ -170,7 +170,7 @@ def _train(model, optimizer, opt_param_scheduler, forward_step,
         valid_dataloader (DataLoader): The dataloader for validation data.
         end_of_epoch_callback (Optional[callable]): The callback function to call at the end of each epoch.
     """
-    
+
     args = get_args()
     timers = get_timers()
 

@@ -834,7 +834,7 @@ class ParallelTransformerLayer(MegatronModule):
         self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0.0 else None
 
         # Layernorm on the attention output
-        
+
         self.post_attention_layernorm = RMSNorm(config.hidden_size,
                                        eps=config.layernorm_epsilon)
 
@@ -1533,7 +1533,7 @@ class ParallelTransformer(MegatronModule):
 
         if self.post_process and self.post_layer_norm:
             # Final layer norm before output.
-            
+
             self.final_layernorm = RMSNorm(config.hidden_size,
                                        eps=config.layernorm_epsilon)
 

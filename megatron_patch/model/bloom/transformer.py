@@ -780,7 +780,7 @@ class ParallelTransformerLayer(MegatronModule):
         # Layer norm at the beginning of the transformer layer.
         layernorm_output = self.input_layernorm(hidden_states)
         args = get_args()
-        
+
         self.alibi = self.build_alibi_tensor(action_mask, args.num_attention_heads, args.params_dtype).cuda()
 
         # Self attention.

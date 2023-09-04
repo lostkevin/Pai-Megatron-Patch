@@ -142,7 +142,7 @@ def generate_tokens_probs_and_return_on_first_stage(
 
     Note: Outside of model, other parameters only need to be available on
           rank 0.
-          
+
     Outputs: Note that is size is adjusted to a lower value than
              max-sequence-length if generation is terminated early.
         tokens: prompt and generated tokens. size: [b, :]

@@ -554,7 +554,7 @@ class TransformerLanguageModel(MegatronModule):
             batch_size = enc_input_ids.shape[0]
             enc_attn_mask = self._prepare_decoder_attention_mask(
                 enc_attn_mask, (batch_size, enc_attn_mask.size()[-2]),
-                args.params_dtype, enc_input_ids.device)              
+                args.params_dtype, enc_input_ids.device)
 
         # Run encoder.
         if enc_hidden_states is None:

@@ -24,7 +24,7 @@ fi
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-MODEL_SIZE=$4  #7B, 13B, 70B 
+MODEL_SIZE=$4  #7B, 13B, 70B
 BATCH_SIZE=$5
 GLOBAL_BATCH_SIZE=$6
 LR=$7

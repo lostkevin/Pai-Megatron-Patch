@@ -154,7 +154,7 @@ class Pooler(MegatronModule):
 
     def forward(self, hidden_states, sequence_index=0):
         """
-        Forward pass of the Pooler layer. Gather data along sequence dimensions. 
+        Forward pass of the Pooler layer. Gather data along sequence dimensions.
         Same pooler is run on all tensor parallel nodes
 
         Args:
@@ -518,7 +518,7 @@ class TransformerLanguageModel(MegatronModule):
 
         Args:
             input_tensor: The input tensor.
-            
+
         """
 
         # This is usually handled in schedules.py but some inference code still

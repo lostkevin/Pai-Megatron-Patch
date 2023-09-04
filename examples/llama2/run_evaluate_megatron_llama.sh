@@ -26,7 +26,7 @@ fi
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
 MODEL_SIZE=$4
-BATCH_SIZE=$5 #7B, 13B, 70B 
+BATCH_SIZE=$5 #7B, 13B, 70B
 SEQ_LEN=$6
 PAD_LEN=$7
 EXTRA_VOCAB_SIZE=$8

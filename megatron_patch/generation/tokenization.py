@@ -121,10 +121,10 @@ def _tokenize_prompts_and_batch(prompts, tokens_to_generate, add_BOS):
         prompts (list): List of prompts to be tokenized.
         tokens_to_generate (int): Number of tokens to generate.
         add_BOS (bool): Whether to add the BOS token or not.
-    
+
     Returns:
         tuple: A tuple containing the tokenized prompts and their lengths.
-        
+
     """
 
     # Tokenize all the prompts.

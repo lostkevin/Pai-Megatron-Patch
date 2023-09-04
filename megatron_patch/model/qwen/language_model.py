@@ -221,7 +221,7 @@ class Embedding(MegatronModule):
         """
         Add token-type embeddings to the language model.
 
-        This function is provided so we can add token-type embeddings in case the pretrained model does not have it. 
+        This function is provided so we can add token-type embeddings in case the pretrained model does not have it.
         This allows us to load the model normally and then add this embedding.
 
         Args:

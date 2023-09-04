@@ -895,7 +895,7 @@ def convert_checkpoint_from_megatron_to_transformers(args):
 
                 # Store. No change of shape.
                 output_state_dict[layer_name + ".attn.c_attn.bias"] = out_val.clone()
-            
+
             # Transpose the Q matrix for query for Llama70b.
             elif (
                 op_name == "attention.query" or op_name == "self_attention.query"
@@ -914,8 +914,8 @@ def convert_checkpoint_from_megatron_to_transformers(args):
                 # Store.
 
                 # Split to QKV matrix
-                output_state_dict[layer_name + f".self_attn.q_proj.weight"] = out_val.clone()                  
-            
+                output_state_dict[layer_name + f".self_attn.q_proj.weight"] = out_val.clone()
+
             # Transpose the KV matrix for query for Llama70b.
             elif (
                 op_name == "attention.key_value" or op_name == "self_attention.key_value"

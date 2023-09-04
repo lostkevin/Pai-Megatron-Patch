@@ -111,7 +111,7 @@ elif [ $tokenizer = "starcoderbpe" ]; then
   --load ${load_dir} \
   --workers 16 \
   --append-eod
-  
+
 elif [ $tokenizer = "qwenbpe" ]; then
   python preprocess_data.py \
   --input ${INPUT} \
