@@ -17,3 +17,6 @@ Pai-Megatron-Patch工具基于英伟达的Megatron-LM框架来构建大模型开
 [人类反馈强化学习](rlhf/README.md)
 
 [模型离线推理](megatron_patch/generation/README.md)
+
+## License
+This project is licensed under the [Apache License (Version 2.0)](https://github.com/alibaba/pai-megatron-patch/blob/master/LICENSE). This toolkit also contains some code modified from other repos under other open-source licenses. See the [NOTICE](https://github.com/alibaba/pai-megatron-patch/blob/master/NOTICE) file for more information.

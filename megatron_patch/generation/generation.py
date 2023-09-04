@@ -1,5 +1,16 @@
-# Copyright (c) 2023 Alibaba PAI Team. All rights reserved.
-"""Generation utilities."""
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import torch
 import torch.nn.functional as F
@@ -7,13 +18,13 @@ import torch.nn.functional as F
 from megatron import get_args
 from megatron.core import mpu
 from megatron.text_generation.beam_utils import BeamHypotheses
-from megatron.text_generation.communication import (
-    broadcast_from_last_pipeline_stage,
-    broadcast_from_last_to_first_pipeline_stage,
-    copy_from_last_to_first_pipeline_stage)
+from megatron.text_generation.communication import broadcast_from_last_pipeline_stage
+from megatron.text_generation.communication import broadcast_from_last_to_first_pipeline_stage
+from megatron.text_generation.communication import copy_from_last_to_first_pipeline_stage
 from megatron.text_generation.forward_step import ForwardStep
 from megatron.text_generation.sampling import sample
 from megatron.utils import get_ltor_masks_and_position_ids
+
 from megatron_patch.tokenizer import get_tokenizer
 
 

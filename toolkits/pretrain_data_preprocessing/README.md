@@ -2,7 +2,7 @@
 建议在灵骏智算平台中的DSW实例中准备预训练数据，本指引将以中文wudao2.0数据集为例，为通义千问qwen模型准备预训练数据：
 
 下载WuDaoCorpora2.0开源数据集到/mnt/workspace/qwen-datasets工作目录下，该文件夹中的原始wudao数据集的格式和大小如下截图所示：
-<div align=center><img width="700" height="300" src="img.png"/></div>
+![img.png](img.png)
 
 我们提供了部分样例数据作为示例，用户可通过以下命令下载和解压：
 ```bash

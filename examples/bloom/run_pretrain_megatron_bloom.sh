@@ -171,15 +171,13 @@ megatron_options="  \
         --no-load-rng \
         --num-workers 8 \
         --seed 1234 \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --embed-layernorm \
         --position-embedding-type alibi \
         --patch-tokenizer-type BloomTokenizerFromHF
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_bloom.py
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megatron_bloom.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 echo ${run_cmd}

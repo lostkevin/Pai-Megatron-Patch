@@ -108,14 +108,12 @@ rapidformer_options="  \
         --no-position-embedding \
         --untie-embeddings-and-output-weights \
         --patch-tokenizer-type LLamaTokenizer \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --no-position-embedding \
         --n-head-kv ${NUM_HEAD_KV} \
         --repetition-penalty ${REPETITION_PENALTY} \
     "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS generate_text_megatron_llama.py
+run_cmd="torchrun $DISTRIBUTED_ARGS generate_text_megatron_llama.py
  ${rapidformer_options} ${load_options} ${input_options} ${pr_options}"
 
 echo ${run_cmd}

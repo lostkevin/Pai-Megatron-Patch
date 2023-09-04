@@ -89,12 +89,10 @@ megatron_options=" \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --patch-tokenizer-type BloomTokenizerFromHF
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_bloom.py
+run_cmd="torchrun $DISTRIBUTED_ARGS evaluate_huggingface_bloom.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}

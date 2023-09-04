@@ -1,4 +1,4 @@
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,89 +13,12 @@
 # limitations under the License.
 
 from megatron import get_args
+from megatron.core.enums import ModelType
 from megatron.initialize import initialize_megatron
+
 from megatron_patch.generation.gpt_predictor import GPTPredictor
 from megatron_patch.model.falcon.gpt_model import GPTModel
-
-try:
-    from megatron.model import ModelType
-except ImportError:
-    from megatron.core.enums import ModelType
-
-
-def get_tasks_args(parser):
-    group = parser.add_argument_group(title='text generation')
-    group.add_argument('--local-rank', type=int, default=None)
-    group.add_argument('--text-generate-input-file', type=str, default='')
-    group.add_argument('--text-generate-output-file', type=str, default='')
-    group.add_argument('--text-generate-gt-file', type=str, default='')
-    group.add_argument('--time',
-                       action='store_true',
-                       help='measure end to end text generation average time')
-    group.add_argument('--eval-dev', action='store_true')
-    group.add_argument(
-        '--input-len',
-        type=int,
-        default=1,
-        help='input lenth for measure end to end text generation average time')
-    group.add_argument('--patch-tokenizer-type',
-                       type=str,
-                       help='patch-tokenizer-type')
-    group.add_argument('--top-p',
-                       type=float,
-                       default=0.0,
-                       help='Top p sampling.')
-    group.add_argument('--top-k', type=int, default=0, help='Top k sampling.')
-
-    group.add_argument('--out-seq-length',
-                       type=int,
-                       default=1024,
-                       help='Size of the output generated text.')
-
-    group.add_argument('--temperature',
-                       type=float,
-                       default=1.0,
-                       help='Sampling temperature.')
-    group.add_argument('--repetition_penalty',
-                       type=float,
-                       default=1.1,
-                       help='Repetition_penalty.')
-    group.add_argument('--embed-layernorm',
-                       action='store_true',
-                       help='use layernorm for embedding')
-
-    group.add_argument('--position-embedding-type',
-                       type=str,
-                       default='absolute',
-                       help='Define position embedding type '
-                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
-
-    group.add_argument('--extra-vocab-size',
-                       type=int,
-                       default=1,
-                       help='--extra-vocab-size')
-    group.add_argument('--max-padding-length',
-                       type=int,
-                       default=None,
-                       help='max-padding-length')
-
-    group.add_argument('--repetition-penalty',
-                       type=float,
-                       default=1.2,
-                       help='Repetition_penalty.')
-
-    group.add_argument('--n-head-kv',
-                       type=int,
-                       default=None,
-                       help='n-head-kv')
-
-    group.add_argument('--attention-head-type',
-                       type=str,
-                       default='multihead',
-                       help='attention-head-type')
-
-    return parser
-
+from megatron_patch.arguments import get_tasks_args
 
 class MegatronGPTPredictor(GPTPredictor):
     def model_provider(self, pre_process=True, post_process=True):

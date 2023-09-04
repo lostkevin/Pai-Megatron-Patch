@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,61 +13,22 @@
 # limitations under the License.
 
 from functools import partial
-
 import torch
 
-from megatron import get_args, get_timers, print_rank_0
+from megatron.core.enums import ModelType
+from megatron import get_args
+from megatron import print_rank_0
+from megatron import get_timers
 from megatron.core import tensor_parallel
 from megatron.data.gpt_dataset import build_train_valid_test_datasets
-from megatron.utils import (average_losses_across_data_parallel_group,
-                            get_ltor_masks_and_position_ids)
+from megatron.utils import average_losses_across_data_parallel_group
+from megatron.utils import get_ltor_masks_and_position_ids
+
 from megatron_patch.model.bloom.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer
+from megatron_patch.tokenizer import get_tokenizer
 from megatron_patch.training import pretrain
-
-try:
-    from megatron.model import ModelType
-except ImportError:
-    from megatron.core.enums import ModelType
-
-
-def get_tasks_args(parser):
-    group = parser.add_argument_group(title='bloom')
-
-    group.add_argument('--local-rank', type=int, default=None,
-                        help='local rank passed from distributed launcher')
-
-    group.add_argument('--transformer-type',
-                       type=str,
-                       default='megatron',
-                       help='transformer-type')
-
-    group.add_argument('--pretrained-checkpoint',
-                       type=str,
-                       default=None,
-                       help='Pretrained checkpoint used for finetunning.')
-
-    group.add_argument('--embed-layernorm',
-                       action='store_true',
-                       help='use layernorm for embedding')
-
-    group.add_argument('--position-embedding-type',
-                       type=str,
-                       default='absolute',
-                       help='Define position embedding type '
-                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
-
-    group.add_argument('--patch-tokenizer-type',
-                       type=str,
-                       help='patch-tokenizer-type')
-
-    group.add_argument('--extra-vocab-size',
-                       type=int,
-                       default=1,
-                       help='--extra-vocab-size')
-
-    return parser
-
+from megatron_patch.arguments import get_tasks_args
 
 def model_provider(pre_process=True, post_process=True):
     """Build the model."""

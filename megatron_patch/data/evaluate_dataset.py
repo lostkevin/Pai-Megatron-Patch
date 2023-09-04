@@ -19,13 +19,11 @@ import math
 import os
 from bisect import bisect_right
 from itertools import accumulate
-
 import numpy as np
 import torch
 
 from megatron import get_args
 from megatron_patch.tokenizer import get_tokenizer
-
 
 class GLM130BDataset(torch.utils.data.Dataset):
     """A class for processing a GLM130B text dataset"""

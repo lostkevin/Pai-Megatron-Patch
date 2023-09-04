@@ -14,7 +14,6 @@
 
 import argparse
 import random
-import json
 import os
 import re
 import sys
@@ -27,7 +26,6 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 
 from transformers import AutoTokenizer, GPT2Config
-from transformers.modeling_utils import WEIGHTS_INDEX_NAME, WEIGHTS_NAME, shard_checkpoint
 
 
 def add_checkpointing_args(parser):
@@ -152,15 +150,6 @@ def add_transformers_checkpoint_args(parser):
     return parser
 
 
-# The simple map of names for "automated" rules.
-megatron_to_transformers = {
-    "self_attention.dense": ".self_attn.o_proj.",
-    "mlp.dense_h_to_4h_1": ".mlp.gate_proj.",
-    "mlp.dense_h_to_4h_2": ".mlp.up_proj.",
-    "mlp.dense_4h_to_h": ".mlp.down_proj."
-}
-# transformers_to_megatron = {v[1:-1]: k for k, v in megatron_to_transformers.items()}
-
 transformers_to_megatron = {
     "self_attn.dense": "self_attention.dense",
     "mlp.dense_h_to_4h_1": "mlp.dense_h_to_4h_1",
@@ -172,15 +161,6 @@ tensor_parallel_params = [
     # megatron-lm layers to merge across tp ranks
     "self_attn.query_key_value.weight",
     "self_attn.dense.weight",
-    "mlp.dense_h_to_4h_1.weight",
-    "mlp.dense_h_to_4h_2.weight",
-    "mlp.dense_4h_to_h.weight"
-]
-
-tensor_parallel_params_mg = [
-    # megatron-lm layers to merge across tp ranks
-    "self_attention.query_key_value.weight",
-    "self_attention.dense.weight",
     "mlp.dense_h_to_4h_1.weight",
     "mlp.dense_h_to_4h_2.weight",
     "mlp.dense_4h_to_h.weight"
@@ -391,11 +371,17 @@ def convert_checkpoint_from_transformers_to_megatron(args):
         internal_state_dict['transformer.layers.' + str(layer_id) + '.self_attn.dense.weight'] =\
             state_dict['model.layers.' + str(layer_id) + '.self_attn.o_proj.weight']
 
+        dense_h_to_4h_1_weight = state_dict[
+            'model.layers.' + str(layer_id) + '.mlp.gate_proj.weight']
+
+        dense_h_to_4h_2_weight = state_dict[
+            'model.layers.' + str(layer_id) + '.mlp.up_proj.weight']
+
         internal_state_dict['transformer.layers.' + str(layer_id) + '.mlp.dense_h_to_4h_1.weight'] =\
-            state_dict['model.layers.' + str(layer_id) + '.mlp.gate_proj.weight']
+            dense_h_to_4h_1_weight
 
         internal_state_dict['transformer.layers.' + str(layer_id) + '.mlp.dense_h_to_4h_2.weight'] =\
-            state_dict['model.layers.' + str(layer_id) + '.mlp.up_proj.weight']
+            dense_h_to_4h_2_weight
 
         internal_state_dict['transformer.layers.' + str(layer_id) + '.mlp.dense_4h_to_h.weight'] = state_dict[
             'model.layers.' + str(layer_id) + '.mlp.down_proj.weight']
@@ -586,6 +572,29 @@ def convert_checkpoint_from_transformers_to_megatron(args):
                     params_dict[layer_name] = (
                         params[i] if (op_name + "." + weight in tensor_parallel_params) else params
                     )
+
+            for i in range(args.target_tensor_model_parallel_size):
+
+                params_dict = get_element_from_dict_by_path(output_state_dict[i],
+                                                            "model.language_model.encoder")
+
+                dense_h_to_4h_1_name = 'mlp.dense_h_to_4h_1.weight'
+                dense_h_to_4h_1_layer_name = f"layers.{layer}.{dense_h_to_4h_1_name}"
+                dense_h_to_4h_1_weight = params_dict[dense_h_to_4h_1_layer_name]
+
+                dense_h_to_4h_2_name = 'mlp.dense_h_to_4h_2.weight'
+                dense_h_to_4h_2_layer_name = f"layers.{layer}.{dense_h_to_4h_2_name}"
+                dense_h_to_4h_2_weight = params_dict[dense_h_to_4h_2_layer_name]
+
+                dense_h_to_4h_name = 'mlp.dense_h_to_4h.weight'
+                dense_h_to_4h_layer_name = f"layers.{layer}.{dense_h_to_4h_name}"
+
+                params_dict[dense_h_to_4h_layer_name] = torch.cat(
+                [dense_h_to_4h_1_weight, dense_h_to_4h_2_weight], dim=0)
+
+                del params_dict[dense_h_to_4h_1_layer_name]
+                del params_dict[dense_h_to_4h_2_layer_name]
+
 
         if pp_rank == args.target_pipeline_model_parallel_size - 1:
             # handle final layernorm

@@ -1,5 +1,4 @@
 #!/bin/bash
-# export WORK_DIR=/mnt/workspace/jerry.lp
 #sh run_pretrain_megatron_llama_enwiki.sh dsw /root/Megatron-LM-main/ ../../../PAI-Megatron-Patch/ 7B 2 2048 1e-5 1e-6 2048 2048 1 bf16 1 1 sel true true true true 100000 ${WORK_DIR}/wiki/enwiki-20230526-pages-articles ${WORK_DIR}/llama2-ckpts/Llama-2-7b-hf 10000000000 100000000 ${WORK_DIR}/output_patch
 set -e
 ENV=$1

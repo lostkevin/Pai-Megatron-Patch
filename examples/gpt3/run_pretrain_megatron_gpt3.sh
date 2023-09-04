@@ -183,15 +183,13 @@ megatron_options="  \
         --seed 1234 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --position-embedding-type rope \
         --swiglu \
         --untie-embeddings-and-output-weights \
         --patch-tokenizer-type LLamaTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_gpt3.py
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megatron_gpt3.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 

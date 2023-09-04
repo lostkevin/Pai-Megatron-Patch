@@ -115,13 +115,11 @@ rapidformer_options="  \
        --tensor-model-parallel-size ${TP} \
        --pipeline-model-parallel-size 1 \
        --embed-layernorm \
-       --tokenizer-type NullTokenizer \
-       --vocab-size -1 \
        --position-embedding-type alibi \
        --repetition-penalty ${REPETITION_PENALTY} \
     "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS generate_text_bloom.py ${tokenizer_options}
+run_cmd="torchrun $DISTRIBUTED_ARGS generate_text_bloom.py ${tokenizer_options}
  ${rapidformer_options} ${load_options} ${input_options} ${pr_options} "
 
 

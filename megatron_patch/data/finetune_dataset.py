@@ -19,10 +19,8 @@ import os
 import random
 import re
 from abc import ABC, abstractmethod
-
 import numpy as np
 from torch.utils.data import Dataset
-
 
 class AbstractDataset(ABC, Dataset):
     """GLUE base dataset class."""

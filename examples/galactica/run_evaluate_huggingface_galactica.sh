@@ -76,13 +76,11 @@ megatron_options=" \
         --dataset LLama-SFT \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --patch-tokenizer-type OPTTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_galactica.py
+run_cmd="torchrun $DISTRIBUTED_ARGS evaluate_huggingface_galactica.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}

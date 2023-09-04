@@ -1,20 +1,30 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
-
-"""Transformer based language model."""
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import torch
-import torch.nn.functional as F
 
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
 from megatron.core.enums import ModelType
 from megatron.core.models.common.rotary_pos_embedding import RotaryEmbedding
-
-from megatron.model.enums import AttnMaskType, LayerType
+from megatron.model.enums import AttnMaskType
+from megatron.model.enums import LayerType
 from megatron.model.module import MegatronModule
 from .transformer import ParallelTransformer
 from megatron.model.utils import get_linear_layer
-from megatron.model.utils import init_method_normal, scaled_init_method_normal
+from megatron.model.utils import init_method_normal
+from megatron.model.utils import scaled_init_method_normal
 
 
 def parallel_lm_logits(input_, word_embeddings_weight, parallel_output,

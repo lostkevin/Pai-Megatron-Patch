@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from megatron import print_rank_0
 from megatron.tokenizer.tokenizer import _vocab_size_with_padding
 

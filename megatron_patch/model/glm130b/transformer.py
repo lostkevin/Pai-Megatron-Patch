@@ -1,5 +1,17 @@
-# Copyright (c) 2023 Alibaba PAI Team. All rights reserved.
-"""Transformer."""
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 from contextlib import nullcontext
 from typing import Optional
@@ -8,20 +20,22 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from megatron import core, get_args, get_num_microbatches
+from megatron import core
+from megatron import get_args
+from megatron import get_num_microbatches
 from megatron.core import mpu, tensor_parallel
 from megatron.model import LayerNorm
-from megatron.model.enums import AttnMaskType, AttnType, LayerType
+from megatron.model.enums import AttnMaskType
+from megatron.model.enums import AttnType
+from megatron.model.enums import LayerType
 from megatron.model.fused_bias_gelu import bias_gelu_impl
 from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.module import MegatronModule
 from megatron.model.rotary_pos_embedding import apply_rotary_pos_emb
-from megatron.model.utils import attention_mask_func, erf_gelu, openai_gelu
-
-try:
-    from megatron.model import ModelType
-except ImportError:
-    from megatron.core.enums import ModelType
+from megatron.model.utils import attention_mask_func
+from megatron.model.utils import openai_gelu
+from megatron.model.utils import erf_gelu
+from megatron.core.enums import ModelType
 
 try:
     from einops import rearrange

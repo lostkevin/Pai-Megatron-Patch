@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,69 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from transformers import AutoModel
+
 from megatron import get_args
 from megatron.initialize import initialize_megatron
+
 from megatron_patch.data.finetune_dataset import ChatGLMDataset
 from megatron_patch.finetune_utils import finetune
 from megatron_patch.tokenizer import build_tokenizer
-from transformers import AutoModel
-
-
-def get_tasks_args(parser):
-    """Provide extra arguments required for tasks."""
-    group = parser.add_argument_group(title='chatglm')
-
-    group.add_argument('--local-rank', type=int, default=None,
-                        help='local rank passed from distributed launcher')
-
-    group.add_argument('--transformer-type',
-                       type=str,
-                       default='megatron',
-                       help='transformer-type')
-
-    group.add_argument('--pretrained-checkpoint',
-                       type=str,
-                       default=None,
-                       help='Pretrained checkpoint used for finetunning.')
-
-    group.add_argument('--epochs',
-                       type=int,
-                       default=None,
-                       help='Number of finetunning epochs. Zero results in '
-                       'evaluation only.')
-
-    group.add_argument('--keep-last',
-                       action='store_true',
-                       help='Keep the last batch (maybe incomplete) in'
-                       'the data loader')
-
-    group.add_argument('--train-data',
-                       nargs='+',
-                       default=None,
-                       help='Whitespace separated paths or corpora names '
-                       'for training.')
-
-    group.add_argument('--valid-data',
-                       nargs='*',
-                       default=None,
-                       help='path(s) to the validation data.')
-
-    group.add_argument('--source-seq-len',
-                       type=int,
-                       default=None,
-                       help='source-seq-len')
-
-    group.add_argument('--target-seq-len',
-                       type=int,
-                       default=None,
-                       help='target-seq-len')
-
-    group.add_argument('--patch-tokenizer-type',
-                       type=str,
-                       help='patch-tokenizer-type')
-
-    return parser
-
+from megatron_patch.arguments import get_tasks_args
 
 def model_provider(pre_process=True, post_process=True):
     args = get_args()

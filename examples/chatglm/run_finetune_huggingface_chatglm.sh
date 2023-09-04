@@ -111,12 +111,10 @@ megatron_options="  \
         --finetune \
         --no-load-optim \
         --DDP-impl local\
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --patch-tokenizer-type ChatGLMTokenizerFromHF
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_huggingface_chatglm.py
+run_cmd="torchrun $DISTRIBUTED_ARGS finetune_huggingface_chatglm.py
 ${megatron_options} ${do_options} ${pr_options}"
 
 

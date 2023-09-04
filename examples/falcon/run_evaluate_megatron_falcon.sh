@@ -88,13 +88,11 @@ megatron_options=" \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --position-embedding-type rotary \
         --disable-bias-linear \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --attention-head-type multiquery \
         --patch-tokenizer-type FalconTokenizer \
         "
 
-run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_falcon.py
+run_cmd="torchrun $DISTRIBUTED_ARGS evaluate_megatron_falcon.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}

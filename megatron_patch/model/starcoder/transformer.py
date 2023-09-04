@@ -1,5 +1,4 @@
-# coding=utf-8
-# Copyright (c) 2023 Alibaba PAI Team.  All rights reserved.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,12 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Transformer."""
 import math
 from contextlib import nullcontext
 import torch
 import torch.nn.functional as F
-from torch import nn
 
 from megatron import core, get_timers, get_args
 from megatron.core import mpu, tensor_parallel
@@ -28,7 +25,10 @@ from .enums import AttnMaskType, ModelType, LayerType, AttnType, PositionEmbeddi
 from megatron.model.fused_layer_norm import MixedFusedLayerNorm as LayerNorm
 from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.fused_bias_gelu import bias_gelu_impl
-from megatron.model.utils import attention_mask_func, openai_gelu, erf_gelu, get_linear_layer
+from megatron.model.utils import attention_mask_func
+from megatron.model.utils import openai_gelu
+from megatron.model.utils import erf_gelu
+from megatron.model.utils import get_linear_layer
 
 
 from .glu_activations import GLU_ACTIVATIONS

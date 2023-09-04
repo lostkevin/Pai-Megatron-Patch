@@ -172,16 +172,12 @@ megatron_options="  \
         --no-load-rng \
         --num-workers 8 \
         --seed 1234 \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --patch-tokenizer-type OPTTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_galactica.py
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megatron_galactica.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,23 +14,23 @@
 
 import sys
 from functools import partial
-
 import torch
 
-from megatron import get_args, get_num_microbatches, get_timers, print_rank_0
+from megatron.core.enums import ModelType
+from megatron import get_args
+from megatron import print_rank_0
+from megatron import get_timers
+from megatron import get_num_microbatches
 from megatron.core import mpu
-from megatron.utils import (average_losses_across_data_parallel_group,
-                            calc_params_l2_norm,
-                            check_adlr_autoresume_termination)
+from megatron.utils import average_losses_across_data_parallel_group
+from megatron.utils import calc_params_l2_norm
+from megatron.utils import check_adlr_autoresume_termination
 
 from .checkpointing import load_checkpoint, save_checkpoint
-from .training import (evaluate_and_print_results, setup_model_and_optimizer,
-                       train_step, training_log)
-
-try:
-    from megatron.model import ModelType
-except ImportError:
-    from megatron.core.enums import ModelType
+from .training import evaluate_and_print_results
+from .training import setup_model_and_optimizer
+from .training import train_step
+from .training import training_log
 
 
 def process_batch(batch):

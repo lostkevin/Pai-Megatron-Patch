@@ -80,8 +80,6 @@ megatron_options=" \
         --DDP-impl local \
         --no-load-optim \
         --num-workers 0 \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --dataset LLama-SFT \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
@@ -89,7 +87,7 @@ megatron_options=" \
         --patch-tokenizer-type BaichuanTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_huggingface_baichuan13b.py
+run_cmd="torchrun $DISTRIBUTED_ARGS evaluate_huggingface_baichuan13b.py
  ${megatron_options} ${pr_options} ${load_options}"
 
 echo ${run_cmd}

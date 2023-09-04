@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,98 +13,34 @@
 # limitations under the License.
 
 from functools import partial
-
 import torch
 import os
 
+from megatron.arguments import core_transformer_config_from_args
 from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
-from megatron_patch.data.pretrain_dataset import \
-    build_pretrain_llama_datasets_from_original, build_pretrain_llama_datasets_from_idxmap
+from megatron.core.enums import ModelType
+
+from megatron_patch.data.pretrain_dataset import build_pretrain_llama_datasets_from_original
+from megatron_patch.data.pretrain_dataset import build_pretrain_llama_datasets_from_idxmap
 from megatron_patch.model.baichuan.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer
+from megatron_patch.tokenizer import get_tokenizer
 from megatron_patch.training import pretrain
-
-try:
-    from megatron.model import ModelType
-except ImportError:
-    from megatron.core.enums import ModelType
-
-
-def get_tasks_args(parser):
-    group = parser.add_argument_group(title='baichuan')
-
-    group.add_argument('--local-rank', type=int, default=None,
-                        help='local rank passed from distributed launcher')
-
-    group.add_argument('--transformer-type',
-                       type=str,
-                       default='megatron',
-                       help='transformer-type')
-
-    group.add_argument('--pretrained-checkpoint',
-                       type=str,
-                       default=None,
-                       help='Pretrained checkpoint used for finetunning.')
-
-    group.add_argument('--epochs',
-                       type=int,
-                       default=None,
-                       help='Number of finetunning epochs. Zero results in '
-                       'evaluation only.')
-
-    group.add_argument('--intermediate-size',
-                       type=int,
-                       default=None,
-                       help='--intermediate-size')
-
-    group.add_argument('--keep-last',
-                       action='store_true',
-                       help='Keep the last batch (maybe incomplete) in'
-                       'the data loader')
-
-    group.add_argument('--train-data',
-                       nargs='+',
-                       default=None,
-                       help='Whitespace separated paths or corpora names '
-                       'for training.')
-
-    group.add_argument('--valid-data',
-                       nargs='*',
-                       default=None,
-                       help='path(s) to the validation data.')
-
-    group.add_argument('--extra-vocab-size',
-                       type=int,
-                       default=1,
-                       help='--extra-vocab-size')
-
-    group.add_argument('--max-padding-length',
-                       type=int,
-                       default=None,
-                       help='max-padding-length')
-
-    group.add_argument('--position-embedding-type',
-                       type=str,
-                       default='absolute',
-                       help='Define position embedding type '
-                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
-
-    group.add_argument('--patch-tokenizer-type',
-                       type=str,
-                       help='patch-tokenizer-type')
-
-    return parser
-
+from megatron_patch.arguments import get_tasks_args
 
 def model_provider(pre_process=True, post_process=True):
     args = get_args()
     build_tokenizer(args)
-    model = GPTModel(num_tokentypes=0,
-                     parallel_output=True,
-                     pre_process=pre_process,
-                     post_process=post_process)
+    config = core_transformer_config_from_args(get_args())
+    model = GPTModel(
+        config,
+        num_tokentypes=0,
+        parallel_output=True,
+        pre_process=pre_process,
+        post_process=post_process
+    )
     return model
 
 
@@ -147,6 +83,7 @@ def forward_step(data_iterator, model):
     loss_mask = loss_mask[..., 1:].contiguous()
     attention_mask = input_ids.ne(tokenizer.pad_token_id)
     output_tensor = model(input_ids=input_ids,
+                          position_ids=None,
                           attention_mask=attention_mask,
                           labels=labels)
 

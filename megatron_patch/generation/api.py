@@ -1,14 +1,24 @@
-# Copyright (c) 2023 Alibaba PAI Team. All rights reserved.
-"""Inference API."""
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import torch
 
 from megatron.core import mpu
 from megatron.text_generation.communication import broadcast_float_list
-
-from .generation import (beam_search_and_return_on_first_stage,
-                         generate_tokens_probs_and_return_on_first_stage,
-                         score_and_return_on_first_stage)
+from .generation import beam_search_and_return_on_first_stage
+from .generation import generate_tokens_probs_and_return_on_first_stage
+from .generation import score_and_return_on_first_stage
 from .tokenization import detokenize_generations, tokenize_prompts
 
 

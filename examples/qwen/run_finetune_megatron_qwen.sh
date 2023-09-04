@@ -171,8 +171,6 @@ megatron_options="  \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --use-rotary-position-embeddings \
         --swiglu \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --n-head-kv ${NUM_HEAD_KV} \
         --use-rotary-position-embeddings \
         --position-embedding-type rope \
@@ -184,7 +182,7 @@ megatron_options="  \
         --sequence-parallel
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_qwen.py
+run_cmd="torchrun $DISTRIBUTED_ARGS finetune_megatron_qwen.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
 
 

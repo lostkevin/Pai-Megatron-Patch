@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,85 +13,27 @@
 # limitations under the License.
 
 import math
-
 import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
+from transformers import AutoModelForCausalLM
 
-from megatron import get_args, is_last_rank, print_rank_0
+from megatron import get_args
+from megatron import is_last_rank
+from megatron import print_rank_0
 from megatron.core import parallel_state
 from megatron.core.pipeline_parallel.p2p_communication import send_forward
 from megatron.initialize import initialize_megatron
 from megatron.model import DistributedDataParallel as LocalDDP
 from megatron.model import Float16Module
 from megatron.utils import unwrap_model
+from megatron.core.enums import ModelType
+
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer
+from megatron_patch.tokenizer import get_tokenizer
 from megatron_patch.training import get_model
-from transformers import AutoModelForCausalLM
-
-try:
-    from megatron.model import ModelType
-except ImportError:
-    from megatron.core.enums import ModelType
-
-
-def get_tasks_args(parser):
-    group = parser.add_argument_group(title='baichuan')
-
-    group.add_argument('--local-rank', type=int, default=None,
-                        help='local rank passed from distributed launcher')
-
-    group.add_argument('--transformer-type',
-                       type=str,
-                       default='megatron',
-                       help='transformer-type')
-
-    group.add_argument('--max-padding-length',
-                       type=int,
-                       default=None,
-                       help='max-padding-length')
-
-    group.add_argument('--dataset', type=str, default=None, help='dataset')
-
-    group.add_argument('--pretrained-checkpoint',
-                       type=str,
-                       default=None,
-                       help='Pretrained checkpoint used for finetunning.')
-
-    group.add_argument('--epochs',
-                       type=int,
-                       default=None,
-                       help='Number of finetunning epochs. Zero results in '
-                       'evaluation only.')
-
-    group.add_argument('--keep-last',
-                       action='store_true',
-                       help='Keep the last batch (maybe incomplete) in'
-                       'the data loader')
-
-    group.add_argument('--data-dir', default=None, help='data-dir')
-
-    group.add_argument('--train-data',
-                       default=None,
-                       help='Whitespace separated paths or corpora names '
-                       'for training.')
-
-    group.add_argument('--valid-data',
-                       default=None,
-                       help='path(s) to the validation data.')
-
-    group.add_argument('--extra-vocab-size',
-                       type=int,
-                       default=1,
-                       help='--extra-vocab-size')
-
-    group.add_argument('--patch-tokenizer-type',
-                       type=str,
-                       help='patch-tokenizer-type')
-
-    return parser
-
+from megatron_patch.arguments import get_tasks_args
 
 def get_model_provider():
     """Based on evaluation metric set the parallel-output flag and
@@ -110,16 +52,13 @@ def get_model_provider():
 def forward_step(batch, model):
     """Forward step."""
     tokenizer = get_tokenizer()
-    # Get the batch.
     input_ids = batch['input_ids'].long().cuda()
     labels = batch['labels'].long().cuda()
     attention_mask = input_ids.ne(tokenizer.pad_token_id)
 
-    # Tell the model what our actual batch size will be
     args = get_args()
     args.micro_batch_size = len(labels)
 
-    # Forward pass through the model.
     unwrapped_model = unwrap_model(model, (torchDDP, LocalDDP, Float16Module))
     output = unwrapped_model(input_ids=input_ids,
                              labels=labels,
@@ -197,7 +136,6 @@ def evaluate_and_print_results(task, data_loader, model, eval_metric):
 
 
 def main():
-    """Main program."""
     args = get_args()
     if args.num_layers_per_virtual_pipeline_stage is not None:
         print('Interleaved pipeline schedule '
@@ -212,14 +150,12 @@ def main():
     assert len(model) == 1, 'Above condition should have caught this'
     model = model[0]
 
-    # Data stuff.
     dataset = build_evaluation_dataset(args.dataset)
     dataloader = build_data_loader(dataset,
                                    args.micro_batch_size,
                                    args.num_workers,
                                    drop_last=False)
 
-    # Run evaluation.
     evaluate(dataloader, model)
     print_rank_0('done :-)')
 

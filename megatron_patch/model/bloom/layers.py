@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,10 +19,10 @@ from torch.nn.parameter import Parameter
 
 from megatron import get_args
 from megatron.core import mpu
-from megatron.core.parallel_state import (get_tensor_model_parallel_rank,
-                                          get_tensor_model_parallel_world_size)
-from megatron.core.tensor_parallel.layers import (
-    _initialize_affine_weight_cpu, _initialize_affine_weight_gpu)
+from megatron.core.parallel_state import get_tensor_model_parallel_rank
+from megatron.core.parallel_state import get_tensor_model_parallel_world_size
+from megatron.core.tensor_parallel.layers import _initialize_affine_weight_gpu
+from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu
 from megatron.core.tensor_parallel.mappings import \
     reduce_from_tensor_model_parallel_region
 from megatron.core.tensor_parallel.utils import VocabUtility

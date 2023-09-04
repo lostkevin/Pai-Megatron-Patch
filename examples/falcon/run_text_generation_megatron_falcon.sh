@@ -84,8 +84,6 @@ rapidformer_options="  \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --max-padding-length ${PAD_LEN} \
         --use-distributed-optimizer \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --position-embedding-type rotary \
         --patch-tokenizer-type FalconTokenizer \
         --attention-head-type multiquery \
@@ -93,7 +91,7 @@ rapidformer_options="  \
         --repetition-penalty ${REPETITION_PENALTY} \
     "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS generate_text_megatron_falcon.py
+run_cmd="torchrun $DISTRIBUTED_ARGS generate_text_megatron_falcon.py
  ${rapidformer_options} ${load_options} ${input_options} ${pr_options}"
 
 echo ${run_cmd}

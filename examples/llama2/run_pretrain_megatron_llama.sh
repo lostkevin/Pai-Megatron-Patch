@@ -181,19 +181,15 @@ megatron_options="  \
         --seed 1234 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --use-rotary-position-embeddings \
         --no-position-embedding \
         --n-head-kv ${NUM_HEAD_KV} \
         --swiglu \
         --untie-embeddings-and-output-weights \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --patch-tokenizer-type LLamaTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_llama.py
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megatron_llama.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,106 +15,26 @@
 import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 
-from megatron import get_args, print_rank_0
+from megatron.core.enums import ModelType
+from megatron import get_args
+from megatron import print_rank_0
 from megatron.core import parallel_state, tensor_parallel
-from megatron.core.pipeline_parallel.p2p_communication import (recv_forward,
-                                                               send_forward)
+from megatron.utils import get_ltor_masks_and_position_ids
+from megatron.core.pipeline_parallel.p2p_communication import recv_forward
+from megatron.core.pipeline_parallel.p2p_communication import send_forward
 from megatron.initialize import initialize_megatron
 from megatron.model import DistributedDataParallel as LocalDDP
 from megatron.model import Float16Module
 from megatron.utils import unwrap_model
+
 from megatron_patch.checkpointing import load_checkpoint
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
 from megatron_patch.model.starcoder.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
+from megatron_patch.tokenizer import build_tokenizer
+from megatron_patch.tokenizer import get_tokenizer
 from megatron_patch.training import get_model
-
-from megatron.utils import get_ltor_masks_and_position_ids
-try:
-    from megatron.model import ModelType
-except ImportError:
-    from megatron.core.enums import ModelType
-
-
-def get_tasks_args(parser):
-    group = parser.add_argument_group(title='starcoder')
-    group.add_argument('--local-rank', type=int, default=None,
-                        help='local rank passed from distributed launcher')
-    group.add_argument('--transformer-type',
-                       type=str,
-                       default='megatron',
-                       help='transformer-type')
-
-    group.add_argument('--max-padding-length',
-                       type=int,
-                       default=None,
-                       help='max-padding-length')
-
-    group.add_argument('--dataset', type=str, default=None, help='dataset')
-
-    group.add_argument('--pretrained-checkpoint',
-                       type=str,
-                       default=None,
-                       help='Pretrained checkpoint used for finetunning.')
-
-    group.add_argument('--epochs',
-                       type=int,
-                       default=None,
-                       help='Number of finetunning epochs. Zero results in '
-                       'evaluation only.')
-
-    group.add_argument('--intermediate-size',
-                       type=int,
-                       default=None,
-                       help='--intermediate-size')
-
-    group.add_argument('--extra-vocab-size',
-                       type=int,
-                       default=1,
-                       help='--extra-vocab-size')
-
-    group.add_argument('--keep-last',
-                       action='store_true',
-                       help='Keep the last batch (maybe incomplete) in'
-                       'the data loader')
-
-    group.add_argument('--data-dir', default=None, help='data-dir')
-
-    group.add_argument('--train-data',
-                       default=None,
-                       help='Whitespace separated paths or corpora names '
-                       'for training.')
-
-    group.add_argument('--valid-data',
-                       default=None,
-                       help='path(s) to the validation data.')
-
-    group.add_argument('--position-embedding-type',
-                       type=str,
-                       default='absolute',
-                       help='Define position embedding type '
-                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
-
-    group.add_argument('--patch-tokenizer-type',
-                       type=str,
-                       help='patch-tokenizer-type')
-
-    group.add_argument('--glu-activation',
-                       type=str,
-                       help='GLU activations to use.')
-
-    group.add_argument('--attention-head-type', type=str, default=None,
-                       choices=['multihead', 'multiquery'],
-                       help='Type of attention heads. `multihead` is the standard multi-head attention.'
-                       '`multiquery` shares the values and keys across attention heads')
-
-    group.add_argument('--transformer-timers', action='store_true',
-                        help="If set, activate the timers within the transformer layers."
-                        "Only for debugging, as this slows down the model.")
-
-    return parser
-
+from megatron_patch.arguments import get_tasks_args
 
 def get_model_provider():
     def model_provider(pre_process=True, post_process=True):

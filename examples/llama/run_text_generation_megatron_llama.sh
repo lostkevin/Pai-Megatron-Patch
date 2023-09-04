@@ -97,12 +97,10 @@ rapidformer_options="  \
         --position-embedding-type rotary \
         --untie-embeddings-and-output-weights \
         --patch-tokenizer-type LLamaTokenizer-ziya \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --repetition-penalty ${REPETITION_PENALTY} \
     "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS generate_text_megatron_llama.py
+run_cmd="torchrun $DISTRIBUTED_ARGS generate_text_megatron_llama.py
  ${rapidformer_options} ${load_options} ${input_options} ${pr_options}"
 
 echo ${run_cmd}

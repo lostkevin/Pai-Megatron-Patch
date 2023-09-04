@@ -1,4 +1,4 @@
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""GPT-2 model."""
 
 import torch
 
@@ -19,9 +18,11 @@ from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.model.enums import AttnMaskType
 from megatron.model.module import MegatronModule
-from megatron.model.utils import init_method_normal, scaled_init_method_normal
+from megatron.model.utils import init_method_normal
+from megatron.model.utils import scaled_init_method_normal
 
-from .language_model import get_language_model, parallel_lm_logits
+from .language_model import get_language_model
+from .language_model import parallel_lm_logits
 
 
 def post_language_model_processing(lm_output, labels, logit_weights,

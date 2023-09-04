@@ -117,11 +117,11 @@ def apply_rotary_pos_emb(t, freqs):
         return output
     else:
         rot_dim = freqs.shape[-1]
-        t_, t_pass_ = t[..., :rot_dim], t[..., rot_dim:]
+        t_, t_x = t[..., :rot_dim], t[..., rot_dim:]
         t_ = t_.float()
-        t_pass_ = t_pass_.float()
+        t_x = t_x.float()
         t_ = (t_ * freqs.cos()) + (_rotate_half(t_) * freqs.sin())
-        return torch.cat((t_, t_pass_), dim=-1).type_as(t)
+        return torch.cat((t_, t_x), dim=-1).type_as(t)
 
 
 class RMSNorm(torch.nn.Module):

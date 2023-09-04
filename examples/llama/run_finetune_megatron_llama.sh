@@ -162,12 +162,10 @@ megatron_options="  \
         --position-embedding-type rotary \
         --swiglu \
         --untie-embeddings-and-output-weights \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --patch-tokenizer-type LLamaTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_megatron_llama.py
+run_cmd="torchrun $DISTRIBUTED_ARGS finetune_megatron_llama.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options}"
 
 

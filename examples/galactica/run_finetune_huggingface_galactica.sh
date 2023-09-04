@@ -111,12 +111,10 @@ megatron_options="  \
         --no-load-optim \
         --DDP-impl local\
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --patch-tokenizer-type OPTTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_huggingface_galactica.py
+run_cmd="torchrun $DISTRIBUTED_ARGS finetune_huggingface_galactica.py
 ${megatron_options} ${do_options} ${pr_options}"
 
 

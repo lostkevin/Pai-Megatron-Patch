@@ -171,14 +171,12 @@ megatron_options="  \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --position-embedding-type rotary \
         --disable-bias-linear \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --attention-head-type multiquery \
         --n-head-kv ${NUM_HEAD_KV} \
         --patch-tokenizer-type FalconTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_falcon40b.py
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megatron_falcon40b.py
  ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
 
 

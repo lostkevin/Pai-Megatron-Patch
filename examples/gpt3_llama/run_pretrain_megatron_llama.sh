@@ -1,5 +1,4 @@
 #!/bin/bash
-# export WORK_DIR=/mnt/workspace/jerry.lp
 #sh run_pretrain_megatron_llama.sh dsw /root/Megatron-LM-main/ ../../../PAI-Megatron-Patch/ 7B 2 2048 1e-5 1e-6 2048 2048 1 bf16 1 1 sel true true true true 100000 ${WORK_DIR}/wudao/wudao_llamabpe_text_document ${WORK_DIR}/llama2-ckpts/Llama-2-7b-hf 10000000000 100000000 ${WORK_DIR}/output_patch
 set -e
 ENV=$1
@@ -212,8 +211,6 @@ megatron_options="  \
         --seed 1234 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --n-head-kv ${NUM_HEAD_KV} \
         --swiglu \
         --use-rotary-position-embeddings \

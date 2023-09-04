@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,20 +13,16 @@
 # limitations under the License.
 
 import json
-
 import torch
 
-from megatron import get_args, get_timers
+from megatron.core.enums import ModelType
+from megatron import get_args
+from megatron import get_timers
 from megatron.training import get_model
+
 from megatron_patch.checkpointing import load_checkpoint
 from megatron_patch.generation.api import generate_and_post_process
 from megatron_patch.tokenizer import build_tokenizer
-
-try:
-    from megatron.model import ModelType
-except ImportError:
-    from megatron.core.enums import ModelType
-
 
 class GPTPredictor():
     """A Predictor for model."""

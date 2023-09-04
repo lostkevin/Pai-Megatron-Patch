@@ -198,8 +198,6 @@ megatron_options="  \
         --seed 1234 \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --n-head-kv ${NUM_HEAD_KV} \
         --swiglu \
         --use-rotary-position-embeddings \

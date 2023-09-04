@@ -135,12 +135,10 @@ megatron_options=" \
         --geglu \
         --no-position-embedding \
         --use-rotary-position-embeddings \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --patch-tokenizer-type IcetkGLM130BTokenizer
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_glm130b.py
+run_cmd="torchrun $DISTRIBUTED_ARGS evaluate_megatron_glm130b.py
  ${megatron_options} ${activation_checkpoint_options} ${load_options} ${pr_options} ${sp_options} ${flash_options}"
 
 echo ${run_cmd}

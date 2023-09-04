@@ -39,12 +39,14 @@ AC=${15}
 DO=${16}
 FL=${17}
 SP=${18}
-SAVE_INTERVAL=${19}
-DATASET_PATH=${20}
-PRETRAIN_CHECKPOINT_PATH=${21}
-TRAIN_TOKENS=${22}
-WARMUP_TOKENS=${23}
-OUTPUT_BASEPATH=${24}
+TE=${19}
+SAVE_INTERVAL=${20}
+DATASET_PATH=${21}
+PRETRAIN_CHECKPOINT_PATH=${22}
+TRAIN_TOKENS=${23}
+WARMUP_TOKENS=${24}
+OUTPUT_BASEPATH=${25}
+
 
 if [ $MODEL_SIZE = 7B ]; then
 
@@ -85,6 +87,13 @@ if [ $PR = fp16 ]; then
 elif [ $PR = bf16 ]; then
     pr_options=" \
         --bf16"
+elif [ $PR = fp8 ]; then
+    pr_options=" \
+        --bf16
+        --fp8-hybrid \
+        --fp8-amax-compute-algo max \
+        --fp8-amax-history-len 1024 \
+        --transformer-impl transformer_engine"
 fi
 
 if [ $DO = true ]; then
@@ -102,6 +111,15 @@ if [ $FL = true ]; then
 
 elif [ $FL = false ]; then
     flash_options=" \
+                    "
+fi
+
+if [ $TE = true ]; then
+    te_options=" \
+		    --transformer-impl transformer_engine"
+
+elif [ $TE = false ]; then
+    te_options=" \
                     "
 fi
 
@@ -168,19 +186,19 @@ megatron_options="  \
         --no-load-rng \
         --num-workers 8 \
         --seed 1234 \
+        --dataset LLama-SFT \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
-        --position-embedding-type rotary \
+        --patch-tokenizer-type BaichuanTokenizer \
         --swiglu \
+        --use-alibi-mask \
+        --position-embedding-type none \
         --untie-embeddings-and-output-weights \
-        --patch-tokenizer-type BaichuanTokenizer
+        --disable-bias-linear
         "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_megatron_baichuan13b.py
- ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options}"
-
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megatron_baichuan13b.py
+ ${megatron_options} ${activation_checkpoint_options} ${do_options} ${pr_options} ${sp_options} ${flash_options} ${load_options} ${te_options}"
 
 echo ${run_cmd}
 eval ${run_cmd}

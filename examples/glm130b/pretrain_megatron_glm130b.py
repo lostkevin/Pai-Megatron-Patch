@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,87 +13,19 @@
 # limitations under the License.
 
 from functools import partial
-
 import torch
 
+from megatron.core.enums import ModelType
 from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.utils import average_losses_across_data_parallel_group
+
 from megatron_patch.data.pretrain_dataset import \
     build_pretrain_glm130b_datasets_from_idxmap
 from megatron_patch.model.glm130b.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer
 from megatron_patch.training import pretrain
-
-try:
-    from megatron.model import ModelType
-except ImportError:
-    from megatron.core.enums import ModelType
-
-
-def get_tasks_args(parser):
-    group = parser.add_argument_group(title='glm')
-
-    group.add_argument('--local-rank', type=int, default=None,
-                        help='local rank passed from distributed launcher')
-
-    group.add_argument('--transformer-type',
-                       type=str,
-                       default='megatron',
-                       help='transformer-type')
-
-    group.add_argument('--generation-length',
-                       type=int,
-                       default=None,
-                       help='--generation-length')
-
-    group.add_argument('--dataset', type=str, default=None, help='dataset')
-
-    group.add_argument('--pretrained-checkpoint',
-                       type=str,
-                       default=None,
-                       help='Pretrained checkpoint used for finetunning.')
-
-    group.add_argument('--epochs',
-                       type=int,
-                       default=None,
-                       help='Number of finetunning epochs. Zero results in '
-                       'evaluation only.')
-
-    group.add_argument('--keep-last',
-                       action='store_true',
-                       help='Keep the last batch (maybe incomplete) in'
-                       'the data loader')
-
-    group.add_argument('--data-dir', default=None, help='data-dir')
-
-    group.add_argument('--geglu', action='store_true')
-
-    group.add_argument('--train-data',
-                       default=None,
-                       help='Whitespace separated paths or corpora names '
-                       'for training.')
-
-    group.add_argument('--valid-data',
-                       default=None,
-                       help='path(s) to the validation data.')
-
-    group.add_argument('--position-embedding-type',
-                       type=str,
-                       default='absolute',
-                       help='Define position embedding type '
-                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
-
-    group.add_argument('--patch-tokenizer-type',
-                       type=str,
-                       help='patch-tokenizer-type')
-
-    group.add_argument('--position-encoding-2d',
-                       action='store_true',
-                       help='position-encoding-2d')
-
-    return parser
-
+from megatron_patch.arguments import get_tasks_args
 
 def model_provider(pre_process=True, post_process=True):
     args = get_args()

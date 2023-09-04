@@ -34,8 +34,13 @@ EXTRA_VOCAB_SIZE=$8
 PR=$9
 TP=${10}
 PP=${11}
-DATASET_PATH=${12}
-PRETRAIN_CHECKPOINT_PATH=${13}
+AC=${12}
+DO=${13}
+FL=${14}
+SP=${15}
+TE=${16}
+DATASET_PATH=${17}
+PRETRAIN_CHECKPOINT_PATH=${18}
 
 
 if [ $MODEL_SIZE = 7B ]; then
@@ -72,12 +77,67 @@ NUM_HEAD_KV=8
 
 fi
 
+if [ $AC = full ]; then
+    activation_checkpoint_options=" \
+		    --recompute-method uniform \
+		    --recompute-granularity full"
+elif [ $AC = sel ]; then
+    activation_checkpoint_options=" \
+        --recompute-activations"
+elif [ $AC = none ]; then
+    activation_checkpoint_options=" \
+                    "
+fi
+
 if [ $PR = fp16 ]; then
     pr_options=" \
-            --fp16"
+		    --fp16"
 elif [ $PR = bf16 ]; then
     pr_options=" \
         --bf16"
+elif [ $PR = fp8 ]; then
+    pr_options=" \
+        --bf16
+        --fp8-hybrid \
+        --fp8-amax-compute-algo max \
+        --fp8-amax-history-len 1024 \
+        --transformer-impl transformer_engine"
+fi
+
+if [ $DO = true ]; then
+    do_options=" \
+		    --use-distributed-optimizer"
+
+elif [ $DO = false ]; then
+    do_options=" \
+                    "
+fi
+
+if [ $FL = true ]; then
+    flash_options=" \
+		    --use-flash-attn"
+
+elif [ $FL = false ]; then
+    flash_options=" \
+                    "
+fi
+
+if [ $TE = true ]; then
+    te_options=" \
+		    --transformer-impl transformer_engine"
+
+elif [ $TE = false ]; then
+    te_options=" \
+                    "
+fi
+
+if [ $SP = true ] && [ $TP -gt 1 ]; then
+    sp_options=" \
+		    --sequence-parallel"
+
+elif [ $SP = false ]; then
+    sp_options=" \
+                    "
 fi
 
 if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
@@ -108,8 +168,6 @@ megatron_options=" \
         --dataset LLama-SFT \
         --use-distributed-optimizer \
         --max-padding-length ${PAD_LEN} \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --n-head-kv ${NUM_HEAD_KV} \
         --swiglu \
@@ -117,13 +175,11 @@ megatron_options=" \
         --no-position-embedding \
         --untie-embeddings-and-output-weights \
         --patch-tokenizer-type LLamaTokenizer \
-        --recompute-activations \
-        --sequence-parallel \
         --disable-bias-linear
         "
 
-run_cmd="CUDA_LAUNCH_BLOCKING=1 python -m torch.distributed.launch $DISTRIBUTED_ARGS evaluate_megatron_llama.py
- ${megatron_options} ${pr_options} ${load_options}"
+run_cmd="torchrun $DISTRIBUTED_ARGS evaluate_megatron_llama.py
+ ${megatron_options} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${do_options} ${flash_options} ${sp_options}"
 
 echo ${run_cmd}
 eval ${run_cmd}

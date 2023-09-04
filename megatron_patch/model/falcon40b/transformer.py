@@ -1,4 +1,4 @@
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,23 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Transformer."""
+
 import math
 from contextlib import nullcontext
 from typing import Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from megatron.model.transformer import (bias_dropout_add_fused_inference,
-                                        bias_dropout_add_fused_train)
 from megatron import core, get_args
 from megatron.core import mpu, tensor_parallel
 from megatron.model import LayerNorm
-from megatron.model.enums import AttnMaskType, AttnType, LayerType, ModelType
+from megatron.model.enums import AttnMaskType
+from megatron.model.enums import AttnType
+from megatron.model.enums import LayerType
+from megatron.model.enums import ModelType
 from megatron.model.fused_softmax import FusedScaleMaskSoftmax
 from megatron.model.module import MegatronModule
-from megatron.model.utils import attention_mask_func, erf_gelu, openai_gelu
-
+from megatron.model.utils import attention_mask_func
+from megatron.model.utils import openai_gelu
+from megatron.model.utils import erf_gelu
 try:
     from einops import rearrange
 except ImportError:

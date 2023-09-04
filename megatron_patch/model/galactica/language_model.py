@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.  All rights reserved.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,16 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Transformer based language model."""
 
 import torch
 
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
-from megatron.model.enums import AttnMaskType, LayerType
+from megatron.model.enums import AttnMaskType
+from megatron.model.enums import LayerType
 from megatron.model.module import MegatronModule
-from megatron.model.utils import (get_linear_layer, init_method_normal,
-                                  scaled_init_method_normal)
+from megatron.model.utils import get_linear_layer
+from megatron.model.utils import init_method_normal
+from megatron.model.utils import scaled_init_method_normal
 
 from .transformer import ParallelTransformer
 

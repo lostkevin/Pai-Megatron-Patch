@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Alibaba PAI Team.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Meagtron-LM Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,85 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import math
 
+import math
 import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
-
-from megatron import get_args, is_last_rank, print_rank_0
+from megatron import get_args
+from megatron import print_rank_0
+from megatron import is_last_rank
 from megatron.core import parallel_state, tensor_parallel
-from megatron.core.pipeline_parallel.p2p_communication import (recv_forward,
-                                                               send_forward)
+from megatron.core.pipeline_parallel.p2p_communication import recv_forward
+from megatron.core.pipeline_parallel.p2p_communication import send_forward
 from megatron.initialize import initialize_megatron
 from megatron.model import DistributedDataParallel as LocalDDP
 from megatron.model import Float16Module
 from megatron.utils import unwrap_model
+
 from megatron_patch.checkpointing import load_checkpoint
 from megatron_patch.data.evaluate_dataset import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
 from megatron_patch.model.glm130b.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer
 from megatron_patch.training import get_model
-
-
-def get_tasks_args(parser):
-    group = parser.add_argument_group(title='glm')
-
-    group.add_argument('--local-rank', type=int, default=None,
-                        help='local rank passed from distributed launcher')
-
-    group.add_argument('--transformer-type',
-                       type=str,
-                       default='megatron',
-                       help='transformer-type')
-
-    group.add_argument('--generation-length',
-                       type=int,
-                       default=None,
-                       help='generation-seq-len')
-
-    group.add_argument('--dataset', type=str, default=None, help='dataset')
-
-    group.add_argument('--pretrained-checkpoint',
-                       type=str,
-                       default=None,
-                       help='Pretrained checkpoint used for finetunning.')
-
-    group.add_argument('--epochs',
-                       type=int,
-                       default=None,
-                       help='Number of finetunning epochs. Zero results in '
-                       'evaluation only.')
-
-    group.add_argument('--keep-last',
-                       action='store_true',
-                       help='Keep the last batch (maybe incomplete) in'
-                       'the data loader')
-
-    group.add_argument('--data-dir', default=None, help='data-dir')
-
-    group.add_argument('--geglu', action='store_true')
-
-    group.add_argument('--train-data', default=None)
-
-    group.add_argument('--valid-data', default=None)
-
-    group.add_argument('--position-embedding-type',
-                       type=str,
-                       default='absolute',
-                       help='Define position embedding type '
-                       '("absolute"|"rotary"|"alibi"). "absolute" by default.')
-
-    group.add_argument('--patch-tokenizer-type',
-                       type=str,
-                       help='patch-tokenizer-type')
-
-    group.add_argument('--position-encoding-2d',
-                       action='store_true',
-                       help='position-encoding-2d')
-
-    return parser
-
+from megatron_patch.arguments import get_tasks_args
 
 def get_model_provider(eval_metric):
     def model_provider(pre_process=True, post_process=True):

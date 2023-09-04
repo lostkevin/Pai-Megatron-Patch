@@ -107,13 +107,11 @@ rapidformer_options="  \
         --max-padding-length ${PAD_LEN} \
         --use-distributed-optimizer \
         --attention-head-type multiquery \
-        --tokenizer-type NullTokenizer \
-        --vocab-size -1 \
         --patch-tokenizer-type StarcoderTokenizerFromHF \
         --repetition-penalty ${REPETITION_PENALTY} \
     "
 
-run_cmd="python -m torch.distributed.launch $DISTRIBUTED_ARGS generate_text_megatron_starcoder.py
+run_cmd="torchrun $DISTRIBUTED_ARGS generate_text_megatron_starcoder.py
  ${rapidformer_options} ${load_options} ${input_options} ${pr_options}"
 
 echo ${run_cmd}
