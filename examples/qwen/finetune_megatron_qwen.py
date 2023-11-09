@@ -18,7 +18,7 @@ import torch
 from megatron import get_args
 from megatron.initialize import initialize_megatron
 from megatron.utils import average_losses_across_data_parallel_group
-
+from megatron.core import parallel_state, tensor_parallel
 from megatron_patch.data.finetune_dataset import LLamaDataset
 from megatron_patch.finetune_utils import finetune
 from megatron_patch.model.qwen.gpt_model import GPTModel
@@ -50,6 +50,7 @@ def train_valid_datasets_provider():
 
 
 def forward_step(data_iterator, model):
+    args = get_args()
     tokenizer = get_tokenizer()
 
     try:
@@ -57,32 +58,33 @@ def forward_step(data_iterator, model):
     except BaseException:
         data_iterator = data_iterator
 
-    tokens_ = data_iterator['input_ids'].long().cuda().contiguous()
-    labels = tokens_[:, 1:].contiguous()
-    tokens = tokens_[:, :-1].contiguous()
-    # loss_mask = data_iterator['loss_mask'].long().cuda()
-    # loss_mask = loss_mask[..., 1:].contiguous()
-    # attention_mask = input_ids.ne(tokenizer.pad_token_id)
-    args = get_args()
-    # Get the masks and postition ids.
+    tokens = data_iterator['input_ids'].long().cuda().contiguous()
+    labels = data_iterator['labels'].long().cuda().contiguous()
+
     attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
-        tokens,
-        tokenizer.eos_token,
+        labels,
+        tokenizer.pad_token_id,
         args.reset_position_ids,
         args.reset_attention_mask,
-        args.eod_mask_loss)
+        True)
 
-    output_tensor = model(tokens, position_ids, attention_mask,
-                          labels=labels)
+    logits = model(input_ids=tokens,
+                   position_ids=position_ids,
+                   attention_mask=attention_mask)
 
-    def loss_func(loss_mask, output_tensor):
-        losses = output_tensor.float()
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = labels[..., 1:].contiguous()
+    loss_mask = loss_mask[..., 1:].contiguous()
+
+    def loss_func(loss_mask, shift_logits):
+        losses = tensor_parallel.vocab_parallel_cross_entropy(
+            shift_logits.contiguous().float(), shift_labels.contiguous())
         loss_mask = loss_mask.view(-1).float()
         loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
         averaged_loss = average_losses_across_data_parallel_group([loss])
         return loss, {'lm loss': averaged_loss[0]}
 
-    return output_tensor, partial(loss_func, loss_mask)
+    return shift_logits, partial(loss_func, loss_mask)
 
 
 if __name__ == '__main__':

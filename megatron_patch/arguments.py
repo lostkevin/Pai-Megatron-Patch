@@ -88,11 +88,13 @@ def get_tasks_args(parser):
                        help='data-dir')
 
     group.add_argument('--train-data',
+                       nargs='+',
                        default=None,
                        help='Whitespace separated paths or corpora names '
                        'for training.')
 
     group.add_argument('--valid-data',
+                       nargs='+',
                        default=None,
                        help='path(s) to the validation data.')
 
@@ -103,6 +105,10 @@ def get_tasks_args(parser):
     group.add_argument('--use-alibi-mask',
                        action='store_true',
                        help='use alibi mask for baichuan model')
+
+    group.add_argument('--use-normhead',
+                       action='store_true',
+                       help='use-normhead')
 
     group.add_argument('--glu-activation',
                        type=str,
@@ -197,5 +203,61 @@ def get_tasks_args(parser):
     group.add_argument('--position-encoding-2d',
                        action='store_true',
                        help='position-encoding-2d')
+
+    group.add_argument('--z-loss-weight',
+                       type=float,
+                       default=0.0,
+                       help='the max-z weight for baichuan2')
+
+    group.add_argument('--data-impl', type=str, default='mmap',
+                       choices=['mmap', 'infer'],
+                       help='Implementation of indexed datasets.')
+
+    group.add_argument('--use-llama2-rotary-position-embeddings', action='store_true',
+                       help='Use llama2 rotary positional embeddings or not. '
+                       'Deprecated: use --position-embedding-type')
+
+    group.add_argument('--mm-use-im-start-end',
+                       action='store_true')
+
+    group.add_argument('--mm-use-im-patch-token',
+                       action='store_true')
+
+    group.add_argument('--tune-mm-mlp-adapter',
+                       action='store_true')
+
+    group.add_argument('--image-folder',
+                       type=str,
+                       default='')
+
+    group.add_argument('--mm-vision-select-layer',
+                       type=int,
+                       default=None)
+
+    group.add_argument('--vision-tower',
+                       type=str,
+                       default='')
+
+    group.add_argument('--image-aspect-ratio',
+                       type=str,
+                       default='square')
+
+    group.add_argument('--version',
+                       type=str,
+                       default='plain')
+
+    group.add_argument('--mm-projector-type',
+                       type=str,
+                       default=None)
+
+    group.add_argument('--image-size',
+                       type=int,
+                       default=None,
+                       help='image-size')
+
+    group.add_argument('--patch-size',
+                       type=int,
+                       default=None,
+                       help='patch-size')
 
     return parser
