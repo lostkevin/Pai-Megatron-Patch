@@ -16,23 +16,28 @@ from functools import partial
 import torch
 
 from megatron import get_args
+from megatron.core import parallel_state, tensor_parallel
 from megatron.initialize import initialize_megatron
 from megatron.utils import average_losses_across_data_parallel_group
-
+from megatron.utils import get_ltor_masks_and_position_ids
 from megatron_patch.data.finetune_dataset import LLamaDataset
 from megatron_patch.finetune_utils import finetune
 from megatron_patch.model.llama2.gpt_model import GPTModel
 from megatron_patch.tokenizer import build_tokenizer
 from megatron_patch.tokenizer import get_tokenizer
 from megatron_patch.arguments import get_tasks_args
+from megatron.arguments import core_transformer_config_from_args
 
 def model_provider(pre_process=True, post_process=True):
-    model = GPTModel(num_tokentypes=0,
-                     parallel_output=True,
-                     pre_process=pre_process,
-                     post_process=post_process)
+    config = core_transformer_config_from_args(get_args())
+    model = GPTModel(
+        config,
+        num_tokentypes=0,
+        parallel_output=True,
+        pre_process=pre_process,
+        post_process=post_process
+    )
     return model
-
 
 def train_valid_datasets_provider():
     args = get_args()
@@ -45,6 +50,7 @@ def train_valid_datasets_provider():
 
 
 def forward_step(data_iterator, model):
+    args = get_args()
     tokenizer = get_tokenizer()
 
     try:
@@ -52,25 +58,33 @@ def forward_step(data_iterator, model):
     except BaseException:
         data_iterator = data_iterator
 
-    tokens_ = data_iterator['input_ids'].long().cuda().contiguous()
-    labels = tokens_[:, 1:].contiguous()
-    input_ids = tokens_[:, :-1].contiguous()
-    loss_mask = data_iterator['loss_mask'].long().cuda()
+    tokens = data_iterator['input_ids'].long().cuda().contiguous()
+    labels = data_iterator['labels'].long().cuda().contiguous()
+
+    attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
+        labels,
+        tokenizer.pad_token_id,
+        args.reset_position_ids,
+        args.reset_attention_mask,
+        True)
+
+    logits = model(input_ids=tokens,
+                   position_ids=position_ids,
+                   attention_mask=attention_mask)
+
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = labels[..., 1:].contiguous()
     loss_mask = loss_mask[..., 1:].contiguous()
-    attention_mask = input_ids.ne(tokenizer.pad_token_id)
 
-    output_tensor = model(input_ids=input_ids,
-                          attention_mask=attention_mask,
-                          labels=labels)
-
-    def loss_func(loss_mask, output_tensor):
-        losses = output_tensor.float()
+    def loss_func(loss_mask, shift_logits):
+        losses = tensor_parallel.vocab_parallel_cross_entropy(
+            shift_logits.contiguous().float(), shift_labels.contiguous())
         loss_mask = loss_mask.view(-1).float()
         loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
         averaged_loss = average_losses_across_data_parallel_group([loss])
         return loss, {'lm loss': averaged_loss[0]}
 
-    return output_tensor, partial(loss_func, loss_mask)
+    return shift_logits, partial(loss_func, loss_mask)
 
 
 if __name__ == '__main__':

@@ -1,10 +1,10 @@
 #!/bin/bash
-# sh run_evaluate_huggingface_qwen.sh dsw /workspace/Megatron-LM-23.04 /workspace/PAI-Megatron-Patch/ 70B 1 2048 80 0 fp16 /mnt/llama-datasets/wudao_train.jsonl /mnt/llama2-ckpts/Ziya-LLaMA-13B/
-
+# sh run_evaluate_huggingface_qwen.sh dsw /workspace/Pai-Megatron-Patch 7B 1 2048 80 0 fp16 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-ckpts/qwen-7b-hf
+# sh run_evaluate_huggingface_qwen.sh dsw /workspace/Pai-Megatron-Patch 14B 1 2048 80 0 fp16 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-ckpts/qwen-14b
 set -e
 ENV=$1
-MEGATRON_PATH=$2
-MEGATRON_PATCH_PATH=$3
+MEGATRON_PATCH_PATH=$2
+MEGATRON_PATH=${MEGATRON_PATCH_PATH}/Megatron-LM-main
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
@@ -25,14 +25,14 @@ fi
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-MODEL_SIZE=$4
-BATCH_SIZE=$5
-SEQ_LEN=$6
-PAD_LEN=$7
-EXTRA_VOCAB_SIZE=$8
-PR=$9
-DATASET_PATH=${10}
-PRETRAIN_CHECKPOINT_PATH=${11}
+MODEL_SIZE=$3
+BATCH_SIZE=$4
+SEQ_LEN=$5
+PAD_LEN=$6
+EXTRA_VOCAB_SIZE=$7
+PR=$8
+DATASET_PATH=$9
+PRETRAIN_CHECKPOINT_PATH=${10}
 
 
 if [ $MODEL_SIZE = 7B ]; then
@@ -42,19 +42,13 @@ HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
 INTERMEDIATE_SIZE=11008
 
-elif [ $MODEL_SIZE = 13B ]; then
+elif [ $MODEL_SIZE = 14B ]; then
 
 NUM_LAYERS=40
 HIDDEN_SIZE=5120
 NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13824
-
-elif [ $MODEL_SIZE = 70B ]; then
-
-NUM_LAYERS=80
-HIDDEN_SIZE=8192
-NUM_ATTN_HEADS=64
-INTERMEDIATE_SIZE=28672
+INTERMEDIATE_SIZE=13696
+NUM_HEAD_KV=40
 
 fi
 
