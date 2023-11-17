@@ -187,7 +187,7 @@ megatron_options="  \
         --disable-bias-linear
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS finetune_megatron_yi.py
+run_cmd="torchrun $DISTRIBUTED_ARGS ../llama2/finetune_megatron_llama.py
  ${megatron_options} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${do_options} ${flash_options} ${sp_options} ${gqa_options}"
 
 echo ${run_cmd}
