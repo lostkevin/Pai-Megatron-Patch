@@ -1,7 +1,5 @@
 #!/bin/bash
-#sh run_evaluate_megatron_llama.sh dsw /workspace/Pai-Megatron-Patch 7B 1 80 80 0 bf16 2 1 sel true true true false /mnt/llama2-datasets/alpaca_data.json /mnt/llama2-ckpts/Llama-2-7b-hf-to-mg-tp2-pp1/
-#sh run_evaluate_megatron_llama.sh dsw /workspace/Pai-Megatron-Patch 13B 1 80 80 0 bf16 2 1 sel true true true false /mnt/llama2-datasets/alpaca_data.json /mnt/llama2-ckpts/Llama-2-13b-hf-to-mg-tp2-pp1/
-#sh run_evaluate_megatron_llama.sh dsw /workspace/Pai-Megatron-Patch 7B 1 80 80 0 bf16 2 1 sel true false true true /mnt/llama2-datasets/alpaca_data.json /mnt/llama2-ckpts/Llama-2-7b-hf-to-te-tp2-pp1/
+#sh run_evaluate_megatron_yi.sh dsw /workspace/Pai-Megatron-Patch 6B 1 80 80 0 bf16 1 1 sel true false true false /mnt/llama2-datasets/alpaca_data.json /mnt/yi-ckpts/Yi-6B-to-mg-tp1-pp1
 set -e
 ENV=$1
 MEGATRON_PATCH_PATH=$2
@@ -9,12 +7,12 @@ MEGATRON_PATH=${MEGATRON_PATCH_PATH}/Megatron-LM-main
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=4
+GPUS_PER_NODE=8
 
 elif [ $ENV = dlc ]; then
 
@@ -42,34 +40,17 @@ TE=${15}
 DATASET_PATH=${16}
 PRETRAIN_CHECKPOINT_PATH=${17}
 
-if [ $MODEL_SIZE = 7B ]; then
+if [ $MODEL_SIZE = 6B ]; then
 
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
 INTERMEDIATE_SIZE=11008
-
-gqa_options=""
-
-elif [ $MODEL_SIZE = 13B ]; then
-
-NUM_LAYERS=40
-HIDDEN_SIZE=5120
-NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13824
-
-gqa_options=""
-
-elif [ $MODEL_SIZE = 34B ]; then
-
-NUM_LAYERS=48
-HIDDEN_SIZE=8192
-NUM_ATTN_HEADS=64
-INTERMEDIATE_SIZE=22016
+MPE=4096
 
 gqa_options=" \
 		    --group-query-attention \
-		    --num-query-groups 8"
+		    --num-query-groups 4"
 
 fi
 
@@ -149,7 +130,7 @@ megatron_options=" \
         --hidden-size ${HIDDEN_SIZE} \
         --num-attention-heads ${NUM_ATTN_HEADS} \
         --seq-length ${SEQ_LEN} \
-        --max-position-embeddings ${SEQ_LEN} \
+        --max-position-embeddings ${MPE} \
         --ffn-hidden-size ${INTERMEDIATE_SIZE} \
         --log-interval 1 \
         --eval-interval 100 \
@@ -158,22 +139,21 @@ megatron_options=" \
         --pipeline-model-parallel-size ${PP} \
         --no-load-optim \
         --no-load-rng \
-        --dataset LLama-SFT \
         --seed 1234 \
         --num-workers 0 \
-        --dataset LLama-SFT \
         --max-padding-length ${PAD_LEN} \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --patch-tokenizer-type LLamaTokenizer \
+        --patch-tokenizer-type YiTokenizer \
+        --dataset LLama-SFT \
         --swiglu \
         --normalization RMSNorm \
-        --use-llama2-rotary-position-embeddings \
+        --use-rotary-position-embeddings \
         --position-embedding-type rope \
         --untie-embeddings-and-output-weights \
         --disable-bias-linear
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS evaluate_megatron_llama.py
+run_cmd="torchrun $DISTRIBUTED_ARGS ../llama2/evaluate_megatron_llama.py
  ${megatron_options} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${do_options} ${flash_options} ${sp_options} ${gqa_options}"
 
 echo ${run_cmd}
