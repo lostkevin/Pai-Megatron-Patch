@@ -22,7 +22,7 @@ from megatron.utils import average_losses_across_data_parallel_group
 from megatron.utils import get_ltor_masks_and_position_ids
 from megatron_patch.data import build_finetune_dataset
 from megatron_patch.finetune_utils import finetune
-from megatron_patch.model.yi.gpt_model import GPTModel
+from megatron_patch.model.llama2.gpt_model import GPTModel
 from megatron_patch.tokenizer import get_tokenizer
 from megatron_patch.arguments import get_tasks_args
 from megatron.arguments import core_transformer_config_from_args
