@@ -26,7 +26,7 @@ from megatron.utils import average_losses_across_data_parallel_group
 
 from megatron_patch.data import \
     build_pretrain_dataset_from_original, build_pretrain_dataset_from_idxmap
-from megatron_patch.model.llama2.gpt_model import GPTModel
+from megatron_patch.model.yi.gpt_model import GPTModel
 from megatron_patch.tokenizer import get_tokenizer, build_tokenizer
 from megatron_patch.training import pretrain
 from megatron_patch.arguments import get_tasks_args
@@ -51,7 +51,6 @@ def get_batch(data_iterator):
     datatype = torch.int64
 
     keys = ['input_ids', 'labels']
-
     if data_iterator is not None:
         data = next(data_iterator)
     else:
@@ -61,9 +60,9 @@ def get_batch(data_iterator):
 
     labels = tokens_[:, 1:].contiguous()
     tokens = tokens_[:, :-1].contiguous()
-
+    attention_mask = tokens.ne(tokenizer.pad_token_id)
     # Get the masks and postition ids.
-    attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
+    _, loss_mask, position_ids = get_ltor_masks_and_position_ids(
         tokens,
         tokenizer.pad_token_id,
         args.reset_position_ids,
