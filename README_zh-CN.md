@@ -16,11 +16,12 @@ Pai-Megatron-Patch工具是阿里云机器学习平台PAI算法团队研发，�
 - [阿里云PAI获得FewCLUE基于大模型的小样本学习双料冠军](https://developer.aliyun.com/article/788081?spm=a2c6h.12873639.article-detail.17.11c5383cHpFZks&tlog=yuekan_8)
 
 新功能：
+- **支持用MegatronLM框架训练deepseek系列模型.** [🔥🔥 2023.11.24]
 - **支持用MegatronLM框架微调qwen-72B模型.** [🔥🔥 2023.11.23]
 
 ## 主要特性
 
-* 多款热门大模型支持：llama，llama-2系列，codellama,  百川，千问，Falcon，GLM，Starcoder，Bloom，chatglm等
+* 多款热门大模型支持：llama，llama-2系列，codellama， deepseek，百川，千问，Falcon，GLM，Starcoder，Bloom，chatglm等
 * 支持模型权重互转转换：在Huggingface，Megatron和Transformer Engine之间进行算子命名空间映射
 * 支持Flash Attention 2.0和Transformer Engine模式下的FP8训练加速且确保收敛
 * 丰富且简单易用的使用示例，支持大模型预训练，微调，评估和推理，强化学习全流程最佳实践
