@@ -44,64 +44,6 @@ def model_provider(pre_process=True, post_process=True):
     )
     return model
 
-
-def get_batch(data):
-    """Generate a batch"""
-    args = get_args()
-    text_keys = ['input_ids', 'labels']
-    img_keys = ['image']
-
-    data_text = {'input_ids': data['input_ids'], 'labels': data['labels']}
-    data_image = {'image': data['image']}
-    data_text = tensor_parallel.broadcast_data(text_keys, data_text, torch.int64)
-    data_image = tensor_parallel.broadcast_data(img_keys, data_image, torch.bfloat16)
-    tokens_ = data_text['input_ids'].long()
-    labels_ = data_text['labels'].long()
-    images = data_image['image']
-    tokens = tokens_[:, :-1].contiguous()
-    labels = labels_[:, 1:].contiguous()
-
-    # Get the masks and postition ids.
-    attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
-        tokens,
-        IGNORE_INDEX,
-        args.reset_position_ids,
-        args.reset_attention_mask,
-        True)
-
-    return tokens, labels, loss_mask, attention_mask, position_ids, images
-
-def loss_func(loss_mask, output_tensor):
-    losses = output_tensor.float()
-    loss_mask = loss_mask.view(-1).float()
-    loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
-
-    # Reduce loss for logging.
-    averaged_loss = average_losses_across_data_parallel_group([loss])
-
-    return loss, {'lm loss': averaged_loss[0]}
-
-
-def forward_step(data_iterator, model):
-    """Forward step."""
-    timers = get_timers()
-    args = get_args()
-    # Get the batch.
-    timers('batch-generator', log_level=2).start()
-    tokens, labels, loss_mask, attention_mask, position_ids, images = get_batch(
-        data_iterator)
-    num_patch = int((args.image_size / args.patch_size) ** 2)
-    timers('batch-generator').stop()
-    image_label = torch.full((labels.shape[0], num_patch-1), IGNORE_INDEX, device=labels.device, dtype=labels.dtype)
-    image_loss_mask = torch.zeros((labels.shape[0], num_patch-1), dtype=torch.float, device=labels.device)
-    total_label = torch.cat([image_label, labels], dim=1)
-    total_loss_mask = torch.cat([image_loss_mask, loss_mask], dim=1)
-    output_tensor = model(tokens, position_ids, attention_mask,
-                          labels=total_label, images=images)
-
-    return output_tensor, partial(loss_func, total_loss_mask)
-
-
 def train_valid_test_datasets_provider():
     """Build train, valid, and test datasets."""
     args = get_args()
@@ -110,6 +52,55 @@ def train_valid_test_datasets_provider():
             data_prefix=args.train_data_path)
 
     return train_ds, valid_ds
+
+
+def forward_step(data_iterator, model):
+    args = get_args()
+    tokenizer = get_tokenizer()
+    try:
+        data_iterator = next(data_iterator)
+    except BaseException:
+        data_iterator = data_iterator
+
+    text_keys = ['input_ids', 'labels']
+    img_keys = ['image']
+
+    data_text = {'input_ids': data_iterator['input_ids'], 'labels': data_iterator['labels']}
+    data_image = {'image': data_iterator['image']}
+    data_text = tensor_parallel.broadcast_data(text_keys, data_text, torch.int64)
+    data_image = tensor_parallel.broadcast_data(img_keys, data_image, torch.bfloat16)
+    tokens = data_text['input_ids'].long()
+    labels = data_text['labels'].long()
+    images = data_image['image']
+
+    # Get the masks and postition ids.
+    _, loss_mask, position_ids = get_ltor_masks_and_position_ids(
+        tokens,
+        IGNORE_INDEX,
+        args.reset_position_ids,
+        args.reset_attention_mask,
+        True)
+
+    num_patch = int((args.image_size / args.patch_size) ** 2)
+    image_label = torch.full((labels.shape[0], num_patch-1), IGNORE_INDEX, device=labels.device, dtype=labels.dtype)
+    image_loss_mask = torch.zeros((labels.shape[0], num_patch-1), dtype=torch.float, device=labels.device)
+    total_labels = torch.cat([image_label, labels], dim=1)
+    attention_mask = total_labels.ne(tokenizer.pad_token_id)
+    total_loss_mask = torch.cat([image_loss_mask, loss_mask], dim=1)
+    logits = model(tokens, position_ids, attention_mask, images=images)
+
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = total_labels[..., 1:].contiguous()
+    loss_mask = total_loss_mask[..., 1:].contiguous()
+    def loss_func(loss_mask, shift_logits):
+        losses = tensor_parallel.vocab_parallel_cross_entropy(
+            shift_logits.contiguous().float(), shift_labels.contiguous())
+        loss_mask = loss_mask.view(-1).float()
+        loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
+        averaged_loss = average_losses_across_data_parallel_group([loss])
+        return loss, {'vlm loss': averaged_loss[0]}
+
+    return shift_logits, partial(loss_func, loss_mask)
 
 if __name__ == '__main__':
 

@@ -18,7 +18,6 @@ from megatron import get_args
 from megatron.core import mpu, tensor_parallel
 from megatron.core.enums import ModelType
 from megatron.model.enums import AttnMaskType
-from megatron.model.enums import LayerType
 from megatron.model.module import MegatronModule
 from megatron.model.utils import get_linear_layer
 from megatron.model.utils import init_method_normal
@@ -29,6 +28,7 @@ from megatron_patch.data.llava.constants import IMAGE_TOKEN_INDEX
 from .clip_encoder import CLIPVisionTower
 from .mm_projector_builder import build_vision_projector
 from .transformer import ParallelTransformer
+from .modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 
 def parallel_lm_logits(input_, word_embeddings_weight, parallel_output,
                        bias=None):
@@ -530,15 +530,12 @@ class TransformerLanguageModel(MegatronModule):
         encoder_input = torch.cat(new_input_embeds, dim=1)
         if enc_attn_mask is not None:
             batch_size = enc_input_ids.shape[0]
-            new_attn_mask_pad_left = torch.full((enc_attn_mask.shape[0], 1,
-                                                 encoder_input.shape[0] - enc_input_ids.shape[1],
-                                                 encoder_input.shape[0] - enc_input_ids.shape[1]), True, dtype=enc_attn_mask.dtype, device=enc_attn_mask.device)
-            img_seq_len = encoder_input.shape[0] - enc_input_ids.shape[1]
-            text_seq_len = enc_attn_mask.shape[-1]
-            total_seq_len = img_seq_len + text_seq_len
-            new_enc_attn_mask = torch.empty((batch_size, 1, total_seq_len, total_seq_len), dtype=enc_attn_mask.dtype, device=enc_attn_mask.device)
-            new_enc_attn_mask[:, :, img_seq_len:, img_seq_len:] = enc_attn_mask
-            new_enc_attn_mask[:, :, :img_seq_len, :img_seq_len] = new_attn_mask_pad_left
+            new_enc_attn_mask = _prepare_4d_causal_attention_mask(
+                enc_attn_mask,
+                (batch_size, encoder_input.shape[0]),
+                encoder_input,
+                0
+            )
 
         enc_attn_mask = new_enc_attn_mask
         # Retriever embedding.
