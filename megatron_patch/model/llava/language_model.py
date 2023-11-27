@@ -363,6 +363,11 @@ class TransformerLanguageModel(MegatronModule):
 
         self.vision_tower = CLIPVisionTower(self.args.vision_tower)
         self.vision_tower.to(torch.half if self.args.fp16 else torch.bfloat16)
+
+        if self.args.freeze_clip_vision_tower:
+            for param in self.vision_tower.parameters():
+                param.requires_grad = False
+
         self.args.mm_hidden_size = self.vision_tower.hidden_size
         self.args.mm_projector_type = 'linear'
         self.mm_projector = build_vision_projector(self.args)
@@ -377,6 +382,10 @@ class TransformerLanguageModel(MegatronModule):
                                        config,
                                        self.num_tokentypes)
             self._embedding_key = 'embedding'
+
+            if self.args.freeze_llm:
+                for param in self.embedding.parameters():
+                    param.requires_grad = False
 
         # Rotary positional embeddings
         if self.args.use_rotary_position_embeddings:
@@ -399,8 +408,6 @@ class TransformerLanguageModel(MegatronModule):
             self.use_rotary_position_embeddings = False
 
 
-        # Encoder (usually set to True, False if part of an encoder-decoder
-        # architecture and in encoder-only stage).
         if self.add_encoder:
             self.encoder = ParallelTransformer(
                 config,
@@ -411,29 +418,12 @@ class TransformerLanguageModel(MegatronModule):
                 post_process=self.post_process,
             )
             self._encoder_key = 'encoder'
-        else:
-            self.encoder = None
 
-        # Decoder (usually set to False, True if part of an encoder-decoder
-        # architecture and in decoder-only stage).
-        if self.add_decoder:
-            self.decoder = ParallelTransformer(
-                config,
-                model_type=self.args.model_type,
-                layer_type=LayerType.decoder,
-                self_attn_mask_type=self.decoder_attn_mask_type,
-                pre_process=self.pre_process,
-                post_process=self.post_process)
-            self._decoder_key = 'decoder'
-        else:
-            self.decoder = None
+            if self.args.freeze_llm:
+                for param in self.encoder.parameters():
+                    param.requires_grad = False
 
         if self.post_process:
-            # Pooler.
-            if self.add_pooler:
-                self.pooler = Pooler(self.hidden_size, self.init_method)
-                self._pooler_key = 'pooler'
-
             if self.untie_embeddings_and_output_weights:
                 self.output_layer = tensor_parallel.ColumnParallelLinear(
                     self.args.hidden_size,
@@ -442,6 +432,10 @@ class TransformerLanguageModel(MegatronModule):
                     init_method=self.init_method,
                     bias=False) # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
                 self._output_layer_key = 'output_layer'
+
+                if self.args.freeze_llm:
+                    for param in self.output_layer.parameters():
+                        param.requires_grad = False
 
     def encode_images(self, images):
         image_features = self.vision_tower(images)
