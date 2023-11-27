@@ -24,11 +24,11 @@ from megatron.model.utils import init_method_normal
 from megatron.model.utils import scaled_init_method_normal
 from megatron.core.models.common.rotary_pos_embedding import RotaryEmbedding
 
+from megatron_patch.model.mistral.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from megatron_patch.data.llava.constants import IMAGE_TOKEN_INDEX
 from .clip_encoder import CLIPVisionTower
 from .mm_projector_builder import build_vision_projector
 from .transformer import ParallelTransformer
-from .modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 
 def parallel_lm_logits(input_, word_embeddings_weight, parallel_output,
                        bias=None):
