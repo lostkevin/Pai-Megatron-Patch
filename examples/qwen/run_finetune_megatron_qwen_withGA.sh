@@ -1,5 +1,5 @@
 #!/bin/bash
-# sh run_finetune_megatron_qwen_withGA.sh dsw ../../ 7B 1 96 1e-5 1e-5 2048 2048 85 bf16 1 1 sel true false true false 1000 ../../../alpaca_zh-filter.json ../../../alpaca_zh-filter.json ../../../qianwen/qwen-7b-hf 2000 0 /mnt/output_megatron_qwen/
+# sh run_finetune_megatron_qwen_withGA.sh dsw ../../ 7B 1 96 1e-5 1e-5 2048 2048 85 bf16 1 1 sel true true true false 1000 ../../../alpaca_zh-filter.json ../../../alpaca_zh-filter.json ../../../qianwen/qwen-7b-hf 2000 0 /mnt/output_megatron_qwen/
 
 set -e
 ENV=$1
@@ -8,12 +8,12 @@ MEGATRON_PATH=${MEGATRON_PATCH_PATH}/Megatron-LM-main
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=4
+GPUS_PER_NODE=8
 
 elif [ $ENV = dlc ]; then
 
