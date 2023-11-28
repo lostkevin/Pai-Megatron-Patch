@@ -172,12 +172,12 @@ def _build_train_valid_test_datasets(data_prefix, max_padding_length, dataset_ty
                                   stop=splits[index + 1],
                                   step=1,
                                   dtype=np.int32)
-            if dataset_type == 'LLama-Pretrain-IdxMap':
+            if dataset_type == 'LLama-Pretrain-Idxmap':
                 dataset = LLamaIdxMapDataset(
                     name, data_prefix, documents, indexed_dataset,
                     train_valid_test_num_samples[index],
                     seed, max_padding_length, return_doc_ids)
-            elif dataset_type == 'Mistral-Pretrain-IdxMap':
+            elif dataset_type == 'Mistral-Pretrain-Idxmap':
                 dataset = MistralIdxMapDataset(
                     name, data_prefix, documents, indexed_dataset,
                     train_valid_test_num_samples[index],
