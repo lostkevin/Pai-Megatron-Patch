@@ -52,7 +52,7 @@ OUTPUT_BASEPATH=${25}
 
 if [ $MODEL_SIZE = 7B ]; then
 
-NUM_LAYERS=1
+NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
 INTERMEDIATE_SIZE=11008
@@ -214,7 +214,7 @@ megatron_options="  \
         --norm-epsilon 1e-6
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megatron_qwen.py
+run_cmd="torchrun $DISTRIBUTED_ARGS finetune_megatron_llama_withGA.py
  ${megatron_options} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${do_options} ${flash_options} ${sp_options} ${rope_options}"
 
 echo ${run_cmd}
