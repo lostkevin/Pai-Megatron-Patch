@@ -376,10 +376,7 @@ def convert_checkpoint_from_transformers_to_megatron(args):
         checkpoint_name = "pytorch_model.bin"
         hf_state_dict = torch.load(os.path.join(args.load_path, checkpoint_name), map_location="cpu")
     else:
-        if args.model_name == "qwen-7b":
-            num_checkpoints = len(sub_dirs) - 1
-            hf_state_dict = merge_transformers_sharded_states_7b(args.load_path, num_checkpoints)
-        elif args.model_name == "qwen-14b" or args.model_name == "qwen-72b":
+        if args.model_name == "qwen-7b" or args.model_name == "qwen-14b" or args.model_name == "qwen-72b":
             from transformers import AutoModelForCausalLM
             hf_state_dict = AutoModelForCausalLM.from_pretrained(args.load_path, trust_remote_code=True).state_dict()
         else:
