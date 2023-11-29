@@ -72,17 +72,6 @@ def get_batch(data_iterator):
 
     return tokens, labels, loss_mask, attention_mask, position_ids
 
-
-# def loss_func(loss_mask, output_tensor):
-#     losses = output_tensor.float()
-#     loss_mask = loss_mask.view(-1).float()
-#     loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
-
-#     # Reduce loss for logging.
-#     averaged_loss = average_losses_across_data_parallel_group([loss])
-
-#     return loss, {'lm loss': averaged_loss[0]}
-
 def forward_step(data_iterator, model):
     args = get_args()
     tokenizer = get_tokenizer()
