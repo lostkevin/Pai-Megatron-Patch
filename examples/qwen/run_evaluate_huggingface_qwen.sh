@@ -1,6 +1,6 @@
 #!/bin/bash
-# sh run_evaluate_huggingface_qwen.sh dsw /workspace/Pai-Megatron-Patch 7B 1 2048 80 0 fp16 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-ckpts/qwen-7b-hf
-# sh run_evaluate_huggingface_qwen.sh dsw /workspace/Pai-Megatron-Patch 14B 1 2048 80 0 fp16 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-ckpts/qwen-14b
+# sh run_evaluate_huggingface_qwen.sh dsw /workspace/Pai-Megatron-Patch 7B 1 2048 80 0 fp16 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-ckpts/Qwen-7B
+# sh run_evaluate_huggingface_qwen.sh dsw /workspace/Pai-Megatron-Patch 14B 1 2048 80 0 fp16 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-ckpts/Qwen-14B
 set -e
 ENV=$1
 MEGATRON_PATCH_PATH=$2
@@ -68,7 +68,7 @@ fi
 
 megatron_options=" \
         --transformer-type huggingface \
-        --data-path ${DATASET_PATH}
+        --valid-data-path ${DATASET_PATH}
         --micro-batch-size ${BATCH_SIZE} \
         --num-layers ${NUM_LAYERS} \
         --hidden-size ${HIDDEN_SIZE} \
@@ -80,7 +80,6 @@ megatron_options=" \
         --eval-iters 10 \
         --tensor-model-parallel-size 1 \
         --pipeline-model-parallel-size 1 \
-        --DDP-impl local \
         --no-load-optim \
         --num-workers 0 \
         --dataset LLama-SFT \
