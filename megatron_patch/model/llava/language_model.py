@@ -480,53 +480,54 @@ class TransformerLanguageModel(MegatronModule):
                 enc_hidden_states=None, output_enc_hidden=False, images=None):
 
         image_features = self.encode_images(images)
+
+        input_embeds = self.embedding(enc_input_ids, enc_position_ids,
+                                           tokentype_ids=tokentype_ids)
+        input_embeds = input_embeds.permute(1, 0, 2)
+
         new_input_embeds = []
-        cur_image_idx = 0
         for batch_idx, cur_input_ids in enumerate(enc_input_ids):
-            cur_position_ids = enc_position_ids[batch_idx]
+            cur_input_embeds = input_embeds[batch_idx]  # s h
             if (cur_input_ids == IMAGE_TOKEN_INDEX).sum() == 0:
                 # multimodal LLM, but the current sample is not multimodal
                 # FIXME: this is a hacky fix, for deepspeed zero3 to work
                 half_len = cur_input_ids.shape[0] // 2
-                cur_image_features = image_features[cur_image_idx]
-                cur_input_embeds_1 = self.embedding(cur_input_ids[:half_len].unsqueeze(0), cur_position_ids[:half_len].unsqueeze(0))
-                cur_input_embeds_2 = self.embedding(cur_input_ids[half_len:].unsqueeze(0), cur_position_ids[half_len:].unsqueeze(0))
+                cur_image_features = image_features[batch_idx]
+                cur_input_embeds_1 = cur_input_embeds[:half_len].unsqueeze(1)
+                cur_input_embeds_2 = cur_input_embeds[half_len:].unsqueeze(1)
                 cur_input_embeds = torch.cat([cur_input_embeds_1, cur_image_features[0:0], cur_input_embeds_2], dim=0)
                 new_input_embeds.append(cur_input_embeds)
-                cur_image_idx += 1
                 continue
             image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0]
             cur_new_input_embeds = []
+            cur_start = 0
             while image_token_indices.numel() > 0:
-                cur_image_features = image_features[cur_image_idx].unsqueeze(1)
+                cur_image_features = image_features[batch_idx].unsqueeze(1)
                 image_token_start = image_token_indices[0]
                 if getattr(self.args, 'tune_mm_mlp_adapter', False) and getattr(self.args, 'mm_use_im_start_end', False):
-                    cur_new_input_embeds.append(self.embedding(cur_input_ids[:image_token_start-1].unsqueeze(0), cur_position_ids[:image_token_start-1].unsqueeze(0)).detach())
-                    cur_new_input_embeds.append(self.embedding(cur_input_ids[image_token_start-1:image_token_start].unsqueeze(0), cur_position_ids[image_token_start-1:image_token_start].unsqueeze(0)))
+                    cur_new_input_embeds.append(cur_input_embeds[cur_start:image_token_start-1].unsqueeze(1).detach())
+                    cur_new_input_embeds.append(cur_input_embeds[image_token_start-1:image_token_start].unsqueeze(1)) # special token: <im_start>
                     cur_new_input_embeds.append(cur_image_features)
-                    cur_new_input_embeds.append(self.embedding(cur_input_ids[image_token_start+1:image_token_start+2].unsqueeze(0), cur_position_ids[image_token_start+1:image_token_start+2].unsqueeze(0)))
-
+                    cur_new_input_embeds.append(cur_input_embeds[image_token_start+1:image_token_start+2].unsqueeze(1)) # special token: <im_end>
+                    cur_start = image_token_start + 2
                 else:
-                    cur_new_input_embeds.append(self.embedding(cur_input_ids[:image_token_start].unsqueeze(0), cur_position_ids[:image_token_start].unsqueeze(0)))
+                    cur_new_input_embeds.append(cur_input_embeds[cur_start:image_token_start].unsqueeze(1))
                     cur_new_input_embeds.append(cur_image_features)
+                    cur_start = image_token_start + 1
 
-                cur_image_idx += 1
+                image_token_indices = torch.where(cur_input_ids[cur_start:] == IMAGE_TOKEN_INDEX)[0]
+            if cur_input_ids[cur_start:].numel() > 0:
                 if getattr(self.args, 'tune_mm_mlp_adapter', False) and getattr(self.args, 'mm_use_im_start_end', False):
-                    cur_input_ids = cur_input_ids[image_token_start+2:]
+                    cur_new_input_embeds.append(cur_input_embeds[cur_start:].unsqueeze(1).detach())
                 else:
-                    cur_input_ids = cur_input_ids[image_token_start+1:]
-                image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0]
-            if cur_input_ids.numel() > 0:
-                if getattr(self.args, 'tune_mm_mlp_adapter', False) and getattr(self.args, 'mm_use_im_start_end', False):
-                    cur_new_input_embeds.append(self.embedding(cur_input_ids.unsqueeze(0), cur_position_ids.unsqueeze(0)).detach())
-                else:
-                    cur_new_input_embeds.append(self.embedding(cur_input_ids.unsqueeze(0), cur_position_ids.unsqueeze(0)))
+                    cur_new_input_embeds.append(cur_input_embeds[cur_start:].unsqueeze(1))
 
             cur_new_input_embeds = [x.to(device=enc_input_ids.device) for x in cur_new_input_embeds]
             cur_new_input_embeds = torch.cat(cur_new_input_embeds, dim=0)
             new_input_embeds.append(cur_new_input_embeds)
 
         encoder_input = torch.cat(new_input_embeds, dim=1)
+
         if enc_attn_mask is not None:
             batch_size = enc_input_ids.shape[0]
             new_enc_attn_mask = _prepare_4d_causal_attention_mask(
