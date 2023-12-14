@@ -24,7 +24,8 @@ from megatron import get_args
 from megatron_patch.tokenizer import build_tokenizer
 from .mistral import MistralRawDataset,  MistralIdxMapDataset
 from .llama import LLamaRawDataset, LLamaIdxMapDataset
-from .llava.mm_pretrain_dataset import LazySupervisedDataset
+from .llava.mm_pretrain_dataset import LazySupervisedDataset as LLavaSupervisedDataset
+from .qwen_vl import LazySupervisedDataset as QwenVLSupervisedDataset
 
 def build_evaluation_dataset(dataset):
 
@@ -54,10 +55,17 @@ def build_finetune_dataset(dataset):
 
         return train_dataset, valid_dataset
     elif dataset == 'LLava-SFT':
-        train_dataset = LazySupervisedDataset(args.train_data_path)
-        valid_dataset = LazySupervisedDataset(args.valid_data_path)
+        train_dataset = LLavaSupervisedDataset(args.train_data_path)
+        valid_dataset = LLavaSupervisedDataset(args.valid_data_path)
 
         return train_dataset, valid_dataset
+
+    elif dataset == 'Qwen-VL-SFT':
+        train_dataset = QwenVLSupervisedDataset(args.train_data_path)
+        valid_dataset = QwenVLSupervisedDataset(args.valid_data_path)
+
+        return train_dataset, valid_dataset
+
     else:
         raise NotImplementedError('dataset {} is not implemented.'.format(dataset))
 
