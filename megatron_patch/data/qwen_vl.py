@@ -30,6 +30,18 @@ def preprocess(
     max_len: int,
     system_message: str = "You are a helpful assistant."
 ) -> Dict:
+    """
+    Preprocess conversation data for the model input.
+
+    Parameters:
+        sources (List[Dict]): A list of conversation segments.
+        tokenizer (PreTrainedTokenizer): A tokenizer instance.
+        max_len (int): The maximum sequence length.
+        system_message (str, optional): A default system message.
+
+    Returns:
+        Dict: A dictionary with 'input_ids', 'labels', and 'attention_mask'.
+    """
     roles = {"user": "<|im_start|>user", "assistant": "<|im_start|>assistant"}
     im_start = tokenizer.im_start_id
     im_end = tokenizer.im_end_id
@@ -49,7 +61,7 @@ def preprocess(
         input_id += system
         target += [im_start] + [IGNORE_TOKEN_ID] * (len(system)-3) + [im_end] + nl_tokens
         assert len(input_id) == len(target)
-        for j, sentence in enumerate(source):
+        for sentence in enumerate(source):
             role = roles[sentence["from"]]
             _input_id = tokenizer(role).input_ids + nl_tokens + \
                 tokenizer(sentence["value"]).input_ids + [im_end] + nl_tokens
@@ -77,7 +89,12 @@ def preprocess(
     )
 
 class LazySupervisedDataset(Dataset):
-    """Dataset for supervised fine-tuning."""
+    """
+    A dataset class for supervised fine-tuning.
+
+    Attributes:
+        data_path (str): Path to the JSON file containing the conversational data.
+    """
 
     def __init__(self, data_path: str):
         super(LazySupervisedDataset, self).__init__()
