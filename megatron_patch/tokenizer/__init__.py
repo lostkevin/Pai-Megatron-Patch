@@ -224,12 +224,13 @@ def build_tokenizer(args):
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
 
     elif args.patch_tokenizer_type == 'MistralTokenizer':
-        from .tokenization_mistral import MistralTokenizer
-        tokenizer = MistralTokenizer(os.path.join(args.load, "tokenizer.model"))
-        tokenizer.pad_token_id = tokenizer.pad_id
-        tokenizer.eos_token_id = tokenizer.eos_id
-        tokenizer.eos_token = tokenizer.decode(tokenizer.eos_id)
-        args.padded_vocab_size = tokenizer.n_words + args.extra_vocab_size
+        print_rank_0('Using Mistral tokenizer.')
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(args.load,
+                                                  padding_side='right',
+                                                  use_fast=False,)
+        tokenizer.pad_token_id = 0
+        args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
 
     elif args.patch_tokenizer_type == 'BloomTokenizerFromCustom':
         print_rank_0('Using Customized Bloom tokenizer.')
