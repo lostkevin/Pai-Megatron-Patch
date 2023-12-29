@@ -17,7 +17,6 @@ import torch
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 from typing import Callable, Optional
-
 from megatron.core.model_parallel_config import ModelParallelConfig
 from megatron.core.parallel_state import (
     get_global_memory_buffer,
@@ -25,7 +24,6 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
-
 from megatron.core.tensor_parallel.mappings import (
     copy_to_tensor_model_parallel_region,
     gather_from_sequence_parallel_region,
@@ -215,18 +213,20 @@ class ColumnParallelLinear(torch.nn.Module):
         )
 
     def forward(self, input_: torch.Tensor, weight: Optional[torch.Tensor] = None):
-        """Forward of ColumnParallelLinear
+        """Forward pass for ColumnParallelLinear
 
         Args:
             input_: 3D tensor whose order of dimension is [sequence, batch, hidden]
-
             weight (optional): weight tensor to use, compulsory when
                 skip_weight_param_allocation is True.
 
         Returns:
-            - output
-            - bias
+            output: The output tensor after applying the linear transformation.
+            output_bias: The bias tensor if skip_bias_add is True; None otherwise.
 
+        Raises:
+            RuntimeError: If the weight is not provided and it is required, or
+                if the provided weight has an incorrect shape.
         """
         if weight is None:
             if self.weight is None:
@@ -283,7 +283,6 @@ class ColumnParallelLinear(torch.nn.Module):
             output = output_parallel
         output_bias = self.bias if self.skip_bias_add else None
         return output, output_bias
-
 
 class RowParallelLinear(torch.nn.Module):
     """Linear layer with row parallelism.
@@ -420,7 +419,7 @@ class RowParallelLinear(torch.nn.Module):
         )
 
     def forward(self, input_):
-        """Forward of RowParallelLinear
+        """Forward pass of RowParallelLinear
 
         Args:
             input_: 3D tensor whose order of dimension is [sequence, batch, hidden]
