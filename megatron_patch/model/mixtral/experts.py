@@ -50,8 +50,8 @@ class Experts(torch.nn.Module):
             Tensor: The concatenated output tensor from all experts.
         """
          
-         # Check if the inputs can be evenly divided by the number of experts
-         if inputs.size(1) % self.num_local_experts != 0:
+        # Check if the inputs can be evenly divided by the number of experts
+        if inputs.size(1) % self.num_local_experts != 0:
             raise ValueError("The number of input features is not evenly divisible by the number of experts.")
 
         chunks = inputs.chunk(self.num_local_experts, dim=1)

@@ -17,6 +17,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 from typing import Callable, Optional
+
 from megatron.core.model_parallel_config import ModelParallelConfig
 from megatron.core.parallel_state import (
     get_global_memory_buffer,
@@ -24,6 +25,7 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
+
 from megatron.core.tensor_parallel.mappings import (
     copy_to_tensor_model_parallel_region,
     gather_from_sequence_parallel_region,
@@ -95,7 +97,9 @@ class ColumnParallelLinear(torch.nn.Module):
         keep_master_weight_for_test=False,
         skip_bias_add=False,
         skip_weight_param_allocation: bool = False,
-        is_expert: bool = False
+        is_expert: bool = False,
+        expert_tensor_parallelism: bool = False
+
     ):
         super(ColumnParallelLinear, self).__init__()
 
@@ -103,9 +107,14 @@ class ColumnParallelLinear(torch.nn.Module):
         self.input_size = input_size
         self.output_size = output_size
         self.gather_output = gather_output
+        if is_expert and (not expert_tensor_parallelism):
+            world_size = 1
+            self.is_expert_without_slicing = True
+        else:
+            world_size = get_tensor_model_parallel_world_size()
+            self.is_expert_without_slicing = False
 
         # Divide the weight matrix along the last dimension.
-        world_size = get_tensor_model_parallel_world_size()
         self.output_size_per_partition = divide(output_size, world_size)
         self.skip_bias_add = skip_bias_add
         self.is_expert = is_expert
@@ -213,20 +222,18 @@ class ColumnParallelLinear(torch.nn.Module):
         )
 
     def forward(self, input_: torch.Tensor, weight: Optional[torch.Tensor] = None):
-        """Forward pass for ColumnParallelLinear
+        """Forward of ColumnParallelLinear
 
         Args:
             input_: 3D tensor whose order of dimension is [sequence, batch, hidden]
+
             weight (optional): weight tensor to use, compulsory when
                 skip_weight_param_allocation is True.
 
         Returns:
-            output: The output tensor after applying the linear transformation.
-            output_bias: The bias tensor if skip_bias_add is True; None otherwise.
+            - output
+            - bias
 
-        Raises:
-            RuntimeError: If the weight is not provided and it is required, or
-                if the provided weight has an incorrect shape.
         """
         if weight is None:
             if self.weight is None:
@@ -249,7 +256,7 @@ class ColumnParallelLinear(torch.nn.Module):
         if (
             self.async_tensor_model_parallel_allreduce
             or self.sequence_parallel
-            or self.explicit_expert_comm
+            or self.explicit_expert_comm or self.is_expert_without_slicing
         ):
             input_parallel = input_
         else:
@@ -283,6 +290,7 @@ class ColumnParallelLinear(torch.nn.Module):
             output = output_parallel
         output_bias = self.bias if self.skip_bias_add else None
         return output, output_bias
+
 
 class RowParallelLinear(torch.nn.Module):
     """Linear layer with row parallelism.
@@ -333,6 +341,7 @@ class RowParallelLinear(torch.nn.Module):
         keep_master_weight_for_test: bool = False,
         skip_bias_add: bool = False,
         is_expert: bool = False,
+        expert_tensor_parallelism: bool = False
     ):
         super(RowParallelLinear, self).__init__()
 
@@ -341,7 +350,11 @@ class RowParallelLinear(torch.nn.Module):
         self.output_size = output_size
         self.input_is_parallel = input_is_parallel
         # Divide the weight matrix along the last dimension.
-        world_size = get_tensor_model_parallel_world_size()
+        if is_expert and (not expert_tensor_parallelism):
+            world_size = 1
+        else:
+            world_size = get_tensor_model_parallel_world_size()
+        self.is_expert_without_slicing = is_expert and world_size==1
         self.input_size_per_partition = divide(input_size, world_size)
         self.skip_bias_add = skip_bias_add
         self.config = config
@@ -419,7 +432,7 @@ class RowParallelLinear(torch.nn.Module):
         )
 
     def forward(self, input_):
-        """Forward pass of RowParallelLinear
+        """Forward of RowParallelLinear
 
         Args:
             input_: 3D tensor whose order of dimension is [sequence, batch, hidden]
@@ -429,7 +442,7 @@ class RowParallelLinear(torch.nn.Module):
             - bias
         """
         # Set up backprop all-reduce.
-        if self.input_is_parallel:
+        if self.input_is_parallel or self.is_expert_without_slicing:
             input_parallel = input_
         else:
             assert not self.sequence_parallel
