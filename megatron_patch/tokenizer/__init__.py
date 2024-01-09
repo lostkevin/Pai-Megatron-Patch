@@ -117,7 +117,8 @@ def build_tokenizer(args):
             special_tokens_dict['bos_token'] = DEFAULT_BOS_TOKEN
         if not tokenizer.unk_token:
             special_tokens_dict['unk_token'] = DEFAULT_UNK_TOKEN
-        tokenizer.add_special_tokens(special_tokens_dict)
+        # tokenizer.add_special_tokens(special_tokens_dict)
+        tokenizer.pad_token_id = tokenizer.eos_token_id
         args.padded_vocab_size = tokenizer.vocab_size + args.extra_vocab_size
 
     elif args.patch_tokenizer_type == 'FalconTokenizer':
