@@ -112,9 +112,15 @@ def get_tasks_args(parser):
                         choices=['llama2-13b', 'qwen-7b', 'qwen-14b', 'qwen-72b'])
     parser.add_argument('--flash', action='store_true', help='use flash attention, only work for llama2-13b.')
 =======
+<<<<<<< HEAD
+    parser.add_argument('--model', type=str, help='name and size of the model',
+                        choices=['llama2-13b', 'qwen-7b', 'qwen-14b', 'qwen-72b'])
+    parser.add_argument('--flash', action='store_true', help='use flash attention, only work for llama2-13b.')
+=======
     parser.add_argument('--is-llama2', action='store_true', help='is llama2.')
     parser.add_argument('--flash', action='store_true', help='use flash attention.')
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
     return parser
 
 
@@ -323,7 +329,7 @@ def main():
         learning_rate=args.lr,
         adam_beta1=0.9,
         adam_beta2=0.95,
-        weight_decay=0.1,
+        warmup_ratio=0.1,
         logging_strategy='steps',
         log_level='info',
         logging_dir=args.logging_dir,
@@ -370,12 +376,18 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.load, trust_remote_code=True)
 
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
     if args.model in ('qwen-7b', 'qwen-14b', 'qwen-72b'):
         tokenizer.eos_token = '<|endoftext|>'
         tokenizer.pad_token = tokenizer.eos_token
 
+<<<<<<< HEAD
+=======
 =======
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
     init_contexts = [no_init_weights(_enable=False)]
     if is_deepspeed_zero3_enabled():
         logger.info("Detected DeepSpeed ZeRO-3: activating zero.init() for this model")
@@ -383,8 +395,12 @@ def main():
 <<<<<<< HEAD
     if args.model == 'llama2-13b':
 =======
+<<<<<<< HEAD
+    if args.model == 'llama2-13b':
+=======
     if args.is_llama2:
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
         config = transformers.CONFIG_MAPPING['llama'](
             num_hidden_layers=args.num_layers,
             hidden_size=args.hidden_size,
@@ -458,11 +474,19 @@ def main():
             batched=True,
             num_proc=num_proc
 =======
+<<<<<<< HEAD
+        num_proc = 1 if args.model in ('qwen-7b', 'qwen-14b', 'qwen-72b') else 64
+        lm_datasets = raw_datasets.map(
+            tokenize_function,
+            batched=True,
+            num_proc=num_proc
+=======
         lm_datasets = raw_datasets.map(
             tokenize_function,
             batched=True,
             num_proc=64
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
         )
 
     trainer = Trainer(
@@ -472,7 +496,11 @@ def main():
 <<<<<<< HEAD
         eval_dataset=lm_datasets["validation"],
 =======
+<<<<<<< HEAD
+        eval_dataset=lm_datasets["validation"],
+=======
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
         tokenizer=tokenizer,
         data_collator=default_data_collator,
     )

@@ -3,9 +3,14 @@
 # bash run_ds_train_huggingface_finetune.sh dsw 7B 1 2 1e-5 2048 bf16 2 true qwen-7b false 2 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-datasets/wudao_valid.json /mnt/qwen-ckpts/qwen-7b-hf /mnt/output_qwen_finetune
 # bash run_ds_train_huggingface_finetune.sh dsw 13B 1 2 1e-5 2048 bf16 2 true llama2-13b true 2 /mnt/llama2-datasets/wudao_train.json /mnt/llama2-datasets/wudao_valid.json /mnt/llama2-ckpts/Llama-2-13b-hf /mnt/output_llama2_finetune
 =======
+<<<<<<< HEAD
+# bash run_ds_train_huggingface_finetune.sh dsw 7B 1 2 1e-5 2048 bf16 2 true qwen-7b false 2 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-datasets/wudao_valid.json /mnt/qwen-ckpts/qwen-7b-hf /mnt/output_qwen_finetune
+# bash run_ds_train_huggingface_finetune.sh dsw 13B 1 2 1e-5 2048 bf16 2 true llama2-13b true 2 /mnt/llama2-datasets/wudao_train.json /mnt/llama2-datasets/wudao_valid.json /mnt/llama2-ckpts/Llama-2-13b-hf /mnt/output_llama2_finetune
+=======
 # bash run_ds_train_huggingface_finetune.sh dsw 7B 1 2 1e-5 2048 bf16 2 true false false 2 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-datasets/wudao_valid.json /mnt/qwen-ckpts/qwen-7b-hf /mnt/output_qwen_finetune
 # bash run_ds_train_huggingface_finetune.sh dsw 13B 1 2 1e-5 2048 bf16 2 true true true 2 /mnt/llama2-datasets/wudao_train.json /mnt/llama2-datasets/wudao_valid.json /mnt/llama2-ckpts/Llama-2-13b-hf /mnt/output_llama2_finetune
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
 
 set -e
 ENV=$1
@@ -36,8 +41,12 @@ GC=$9
 <<<<<<< HEAD
 MODEL=${10}         # llama2-13b, qwen-7b, qwen-14b, qwen-72b
 =======
+<<<<<<< HEAD
+MODEL=${10}         # llama2-13b, qwen-7b, qwen-14b, qwen-72b
+=======
 IS_LLAMA2=${10}
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
 FLASH=${11}
 EPOCH=${12}
 TRAIN_DATASET_PATH=${13}
@@ -102,6 +111,8 @@ fi
 
 <<<<<<< HEAD
 =======
+<<<<<<< HEAD
+=======
 if [ $IS_LLAMA2 = true ]; then
     llama2_options="--is-llama2"
 elif [ $GC = false ]; then
@@ -109,9 +120,10 @@ elif [ $GC = false ]; then
 fi
 
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
 if [ $FLASH = true ]; then
     flash_options="--flash"
-elif [ $GC = false ]; then
+elif [ $FLASH = false ]; then
     flash_options=""
 fi
 
@@ -141,14 +153,20 @@ hf_options="  \
         --num-workers 1 \
         --gradient-accumulation-steps ${GA_STEPS} \
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
         --logging-dir ${LOGGING_DIR} \
         --model ${MODEL} \
         ${pr_options} \
         ${gc_options} \
         ${flash_options}
+<<<<<<< HEAD
+=======
 =======
         --logging-dir ${LOGGING_DIR}
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
         "
 
 template_json="ds_config_TEMPLATE.json"
@@ -165,8 +183,12 @@ sed "s/CONFIG_MBSIZE/${MICRO_BATCH_SIZE}/" ${template_json} \
 <<<<<<< HEAD
 run_cmd="torchrun $DISTRIBUTED_ARGS ds_train_huggingface_finetune.py ${hf_options}"
 =======
+<<<<<<< HEAD
+run_cmd="torchrun $DISTRIBUTED_ARGS ds_train_huggingface_finetune.py ${hf_options}"
+=======
 run_cmd="torchrun $DISTRIBUTED_ARGS ds_train_huggingface_finetune.py ${hf_options} ${pr_options} ${gc_options} ${llama2_options} ${flash_options}"
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
 
 
 echo ${run_cmd}

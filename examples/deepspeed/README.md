@@ -2,7 +2,7 @@
 
 Date: 2024-01-02
 
-Authors: 
+Authors:
 - menglibin.mlb
 
 
@@ -12,6 +12,13 @@ Authors:
 Run the following command in the container of the image `dsw-registry.cn-wulanchabu.cr.aliyuncs.com/pai/ngc:23.07-py310-cu121-ubuntu22.04-megatron-patch-llm`
 - Llama2
 ```
+<<<<<<< HEAD
+$ bash run_ds_train_huggingface_finetune.sh dsw 13B 1 2 1e-5 2048 bf16 2 true llama2-13b true 2 /mnt/llama2-datasets/wudao_train.json /mnt/llama2-datasets/wudao_valid.json /mnt/llama2-ckpts/Llama-2-13b-hf /mnt/output_llama2_finetune
+```
+- Other model (qwen、chatglm、baichuan2、falcon、bloom......)
+```
+$ bash run_ds_train_huggingface_finetune.sh dsw 7B 1 2 1e-5 2048 bf16 2 true qwen-7b false 2 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-datasets/wudao_valid.json /mnt/qwen-ckpts/qwen-7b-hf /mnt/output_qwen_finetune
+=======
 <<<<<<< HEAD
 $ bash run_ds_train_huggingface_finetune.sh dsw 13B 1 2 1e-5 2048 bf16 2 llama2-13b true 2 /mnt/llama2-datasets/wudao_train.json /mnt/llama2-datasets/wudao_valid.json /mnt/llama2-ckpts/Llama-2-13b-hf /mnt/output_llama2_finetune
 ```
@@ -25,6 +32,7 @@ $ bash run_ds_train_huggingface_finetune.sh dsw 13B 1 2 1e-5 2048 bf16 2 true tr
 ```
 $ bash run_ds_train_huggingface_finetune.sh dsw 7B 1 2 1e-5 2048 bf16 2 true false false 2 /mnt/qwen-datasets/wudao_train.json /mnt/qwen-datasets/wudao_valid.json /mnt/qwen-ckpts/qwen-7b-hf /mnt/output_qwen_finetune
 >>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
+>>>>>>> efb6afdcd0b0c2d2914d59c2a0e111ecb085a760
 ```
 
 ### Text Generation
