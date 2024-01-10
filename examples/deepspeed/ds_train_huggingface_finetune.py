@@ -107,8 +107,14 @@ def get_tasks_args(parser):
     group.add_argument('--lr', type=float, default=None,
                        help='Initial learning rate. Depending on decay style and initial warmup, the learing rate at '
                             'each iteration would be different.')
+<<<<<<< HEAD
+    parser.add_argument('--model', type=str, help='name and size of the model',
+                        choices=['llama2-13b', 'qwen-7b', 'qwen-14b', 'qwen-72b'])
+    parser.add_argument('--flash', action='store_true', help='use flash attention, only work for llama2-13b.')
+=======
     parser.add_argument('--is-llama2', action='store_true', help='is llama2.')
     parser.add_argument('--flash', action='store_true', help='use flash attention.')
+>>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
     return parser
 
 
@@ -363,11 +369,22 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.load, trust_remote_code=True)
 
+<<<<<<< HEAD
+    if args.model in ('qwen-7b', 'qwen-14b', 'qwen-72b'):
+        tokenizer.eos_token = '<|endoftext|>'
+        tokenizer.pad_token = tokenizer.eos_token
+
+=======
+>>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
     init_contexts = [no_init_weights(_enable=False)]
     if is_deepspeed_zero3_enabled():
         logger.info("Detected DeepSpeed ZeRO-3: activating zero.init() for this model")
         init_contexts = [deepspeed.zero.Init(config_dict_or_path=deepspeed_config())] + init_contexts
+<<<<<<< HEAD
+    if args.model == 'llama2-13b':
+=======
     if args.is_llama2:
+>>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
         config = transformers.CONFIG_MAPPING['llama'](
             num_hidden_layers=args.num_layers,
             hidden_size=args.hidden_size,
@@ -434,16 +451,28 @@ def main():
         return data_dict
 
     with training_args.main_process_first(desc="dataset map tokenization"):
+<<<<<<< HEAD
+        num_proc = 1 if args.model in ('qwen-7b', 'qwen-14b', 'qwen-72b') else 64
+        lm_datasets = raw_datasets.map(
+            tokenize_function,
+            batched=True,
+            num_proc=num_proc
+=======
         lm_datasets = raw_datasets.map(
             tokenize_function,
             batched=True,
             num_proc=64
+>>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
         )
 
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=lm_datasets["train"],
+<<<<<<< HEAD
+        eval_dataset=lm_datasets["validation"],
+=======
+>>>>>>> d7e17d312adede2ca7b66be481f47786fe68f65b
         tokenizer=tokenizer,
         data_collator=default_data_collator,
     )
