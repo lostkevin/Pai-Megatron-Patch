@@ -25,7 +25,10 @@ import torch
 import ftfy
 import lm_dataformat as lmd
 import tqdm
-from megatron.data import indexed_dataset
+try:
+    from megatron.data import indexed_dataset
+except:
+    from megatron.core.datasets import indexed_dataset
 from megatron_patch.tokenizer import build_tokenizer
 
 sys.path.append(
@@ -48,7 +51,7 @@ class Encoder(object):
             doc_ids = []
             if self.args.patch_tokenizer_type in ['BloomTokenizerFromHF', 'GLM10BZHTokenizerFromHF', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF', 'QwenTokenizer']:
                 text_ids = Encoder.tokenizer(text)['input_ids']
-            elif self.args.patch_tokenizer_type == 'LLamaTokenizer':
+            elif self.args.patch_tokenizer_type in ['LLamaTokenizer', 'MistralTokenizer']:
                 text_ids = Encoder.tokenizer(text, add_special_tokens=False)['input_ids']
             else:
                 text_ids = Encoder.tokenizer.tokenize(text)
@@ -63,7 +66,7 @@ class Encoder(object):
                         'BloomTokenizerFromHF':
                     doc_ids[-1].append(Encoder.tokenizer.eod)
                 elif self.args.patch_tokenizer_type in \
-                        ['GLM10BZHTokenizerFromHF', 'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF']:
+                        ['GLM10BZHTokenizerFromHF', 'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF', 'MistralTokenizer']:
                     doc_ids[-1].append(Encoder.tokenizer.eos_token_id)
                 elif self.args.patch_tokenizer_type == \
                         'IcetkGLM130BTokenizer':
@@ -101,7 +104,7 @@ def get_args():
             'JiebaBPETokenizer', 'BloomTokenizerFromHF',
             'ChatGLMTokenizerFromHF', 'GPT2BPETokenizer',
             'GLM10BZHTokenizerFromHF', 'IcetkGLM130BTokenizer',
-            'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF','QwenTokenizer'
+            'LLamaTokenizer', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF','QwenTokenizer', 'MistralTokenizer'
         ],
         help='What type of tokenizer to use.',
     )
@@ -223,10 +226,9 @@ def main():
                                                       'document')
         output_idx_files[key] = '{}_{}_{}.idx'.format(args.output_prefix, key,
                                                       'document')
-        builders[key] = indexed_dataset.make_builder(
+        builders[key] = indexed_dataset.MMapIndexedDatasetBuilder(
             output_bin_files[key],
-            impl=args.dataset_impl,
-            vocab_size=tokenizer.vocab_size,
+            dtype=indexed_dataset.DType.optimal_dtype(tokenizer.vocab_size),
         )
 
     # actually do tokenization

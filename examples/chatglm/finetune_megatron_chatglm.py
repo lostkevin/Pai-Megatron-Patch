@@ -19,10 +19,9 @@ from megatron import get_args
 from megatron.initialize import initialize_megatron
 from megatron.utils import average_losses_across_data_parallel_group
 
-from megatron_patch.data.finetune_dataset import ChatGLMDataset
+from megatron_patch.data import build_finetune_dataset
 from megatron_patch.finetune_utils import finetune
 from megatron_patch.model.chatglm.gpt_model import GPTModel
-from megatron_patch.tokenizer import build_tokenizer
 from megatron_patch.arguments import get_tasks_args
 
 def model_provider(pre_process=True, post_process=True):
@@ -34,13 +33,8 @@ def model_provider(pre_process=True, post_process=True):
 
 
 def train_valid_datasets_provider():
-    """Build train and validation dataset."""
     args = get_args()
-    tokenizer = build_tokenizer(args)
-    train_dataset = ChatGLMDataset(args.train_data, tokenizer,
-                                   args.source_seq_len, args.target_seq_len)
-    valid_dataset = ChatGLMDataset(args.valid_data, tokenizer,
-                                   args.source_seq_len, args.target_seq_len)
+    train_dataset, valid_dataset = build_finetune_dataset(args.dataset)
     return train_dataset, valid_dataset
 
 

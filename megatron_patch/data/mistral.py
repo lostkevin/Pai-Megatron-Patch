@@ -30,6 +30,7 @@ class MistralRawDataset(torch.utils.data.Dataset):
             self.max_padding_length = max_padding_length + 1
         else:
             self.max_padding_length = max_padding_length
+        """
         PROMPT_DICT = {
             'prompt_input':
             ('Below is an instruction that describes a task,'
@@ -41,6 +42,11 @@ class MistralRawDataset(torch.utils.data.Dataset):
             ('Below is an instruction that describes a task. '
              'Write a response that appropriately completes the request.\n\n'
              '### Instruction:\n{instruction}\n\n### Response:'),
+        }
+        """
+        PROMPT_DICT = {
+            'prompt_input': ('[INST]{instruction} {input}[/INST]'),
+            'prompt_no_input':('[INST]{instruction}[/INST]'),
         }
 
         list_data_dict = self.jload(path[0])
@@ -192,9 +198,13 @@ class MistralIdxMapDataset(torch.utils.data.Dataset):
         self.split = args.split
         # Checks
         assert np.min(documents) >= 0
-        assert np.max(documents) < indexed_dataset.sizes.shape[0]
+        try:
+            assert np.max(documents) < indexed_dataset.sizes.shape[0]
+        except:
 
-        from megatron.data.gpt_dataset import _build_index_mappings
+            assert np.max(documents) < indexed_dataset.document_indices.shape[0]
+
+        from megatron_patch.data.gpt3 import _build_index_mappings
         # Build index mappings.
         try:
             self.doc_idx, self.sample_idx, self.shuffle_idx, self.index_prefix = \
@@ -204,7 +214,7 @@ class MistralIdxMapDataset(torch.utils.data.Dataset):
         except:
             self.doc_idx, self.sample_idx, self.shuffle_idx, self.desc, self.desc_hash = \
                 _build_index_mappings(self.name, data_prefix,
-                                  documents, self.indexed_dataset.sizes,
+                                  documents, self.indexed_dataset.document_indices,
                                   self.split, num_samples, self.max_padding_length, seed,
                                   data_cache_path=None)
 

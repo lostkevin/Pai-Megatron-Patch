@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
-import io
+import random
 import json
 import math
 import os
@@ -22,8 +21,8 @@ from itertools import accumulate
 import numpy as np
 import torch
 
-from megatron import get_args
 from megatron_patch.tokenizer import get_tokenizer
+from .gpt3 import GPTDataset
 
 class GLM130BDataset(torch.utils.data.Dataset):
     """A class for processing a GLM130B text dataset"""
@@ -246,9 +245,9 @@ class GLMDataset(GPTDataset):
 
 class ChatGLMDataset(GPTDataset):
     """ChatGLM dataset class."""
-    def __init__(self, datapaths, tokenizer, max_source_length,
+    def __init__(self, datapaths, max_source_length,
                  max_target_length):
-        self.tokenizer = tokenizer
+        self.tokenizer = get_tokenizer()
         self.max_source_length = max_source_length
         self.max_target_length = max_target_length
         self.samples = []
@@ -356,6 +355,7 @@ class GLM130BIdxMapDataset(torch.utils.data.Dataset):
         assert np.min(documents) >= 0
         assert np.max(documents) < indexed_dataset.sizes.shape[0]
 
+        from megatron.data.gpt_dataset import _build_index_mappings
         # Build index mappings.
         self.doc_idx, self.sample_idx, self.shuffle_idx, self.index_prefix = \
             _build_index_mappings(self.name, data_prefix,

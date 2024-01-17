@@ -1,9 +1,9 @@
 #!/bin/bash
-#sh mcore_run_evaluate_megatron_mixtral.sh dsw ../.. 7B 1 81 81 0 bf16 2 1 sel false false true false /mnt/llama2-datasets/alpaca_data.json /mnt/mixtral-ckpts/Mixtral-8x7B-v0.1-to-mcore-tp2-pp1
+#sh run_evaluate_megatron_mixtral.sh dsw ../.. 0.125B 1 81 81 0 bf16 2 1 sel false false true false /mnt/llama2-datasets/alpaca_data.json /mnt/mixtral-ckpts/Mixtral-8x7B-v0.1
 set -e
 ENV=$1
 MEGATRON_PATCH_PATH=$2
-MEGATRON_PATH=${MEGATRON_PATCH_PATH}/Megatron-MoE-EA
+MEGATRON_PATH=${MEGATRON_PATCH_PATH}/Megatron-LM-231221
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
@@ -13,13 +13,14 @@ MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
 GPUS_PER_NODE=8
-WORLD_SIZE=$GPUS_PER_NODE
+TOTAL_GPUS=$(($GPUS_PER_NODE*$NNODES))
 
 elif [ $ENV = dlc ]; then
 
 NNODES=${WORLD_SIZE}
 NODE_RANK=${RANK}
 GPUS_PER_NODE=${KUBERNETES_CONTAINER_RESOURCE_GPU}
+TOTAL_GPUS=$(($GPUS_PER_NODE*$NNODES))
 
 fi
 
@@ -41,7 +42,20 @@ TE=${15}
 DATASET_PATH=${16}
 PRETRAIN_CHECKPOINT_PATH=${17}
 
-if [ $MODEL_SIZE = 7B ]; then
+if [ $MODEL_SIZE = 0.125B ]; then
+
+NUM_LAYERS=2
+HIDDEN_SIZE=4096
+NUM_ATTN_HEADS=32
+INTERMEDIATE_SIZE=14336
+MPE=32768
+SLW=4096
+
+gqa_options=" \
+		    --group-query-attention \
+		    --num-query-groups 8"
+
+elif [ $MODEL_SIZE = 7B ]; then
 
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
@@ -113,8 +127,7 @@ fi
 
 if [ $SP = true ] && [ $TP -gt 1 ]; then
     sp_options=" \
-		    --sequence-parallel \
-		    --expert-tensor-parallelism"
+		    --sequence-parallel"
 
 elif [ $SP = false ]; then
     sp_options=" \
@@ -126,7 +139,7 @@ if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
             --load $PRETRAIN_CHECKPOINT_PATH"
 fi
 
-EP=$(($WORLD_SIZE/$TP/$PP))
+EP=$(($TOTAL_GPUS/$TP/$PP))
 
 megatron_options=" \
         --valid-data-path ${DATASET_PATH}
@@ -150,7 +163,6 @@ megatron_options=" \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
         --patch-tokenizer-type MistralTokenizer \
         --dataset Mistral-SFT \
-        --sliding-window ${SLW} \
         --swiglu \
         --use-rotary-position-embeddings \
         --position-embedding-type rope \
@@ -165,7 +177,7 @@ megatron_options=" \
         --expert-model-parallel-size ${EP}
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS mcore_evaluate_megatron_mixtral.py
+run_cmd="torchrun $DISTRIBUTED_ARGS evaluate_megatron_mixtral.py
  ${megatron_options} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${do_options} ${flash_options} ${sp_options} ${gqa_options}"
 
 echo ${run_cmd}

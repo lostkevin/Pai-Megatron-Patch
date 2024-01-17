@@ -37,8 +37,7 @@ from megatron.core.pipeline_parallel.schedules import get_forward_backward_func
 from megatron.core.enums import ModelType
 from megatron.core.utils import get_model_config
 from megatron.model.vision.knn_monitor import compute_feature_bank
-
-from .checkpointing import load_checkpoint, save_checkpoint
+from megatron.checkpointint import load_checkpoint, save_checkpoint
 
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
@@ -309,15 +308,32 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     if wrap_with_ddp:
         if not args.moe:
-            from megatron.model import DistributedDataParallel as DDP
+            try:
+                from megatron.model import DistributedDataParallel as DDP
+            except:
+                from megatron.core.distributed import DistributedDataParallel as DDP
         else:
             from megatron_patch.distributed import DistributedDataParallel as DDP
-        model = [DDP(model_module,
-                     data_parallel_group=mpu.get_data_parallel_group(),
-                     accumulate_allreduce_grads_in_fp32=args.accumulate_allreduce_grads_in_fp32,
-                     overlap_grad_reduce=args.overlap_grad_reduce,
-                     use_distributed_optimizer=args.use_distributed_optimizer)
-                 for model_module in model]
+
+        try:
+            model = [DDP(model_module,
+                         data_parallel_group=mpu.get_data_parallel_group(),
+                         accumulate_allreduce_grads_in_fp32=args.accumulate_allreduce_grads_in_fp32,
+                         overlap_grad_reduce=args.overlap_grad_reduce,
+                         use_distributed_optimizer=args.use_distributed_optimizer)
+                     for model_module in model]
+        except:
+            config = get_model_config(model[0])
+            model = [DDP(config,
+                         model_chunk,
+                         data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True),
+                         accumulate_allreduce_grads_in_fp32=args.accumulate_allreduce_grads_in_fp32,
+                         overlap_grad_reduce=args.overlap_grad_reduce,
+                         use_distributed_optimizer=args.use_distributed_optimizer,
+                         # Turn off bucketing for model_chunk 2 onwards, since communication for these
+                         # model chunks is overlapped with compute anyway.
+                         disable_bucketing=(model_chunk_idx > 0))
+                     for (model_chunk_idx, model_chunk) in enumerate(model)]
 
         # Broadcast params from data parallel src rank to other data parallel ranks.
         if args.data_parallel_random_init:
@@ -380,7 +396,10 @@ def train_step(forward_step_func, data_iterator,
 
     # Set grad to zero.
     for partition in model:
-        partition.zero_grad_buffer()
+        try:
+            partition.zero_grad_buffer()
+        except:
+            partition.zero_grad_buffer(zero_buffer=(not args.use_distributed_optimizer))
     optimizer.zero_grad()
 
     # Forward pass.
@@ -409,9 +428,11 @@ def train_step(forward_step_func, data_iterator,
     update_successful, grad_norm, num_zeros_in_grad = optimizer.step(args, timers)
     timers('optimizer').stop()
 
-    # Gather params.
-    if update_successful:
-        optimizer.gather_model_params(args, timers)
+    try:
+        if update_successful:
+            optimizer.gather_model_params(args, timers)
+    except:
+        pass
 
     # Vision momentum.
     if args.vision_pretraining and args.vision_pretraining_type == "dino":
