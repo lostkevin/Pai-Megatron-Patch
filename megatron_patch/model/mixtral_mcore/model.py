@@ -50,7 +50,7 @@ class GPTModel(LanguageModule):
         share_embeddings_and_output_weights: bool = False,
         position_embedding_type: Literal['learned_absolute', 'rope'] = 'learned_absolute',
         rotary_percent: float = 1.0,
-        rotary_base: int = 10000,
+        rotary_base: int = 1000000,
         seq_len_interpolation_factor: Optional[float] = None,
     ) -> None:
         super().__init__(config=config)
