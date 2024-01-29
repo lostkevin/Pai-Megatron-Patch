@@ -17,19 +17,6 @@ import argparse
 import dataclasses
 import torch.nn.functional as F
 
-def validate_moe_args(args, defaults={}):
-    if args.num_experts is not None:
-        args.moe = True
-        if args.moe_expert_parallel_size is None:
-            args.moe_expert_parallel_size = args.data_parallel_size
-            if args.tensor_model_parallel_size > 0 and not args.expert_tensor_parallelism:
-                # EP will use the span of DP*TP
-                args.moe_expert_parallel_size *= args.tensor_model_parallel_size
-        if args.rank == 0:
-            print('Experts set to %s, expert parallel size set to %d'
-                  % (str(args.num_experts), args.moe_expert_parallel_size))
-    else:
-        args.moe = False
 
 def core_transformer_config_from_args(args, TransformerConfig):
 
@@ -48,7 +35,9 @@ def core_transformer_config_from_args(args, TransformerConfig):
     if args.swiglu:
         kw_args['activation_func'] = F.silu
         kw_args['gated_linear_unit'] = True
-        kw_args['bias_gelu_fusion'] = False
+        kw_args['bias_activation_fusion'] = args.bias_swiglu_fusion
+    else:
+        kw_args['bias_activation_fusion'] = args.bias_gelu_fusion
     if args.squared_relu:
         assert not args.swiglu
         def squared_relu(x):
@@ -65,7 +54,7 @@ def core_transformer_config_from_args(args, TransformerConfig):
     # Return Transformer config.
     return TransformerConfig(**kw_args)
 
-def get_tasks_args(parser):
+def get_patch_args(parser):
     group = parser.add_argument_group(title='patch')
 
     for action in vars(group)['_actions']:
@@ -346,14 +335,6 @@ def get_tasks_args(parser):
                        help='Degree of the MoE expert parallelism. By default, '
                        'the size of this value will be automatically determined.')
 
-    group.add_argument(
-        '--moe-token-dropping',
-        action='store_true',
-        help='Currently unsupported. '
-             'This feature involves selectively dropping and padding tokens for each expert '
-             'to achieve a specified capacity, similar to to GShard, Switch-Transformer, and DeepSpeed-MoE.',
-    )
-
     group.add_argument('--moe-train-capacity-factor', type=float, default=1.0,
                        help='The capacity of the MoE expert at training time')
 
@@ -376,6 +357,16 @@ def get_tasks_args(parser):
     group.add_argument('--moe-input-feature-slicing', action='store_true',
                        help='Enable moe all2all performance optimization.')
 
+    """
+    
+    group.add_argument(
+        '--moe-token-dropping',
+        action='store_true',
+        help='Currently unsupported. '
+             'This feature involves selectively dropping and padding tokens for each expert '
+             'to achieve a specified capacity, similar to to GShard, Switch-Transformer, and DeepSpeed-MoE.',
+    )
+    
     group.add_argument(
         '--moe-router-type',
         type=str,
@@ -392,5 +383,5 @@ def get_tasks_args(parser):
         'leveraging the Grouped GEMM feature introduced since '
         'CUTLASS 2.8 (https://github.com/fanshiqing/grouped_gemm).',
     )
-
+    """
     return parser

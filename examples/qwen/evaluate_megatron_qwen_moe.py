@@ -26,20 +26,23 @@ from megatron.utils import (
     get_batch_on_this_cp_rank,
     average_losses_across_data_parallel_group
 )
-
 from megatron.checkpointing import load_checkpoint
 from megatron.training import get_model
 from megatron.initialize import initialize_megatron
 
-
+from megatron_patch.tokenizer import get_tokenizer
 from megatron_patch.data import build_evaluation_dataset
 from megatron_patch.finetune_utils import build_data_loader
-from megatron_patch.arguments import get_tasks_args
-from megatron_patch.tokenizer import get_tokenizer
+from megatron_patch.arguments import get_patch_args
 from megatron_patch.arguments import core_transformer_config_from_args
-from megatron_patch.model.mixtral_mcore.model import GPTModel
-from megatron_patch.model.mixtral_mcore.layer_specs import get_gpt_layer_with_transformer_engine_spec
-from megatron_patch.model.mixtral_mcore.transformer_config import TransformerConfig
+from megatron_patch.model.mixtral.model import GPTModel
+from megatron_patch.model.mixtral.layer_specs import get_gpt_layer_with_transformer_engine_spec
+from megatron_patch.model.mixtral.transformer_config import TransformerConfig
+
+import torch._dynamo
+
+torch._dynamo.config.suppress_errors = True
+
 
 def get_model_provider():
     def model_provider(pre_process=True, post_process=True):
@@ -180,5 +183,5 @@ def main():
 
 
 if __name__ == '__main__':
-    initialize_megatron(extra_args_provider=get_tasks_args)
+    initialize_megatron(extra_args_provider=get_patch_args)
     main()

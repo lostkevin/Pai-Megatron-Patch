@@ -49,12 +49,15 @@ class Encoder(object):
         ids = {}
         for key in self.args.jsonl_keys:
             doc_ids = []
-            if self.args.patch_tokenizer_type in ['BloomTokenizerFromHF', 'GLM10BZHTokenizerFromHF', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF', 'QwenTokenizer']:
-                text_ids = Encoder.tokenizer(text)['input_ids']
-            elif self.args.patch_tokenizer_type in ['LLamaTokenizer', 'MistralTokenizer']:
-                text_ids = Encoder.tokenizer(text, add_special_tokens=False)['input_ids']
-            else:
-                text_ids = Encoder.tokenizer.tokenize(text)
+            try:
+                if self.args.patch_tokenizer_type in ['BloomTokenizerFromHF', 'GLM10BZHTokenizerFromHF', 'FalconTokenizer', 'OPTTokenizer','StarcoderTokenizerFromHF', 'QwenTokenizer']:
+                    text_ids = Encoder.tokenizer(text)['input_ids']
+                elif self.args.patch_tokenizer_type in ['LLamaTokenizer', 'MistralTokenizer']:
+                    text_ids = Encoder.tokenizer(text, add_special_tokens=False)['input_ids']
+                else:
+                    text_ids = Encoder.tokenizer.tokenize(text)
+            except:
+                continue
             if len(text_ids) > 0:
                 doc_ids.append(text_ids)
             if self.args.append_eod:

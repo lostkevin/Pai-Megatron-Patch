@@ -9,7 +9,7 @@ import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-def get_tasks_args(parser):
+def get_patch_args(parser):
     group = parser.add_argument_group(title='vllm inference')
     group.add_argument('--cuda-visible-devices', type=int, default=0, help='Cuda visible devices', required=False)
     group.add_argument('--checkpoint', type=str, help='The checkpoint of the the specified model', required=True)
@@ -20,7 +20,7 @@ def get_tasks_args(parser):
 
 
 parser = argparse.ArgumentParser(description='Deepspeed Inference')
-parser = get_tasks_args(parser)
+parser = get_patch_args(parser)
 args = parser.parse_args()
 
 os.environ['CUDA_VISIBLE_DEVICES'] = str(args.cuda_visible_devices)

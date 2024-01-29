@@ -1,4 +1,16 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023 Alibaba PAI and Nvidia Megatron-LM Team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from megatron.core.fusions.fused_bias_dropout import get_bias_dropout_add
 from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
@@ -7,9 +19,9 @@ from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubm
 from megatron.core.transformer.custom_layers.transformer_engine import (
     TEDotProductAttention,
     TELayerNormColumnParallelLinear,
+    TENorm,
     TERowParallelLinear,
 )
-from megatron.core.transformer.custom_layers.transformer_engine import TENorm
 from megatron.core.transformer.dot_product_attention import DotProductAttention
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.identity_op import IdentityOp
@@ -17,7 +29,8 @@ from megatron.core.transformer.mlp import MLP, MLPSubmodules
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
 
-from .moe.moe_layer import SwitchMLPLayer
+from .moe.moe_layer import MoELayer
+
 
 # Use this spec to use lower level Transformer Engine modules (required for fp8 training)
 def get_gpt_layer_with_transformer_engine_spec(
@@ -68,6 +81,10 @@ def get_gpt_layer_local_spec(num_experts: int = None, moe_grouped_gemm: bool = F
             pre_mlp_layernorm=FusedLayerNorm,
             mlp=mlp,
             mlp_bda=get_bias_dropout_add,
+            sharded_state_dict_keys_map={
+                'input_layernorm.': 'self_attention.linear_qkv.layer_norm_',
+                'pre_mlp_layernorm.': 'mlp.linear_fc1.layer_norm_',
+            },
         ),
     )
 
@@ -88,7 +105,7 @@ def _get_mlp_module_spec(
     else:
         # SwitchMLP based MoE with modules in megatron core.
         return ModuleSpec(
-            module=SwitchMLPLayer,
+            module=MoELayer,
             submodules=MLPSubmodules(linear_fc1=ColumnParallelLinear, linear_fc2=RowParallelLinear,)
             if not moe_grouped_gemm
             else None,

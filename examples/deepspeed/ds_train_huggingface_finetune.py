@@ -81,7 +81,7 @@ if support_flash_attn:
             flash_attn_varlen_qkvpacked_func = dummy_function
 
 
-def get_tasks_args(parser):
+def get_patch_args(parser):
     group = parser.add_argument_group(title='llama2')
     group.add_argument('--local-rank', type=int, default=None, help='local rank passed from distributed launcher')
     group.add_argument('--micro-batch-size', type=int, default=None,
@@ -114,7 +114,7 @@ def get_tasks_args(parser):
 
 
 parser = argparse.ArgumentParser(description='PyTorch LLaMA Training')
-parser = get_tasks_args(parser)
+parser = get_patch_args(parser)
 args = parser.parse_args()
 
 

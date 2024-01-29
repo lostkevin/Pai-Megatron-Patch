@@ -6,7 +6,7 @@ import argparse
 from vllm import LLM, SamplingParams
 
 
-def get_tasks_args(parser):
+def get_patch_args(parser):
     group = parser.add_argument_group(title='vllm inference')
     group.add_argument('--checkpoint', type=str, help='The checkpoint of the the specified model', required=True)
     group.add_argument('--input-file', type=argparse.FileType('r'), help='Specify the input file', required=True)
@@ -16,7 +16,7 @@ def get_tasks_args(parser):
 
 
 parser = argparse.ArgumentParser(description='vllm Inference')
-parser = get_tasks_args(parser)
+parser = get_patch_args(parser)
 args = parser.parse_args()
 
 
