@@ -23,7 +23,6 @@ from .router import TopKRouter
 from .token_dispatcher import MoEDroplessTokenDispatcher
 from ..transformer_config import TransformerConfig
 
-
 class BaseMoELayer(MegatronModule, ABC):
     """Base class for a mixture of experts layer.
 
@@ -75,6 +74,25 @@ class MoELayer(BaseMoELayer):
         )
 
     def forward(self, hidden_states: torch.Tensor):
+        """
+        Forward pass for the MoE layer.
+
+        The method routes input tokens to the appropriate expert networks,
+        processes the tokens with the experts, and then combines the outputs.
+
+        Args:
+            hidden_states (torch.Tensor): The input tensor containing the hidden states
+            from the previous layer of the transformer model.This tensor is expected to 
+            have a shape compatible with the expectations of the MoE layer, typically
+            [batch_size, sequence_length, hidden_size].
+
+        Returns:
+            Tupletorch.Tensor, torch.Tensor: A tuple containing two elements:
+                - The first element is the output tensor after processing by the MoE layer.
+                  It has the same shape as the input hidden_states.
+                - The second element is the bias introduced by the MLP experts, which may
+                need to be accounted for in subsequent layers or loss calculations.
+        """
         # process MoE
         scores, indices = self.router(hidden_states)
         (
