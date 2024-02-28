@@ -369,8 +369,8 @@ class TransformerLanguageModel(MegatronModule):
             self._embedding_key = 'embedding'
 
         # Rotary positional embeddings
+        self.seq_length = args.seq_length
         if args.use_rotary_position_embeddings:
-            self.seq_length = args.seq_length
             rotary_dim = args.hidden_size // args.num_attention_heads \
                 if args.kv_channels is None else args.kv_channels
 
