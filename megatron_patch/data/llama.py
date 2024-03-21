@@ -60,7 +60,6 @@ class LLamaRawDataset(torch.utils.data.Dataset):
     def __init__(self, path, max_padding_length, split='train'):
         args = get_args()
         self.tokenizer = get_tokenizer()
-        # core/tensor_parallel/cross_entropy.py, target_mask = (target < vocab_start_index) | (target >= vocab_end_index)
         self.IGNORE_INDEX = self.tokenizer.pad_token_id
         if "-Pretrain" in args.dataset:
             self.max_padding_length = max_padding_length + 1
@@ -116,6 +115,7 @@ class LLamaRawDataset(torch.utils.data.Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
+        idx = 0
         raw_sample = self.samples[idx]
         return self.gpt_convert_example_to_feature(raw_sample)
 
@@ -129,41 +129,32 @@ class LLamaRawDataset(torch.utils.data.Dataset):
         Returns:
             dict: a dictionary containing the input_ids and labels for the examples
         """
-        """
-        prompt_input = PROMPT_DICT['prompt_input']
-
-        sources = [
-            prompt_input.format_map({"instruction": input})
-            for input in examples['instruction']
-        ]
-        """
 
         prompt_input, prompt_no_input = PROMPT_DICT[
             'prompt_input'], PROMPT_DICT['prompt_no_input']
 
+        sources = []
         if 'input' not in examples:
             if 'instruction' in examples:
-                examples['input'] = [''] * len(examples['instruction'])
-            elif 'text' in examples:
-                examples['input'] = [''] * len(examples['text'])
-
-        if 'text' in examples:
-            sources = [
-                '{input}'.format_map({"input": ""}) for _ in examples['text']
-            ]
+                for instruction in examples['instruction']:
+                    sources.append(prompt_no_input.format_map({"instruction": instruction}))
+            elif 'query' in examples:
+                for query in examples['query']:
+                    sources.append(prompt_no_input.format_map({"instruction": query}))
         else:
-            sources = [
-                prompt_input.format_map({"instruction": instruction, "input": minput}) if minput
-                else prompt_no_input.format_map({"instruction": instruction})
-                for instruction, minput in zip(examples['instruction'], examples['input'])
-            ]
+            if 'instruction' in examples:
+                for instruction, minput in zip(examples['instruction'], examples['input']):
+                    sources.append(prompt_input.format_map({"instruction": instruction, "input": minput}))
+            elif 'query' in examples:
+                for query, minput in zip(examples['query'], examples['input']):
+                    sources.append(prompt_input.format_map({"instruction": query, "input": minput}))
 
         if 'output' in examples:
             key = 'output'
         elif 'content' in examples:
             key = 'content'
-        elif 'text' in examples:
-            key = 'text'
+        elif 'response' in examples:
+            key = 'response'
 
         targets = [
             example + self.tokenizer.eos_token
@@ -199,6 +190,7 @@ class LLamaRawDataset(torch.utils.data.Dataset):
                 padding='max_length',
                 max_length=self.max_padding_length,
                 truncation=True,
+                add_special_tokens=False
             ) for text in strings
         ]
         input_ids = labels = [
