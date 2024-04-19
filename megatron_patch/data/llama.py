@@ -17,7 +17,10 @@ import io
 import copy
 import json
 import torch
-from megatron import get_args
+try:
+    from megatron import get_args
+except:
+    from megatron.training import get_args
 from datasets import load_dataset
 from tqdm import tqdm
 
@@ -115,7 +118,6 @@ class LLamaRawDataset(torch.utils.data.Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        idx = 0
         raw_sample = self.samples[idx]
         return self.gpt_convert_example_to_feature(raw_sample)
 
