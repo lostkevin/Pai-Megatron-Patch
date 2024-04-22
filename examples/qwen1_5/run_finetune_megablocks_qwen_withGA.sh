@@ -1,8 +1,9 @@
 #!/bin/bash
+#sh run_pretrain_megablocks_qwen.sh dsw ../.. 0.5B 1 8 1e-5 1e-6 2048 32768 293 fp16 1 1 sel false false true false true 10 /mnt/qwen-datasets/wudao_qwenbpe_content_document /mnt/qwen-ckpts/Qwen1.5-0.5B 18349219840 183492198 debug
 set -e
 ENV=$1
 MEGATRON_PATCH_PATH=$2
-MEGATRON_PATH=${MEGATRON_PATCH_PATH}/Megatron-LM-240405
+MEGATRON_PATH=${MEGATRON_PATCH_PATH}/Megatron-LM-MegaBlocks
 export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATCH_PATH}:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ $ENV = dsw ]; then
@@ -47,7 +48,6 @@ PRETRAIN_CHECKPOINT_PATH=${23}
 TRAIN_ITERS=${24}
 LR_WARMUP_ITERS=${25}
 OUTPUT_BASEPATH=${26}
-
 
 if [ $MODEL_SIZE = 0.5B ]; then
 
@@ -119,7 +119,7 @@ elif [ $PR = bf16 ]; then
         --bf16"
 elif [ $PR = fp8 ]; then
     pr_options=" \
-        --bf16
+        --bf16 \
         --fp8-hybrid \
         --fp8-amax-compute-algo max \
         --fp8-amax-history-len 1024 \
@@ -155,11 +155,10 @@ fi
 
 if [ $MOE = true ]; then
     moe_options=" \
-		    --moe-router-topk 1 \
-		    --num-experts 8 \
-		    --moe-aux-loss-coeff 1e-2 \
-		    --expert-model-parallel-size 1 \
-		    --moe-router-load-balancing-type aux_loss"
+		    --moe-top-k 2 \
+		    --moe-num-experts 8 \
+		    --moe-loss-weight 1e-2 \
+		    --moe-expert-model-parallelism"
 
 elif [ $MOE = false ]; then
     moe_options=" \
@@ -182,7 +181,7 @@ fi
 
 LR_DECAY_ITERS=$(( ${TRAIN_ITERS} - ${LR_WARMUP_ITERS}))
 
-NAME="${ENV}-finetune-megatron-llama2-${MODEL_SIZE}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}-tt-${TRAIN_TOKENS}-wt-${WARMUP_ITERS}"
+NAME="finetune-mcore-qwen-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}-moe-${MOE}-tt-${TRAIN_TOKENS}-wt-${WARMUP_TOKENS}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
@@ -194,24 +193,23 @@ SAVED_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 
 megatron_options="  \
         --save ${SAVED_PRETRAIN_CHECKPOINT_PATH} \
-        --split 99,1,0 \
         --train-data-path ${DATASET_PATH} \
         --valid-data-path ${VALID_DATASET_PATH} \
         --test-data-path ${VALID_DATASET_PATH} \
         --lr ${LR} \
         --min-lr ${MIN_LR} \
         --lr-decay-style cosine \
+        --weight-decay 0.1 \
         --adam-beta1 0.9 \
         --adam-beta2 0.95 \
-        --weight-decay 0.1 \
         --clip-grad 1.0 \
         --init-method-std 0.008 \
         --attention-dropout 0.0 \
         --hidden-dropout 0.0 \
-        --dataloader-type cyclic \
         --lr-decay-iters ${LR_DECAY_ITERS} \
         --lr-warmup-iters ${LR_WARMUP_ITERS} \
         --train-iters ${TRAIN_ITERS} \
+        --split 99,1,0 \
         --micro-batch-size ${BATCH_SIZE} \
         --global-batch-size ${GLOBAL_BATCH_SIZE} \
         --num-layers ${NUM_LAYERS} \
@@ -241,19 +239,17 @@ megatron_options="  \
         --swiglu \
         --normalization RMSNorm \
         --norm-epsilon 1e-06 \
-        --use-rotary-position-embeddings \
-        --no-rope-fusion \
+        --use-llama2-rotary-position-embeddings \
         --position-embedding-type rope \
         --untie-embeddings-and-output-weights \
         --disable-bias-linear \
         --add-qkv-bias \
-        --use-mcore-models \
         --rotary-percent 1.0 \
         --rotary-base 1000000 \
         --rotary-seq-len-interpolation-factor 1
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_mcore_qwen.py
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_megablocks_qwen.py
  ${megatron_options} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${do_options} ${flash_options} ${sp_options} ${gqa_options} ${moe_options}"
 
 echo ${run_cmd}

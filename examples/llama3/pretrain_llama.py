@@ -73,8 +73,8 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
         )
     else:
         assert(args.context_parallel_size == 1), "Context parallelism is only supported with Megatron Core!"
-
-        model = megatron.legacy.model.GPTModel(
+        from megatron_patch.model.llama3.gpt_model import GPTModel as GPTModelX
+        model = GPTModelX(
             config,
             num_tokentypes=0,
             parallel_output=True,

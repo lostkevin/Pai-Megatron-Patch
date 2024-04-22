@@ -32,34 +32,17 @@ from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegat
 from megatron.training import pretrain
 from megatron.core.datasets.gpt_dataset import GPTDatasetConfig
 from megatron.core.datasets.gpt_dataset import GPTDataset
-from megatron.core.models.gpt import GPTModel
 from megatron.arguments import core_transformer_config_from_args
 
 from megatron_patch.data import build_pretrain_dataset_from_original
 from megatron_patch.data.utils import get_batch_on_this_tp_rank_original
 from megatron_patch.tokenizer import get_tokenizer, build_tokenizer
 from megatron_patch.arguments import get_patch_args
-from megatron_patch.model.mixtral.transformer_config import TransformerConfig
+from megatron_patch.model.mixtral.model import GPTModel
 from megatron_patch.model.mixtral.layer_specs import get_gpt_layer_with_transformer_engine_spec
 
-import torch._dynamo
-torch._dynamo.config.suppress_errors = True
 
-def model_provider(
-    pre_process=True, post_process=True
-) -> Union[GPTModel, megatron.model.GPTModel]:
-    """Builds the model.
-
-    If you set the use_mcore_models to True, it will return the mcore GPT model and if not the legacy GPT model.
-
-    Args:
-        pre_process (bool, optional): Set to true if you need to compute embedings. Defaults to True.
-        post_process (bool, optional): Set to true if you need to want to compute output logits/loss. Defaults to True.
-
-
-    Returns:
-        Union[GPTModel, megatron.model.GPTModel]: The returned model
-    """
+def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megatron.model.GPTModel]:
     args = get_args()
     build_tokenizer(args)
     config = core_transformer_config_from_args(get_args())
@@ -75,12 +58,10 @@ def model_provider(
         parallel_output=True,
         share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
         position_embedding_type=args.position_embedding_type,
-        rotary_percent=args.rotary_percent,
-        rotary_base=args.rotary_base,
+        rotary_percent=args.rotary_percent
     )
 
     return model
-
 
 def get_batch(data_iterator):
     """Generate a batch."""
@@ -107,7 +88,6 @@ def get_batch(data_iterator):
         raise ValueError("please set correct --dataset ")
 
     return batch.values()
-
 
 def loss_func(loss_mask: Tensor, output_tensor: Tensor):
     """Loss function.
@@ -157,12 +137,10 @@ def forward_step(data_iterator, model):
     return output_tensor, partial(loss_func, loss_mask)
 
 
-
 def is_dataset_built_on_rank():
     return (mpu.is_pipeline_first_stage() or mpu.is_pipeline_last_stage()) and mpu.get_tensor_model_parallel_rank() == 0
 
 def core_gpt_dataset_config_from_args(args):
-    tokenizer = get_tokenizer()
     return GPTDatasetConfig(
         is_built_on_rank=is_dataset_built_on_rank,
         random_seed=args.seed,
@@ -170,9 +148,6 @@ def core_gpt_dataset_config_from_args(args):
         blend=args.data_path,
         split=args.split,
         path_to_cache=args.data_cache_path,
-        reset_attention_mask=args.reset_attention_mask,
-        eod_mask_loss=args.eod_mask_loss,
-        eod_id=tokenizer.eod
     )
 
 def train_valid_test_datasets_provider(train_val_test_num_samples):
@@ -191,13 +166,10 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     return train_ds, valid_ds, test_ds
 
 
-
 if __name__ == "__main__":
+
     train_valid_test_datasets_provider.is_distributed = True
-    pretrain(
-        train_valid_test_datasets_provider,
-        model_provider,
-        ModelType.encoder_or_decoder,
-        forward_step,
-        extra_args_provider=get_patch_args,
-    )
+    pretrain(train_valid_test_datasets_provider, model_provider,
+             ModelType.encoder_or_decoder,
+             forward_step,
+             extra_args_provider=get_patch_args)

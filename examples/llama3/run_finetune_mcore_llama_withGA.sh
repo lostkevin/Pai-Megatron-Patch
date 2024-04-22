@@ -49,53 +49,18 @@ LR_WARMUP_ITERS=${25}
 OUTPUT_BASEPATH=${26}
 
 
-if [ $MODEL_SIZE = 0.5B ]; then
-
-NUM_LAYERS=24
-HIDDEN_SIZE=1024
-NUM_ATTN_HEADS=16
-INTERMEDIATE_SIZE=2816
-MAX_POSITION_EMBEDDINGS=32768
-
-elif [ $MODEL_SIZE = 1.8B ]; then
-
-NUM_LAYERS=24
-HIDDEN_SIZE=2048
-NUM_ATTN_HEADS=16
-INTERMEDIATE_SIZE=5504
-MAX_POSITION_EMBEDDINGS=32768
-
-elif [ $MODEL_SIZE = 4B ]; then
-
-NUM_LAYERS=40
-HIDDEN_SIZE=2560
-NUM_ATTN_HEADS=20
-INTERMEDIATE_SIZE=6912
-MAX_POSITION_EMBEDDINGS=32768
-
-elif [ $MODEL_SIZE = 7B ]; then
+if [ $MODEL_SIZE = 8B ]; then
 
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
-INTERMEDIATE_SIZE=11008
-MAX_POSITION_EMBEDDINGS=32768
+INTERMEDIATE_SIZE=14336
+NUM_KEY_VALUE_HEADS=8
+MAX_POSITION_EMBEDDINGS=8192
 
-elif [ $MODEL_SIZE = 13B ]; then
-
-NUM_LAYERS=40
-HIDDEN_SIZE=5120
-NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13696
-MAX_POSITION_EMBEDDINGS=32768
-
-elif [ $MODEL_SIZE = 72B ]; then
-
-NUM_LAYERS=80
-HIDDEN_SIZE=8192
-NUM_ATTN_HEADS=64
-INTERMEDIATE_SIZE=24576
-MAX_POSITION_EMBEDDINGS=32768
+gqa_options=" \
+		    --group-query-attention \
+		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
 
 fi
 
@@ -240,20 +205,19 @@ megatron_options="  \
         --dataset LLama-Pretrain-Raw \
         --swiglu \
         --normalization RMSNorm \
-        --norm-epsilon 1e-06 \
         --use-rotary-position-embeddings \
         --no-rope-fusion \
         --position-embedding-type rope \
         --untie-embeddings-and-output-weights \
         --disable-bias-linear \
-        --add-qkv-bias \
         --use-mcore-models \
-        --rotary-percent 1.0 \
-        --rotary-base 1000000 \
-        --rotary-seq-len-interpolation-factor 1
+        --rotary-base 500000 \
+        --attention-dropout 0.0 \
+        --hidden-dropout 0.0 \
+        --norm-epsilon 1e-05 \
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_mcore_qwen.py
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_llama.py
  ${megatron_options} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${do_options} ${flash_options} ${sp_options} ${gqa_options} ${moe_options}"
 
 echo ${run_cmd}

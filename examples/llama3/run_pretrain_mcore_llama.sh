@@ -42,60 +42,23 @@ TE=${18}
 MOE=${19}
 SAVE_INTERVAL=${20}
 DATASET_PATH=${21}
-VALID_DATASET_PATH=${22}
-PRETRAIN_CHECKPOINT_PATH=${23}
-TRAIN_ITERS=${24}
-LR_WARMUP_ITERS=${25}
-OUTPUT_BASEPATH=${26}
+PRETRAIN_CHECKPOINT_PATH=${22}
+TRAIN_TOKENS=${23}
+WARMUP_TOKENS=${24}
+OUTPUT_BASEPATH=${25}
 
-
-if [ $MODEL_SIZE = 0.5B ]; then
-
-NUM_LAYERS=24
-HIDDEN_SIZE=1024
-NUM_ATTN_HEADS=16
-INTERMEDIATE_SIZE=2816
-MAX_POSITION_EMBEDDINGS=32768
-
-elif [ $MODEL_SIZE = 1.8B ]; then
-
-NUM_LAYERS=24
-HIDDEN_SIZE=2048
-NUM_ATTN_HEADS=16
-INTERMEDIATE_SIZE=5504
-MAX_POSITION_EMBEDDINGS=32768
-
-elif [ $MODEL_SIZE = 4B ]; then
-
-NUM_LAYERS=40
-HIDDEN_SIZE=2560
-NUM_ATTN_HEADS=20
-INTERMEDIATE_SIZE=6912
-MAX_POSITION_EMBEDDINGS=32768
-
-elif [ $MODEL_SIZE = 7B ]; then
+if [ $MODEL_SIZE = 8B ]; then
 
 NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
-INTERMEDIATE_SIZE=11008
-MAX_POSITION_EMBEDDINGS=32768
+INTERMEDIATE_SIZE=14336
+NUM_KEY_VALUE_HEADS=8
+MAX_POSITION_EMBEDDINGS=8192
 
-elif [ $MODEL_SIZE = 13B ]; then
-
-NUM_LAYERS=40
-HIDDEN_SIZE=5120
-NUM_ATTN_HEADS=40
-INTERMEDIATE_SIZE=13696
-MAX_POSITION_EMBEDDINGS=32768
-
-elif [ $MODEL_SIZE = 72B ]; then
-
-NUM_LAYERS=80
-HIDDEN_SIZE=8192
-NUM_ATTN_HEADS=64
-INTERMEDIATE_SIZE=24576
-MAX_POSITION_EMBEDDINGS=32768
+gqa_options=" \
+		    --group-query-attention \
+		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
 
 fi
 
@@ -119,7 +82,7 @@ elif [ $PR = bf16 ]; then
         --bf16"
 elif [ $PR = fp8 ]; then
     pr_options=" \
-        --bf16
+        --bf16 \
         --fp8-hybrid \
         --fp8-amax-compute-algo max \
         --fp8-amax-history-len 1024 \
@@ -155,7 +118,7 @@ fi
 
 if [ $MOE = true ]; then
     moe_options=" \
-		    --moe-router-topk 1 \
+		    --moe-router-topk 2 \
 		    --num-experts 8 \
 		    --moe-aux-loss-coeff 1e-2 \
 		    --expert-model-parallel-size 1 \
@@ -180,9 +143,11 @@ if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
             --load $PRETRAIN_CHECKPOINT_PATH"
 fi
 
-LR_DECAY_ITERS=$(( ${TRAIN_ITERS} - ${LR_WARMUP_ITERS}))
+TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
+LR_WARMUP_ITERS=$(( ${WARMUP_TOKENS}  / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
+LR_DECAY_ITERS=$(( ${TRAIN_TOKENS} /  ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
 
-NAME="${ENV}-finetune-megatron-llama2-${MODEL_SIZE}-lr-${LR}-bs-${BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}-tt-${TRAIN_TOKENS}-wt-${WARMUP_ITERS}"
+NAME="pretrain-mcore-llama3-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}-pr-${PR}-tp-${TP}-pp-${PP}-ac-${AC}-do-${DO}-sp-${SP}-moe-${MOE}-tt-${TRAIN_TOKENS}-wt-${WARMUP_TOKENS}"
 mkdir -p "${OUTPUT_BASEPATH}/tensorboard/"
 mkdir -p "${OUTPUT_BASEPATH}/checkpoint/"
 mkdir -p "${OUTPUT_BASEPATH}/log/"
@@ -194,24 +159,21 @@ SAVED_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 
 megatron_options="  \
         --save ${SAVED_PRETRAIN_CHECKPOINT_PATH} \
-        --split 99,1,0 \
-        --train-data-path ${DATASET_PATH} \
-        --valid-data-path ${VALID_DATASET_PATH} \
-        --test-data-path ${VALID_DATASET_PATH} \
+        --data-path ${DATASET_PATH} \
         --lr ${LR} \
         --min-lr ${MIN_LR} \
         --lr-decay-style cosine \
+        --weight-decay 0.1 \
         --adam-beta1 0.9 \
         --adam-beta2 0.95 \
-        --weight-decay 0.1 \
         --clip-grad 1.0 \
         --init-method-std 0.008 \
         --attention-dropout 0.0 \
         --hidden-dropout 0.0 \
-        --dataloader-type cyclic \
         --lr-decay-iters ${LR_DECAY_ITERS} \
         --lr-warmup-iters ${LR_WARMUP_ITERS} \
         --train-iters ${TRAIN_ITERS} \
+        --split 99,1,0 \
         --micro-batch-size ${BATCH_SIZE} \
         --global-batch-size ${GLOBAL_BATCH_SIZE} \
         --num-layers ${NUM_LAYERS} \
@@ -236,24 +198,21 @@ megatron_options="  \
         --no-load-rng \
         --num-workers 8 \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --patch-tokenizer-type LLamaTokenizer \
-        --dataset LLama-Pretrain-Raw \
+        --patch-tokenizer-type LLama3Tokenizer \
+        --dataset LLama-Pretrain-Idxmap \
         --swiglu \
         --normalization RMSNorm \
-        --norm-epsilon 1e-06 \
+        --norm-epsilon 1e-05 \
         --use-rotary-position-embeddings \
         --no-rope-fusion \
         --position-embedding-type rope \
         --untie-embeddings-and-output-weights \
         --disable-bias-linear \
-        --add-qkv-bias \
         --use-mcore-models \
-        --rotary-percent 1.0 \
-        --rotary-base 1000000 \
-        --rotary-seq-len-interpolation-factor 1
+        --rotary-base 500000 \
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_mcore_qwen.py
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_llama.py
  ${megatron_options} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${do_options} ${flash_options} ${sp_options} ${gqa_options} ${moe_options}"
 
 echo ${run_cmd}
