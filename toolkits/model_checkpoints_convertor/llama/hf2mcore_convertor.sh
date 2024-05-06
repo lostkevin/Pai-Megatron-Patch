@@ -18,7 +18,8 @@ EXTRA_VOCAB_SIZE=$8
 NUM_EXPERTS=$9
 EXPERTS_TOPK=${10}
 EP=${11}
-mg2hf=${12}
+NUM_EXPERT_SPLITS=${12}
+mg2hf=${13}
 
 if [ $MODEL_SIZE = 7B ]; then
 
@@ -26,6 +27,9 @@ NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
 INTERMEDIATE_SIZE=11008
+NUM_KV_HEADS=32
+VOCAB_SIZE=32000
+ROPE_THETA=10000
 
 gqa_options=""
 
@@ -35,7 +39,9 @@ NUM_LAYERS=40
 HIDDEN_SIZE=5120
 NUM_ATTN_HEADS=40
 INTERMEDIATE_SIZE=13824
-
+NUM_KV_HEADS=40
+VOCAB_SIZE=32000
+ROPE_THETA=10000
 gqa_options=""
 
 elif [ $MODEL_SIZE = 70B ]; then
@@ -44,7 +50,9 @@ NUM_LAYERS=80
 HIDDEN_SIZE=8192
 NUM_ATTN_HEADS=64
 INTERMEDIATE_SIZE=28672
-
+NUM_KV_HEADS=8
+VOCAB_SIZE=32000
+ROPE_THETA=10000
 gqa_options=" \
 		    --group-query-attention \
 		    --num-query-groups 8"
@@ -55,6 +63,9 @@ NUM_LAYERS=32
 HIDDEN_SIZE=4096
 NUM_ATTN_HEADS=32
 INTERMEDIATE_SIZE=14336
+NUM_KV_HEADS=8
+VOCAB_SIZE=128256
+ROPE_THETA=500000
 
 gqa_options=" \
 		    --group-query-attention \
@@ -62,13 +73,19 @@ gqa_options=" \
 
 fi
 
+if [ $NUM_EXPERT_SPLITS -gt 0 ]; then
+
+INTERMEDIATE_SIZE=$(( ${INTERMEDIATE_SIZE} / ${NUM_EXPERT_SPLITS}))
+
+fi
 
 if [ $NUM_EXPERTS -gt 0 ]; then
     expert_options="
                 --moe-router-topk ${EXPERTS_TOPK} \
                 --num-experts ${NUM_EXPERTS} \
                 --expert-model-parallel-size 1 \
-                --target_expert_model_parallel_size ${EP}
+                --target_expert_model_parallel_size ${EP} \
+                --num_expert_split_size ${NUM_EXPERT_SPLITS} \
     "
 fi
 
@@ -88,7 +105,9 @@ sed "s/CONFIG_HIDDEN_SIZE/${HIDDEN_SIZE}/" ${template_json} \
     | sed "s/CONFIG_HIDDEN_LAYERS/${NUM_LAYERS}/" \
     | sed "s/CONFIG_NUM_EXPERTS/${NUM_EXPERTS}/" \
     | sed "s/CONFIG_EXPERTS_topk/${EXPERTS_TOPK}/" \
-    | sed "s/CONFIG_KV_HEADS/${NUM_ATTN_HEADS}/" \
+    | sed "s/CONFIG_KV_HEADS/${NUM_KV_HEADS}/" \
+    | sed "s/CONFIG_VOCAB_SIZE/${VOCAB_SIZE}/" \
+    | sed "s/CONFIG_ROPE_THETA/${ROPE_THETA}/" \
 	  > ${config_json}
 
 DISTRIBUTED_ARGS="--nproc_per_node 1 --nnodes 1 --node_rank 0 --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
