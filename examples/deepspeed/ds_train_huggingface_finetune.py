@@ -324,6 +324,7 @@ def main():
         logging_dir=args.logging_dir,
         logging_steps=1,
         disable_tqdm=False,
+        save_strategy='epoch',
         ddp_timeout=18000
     )
 
