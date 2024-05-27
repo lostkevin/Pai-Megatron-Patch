@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Union
-
+import math
 import torch
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.module import MegatronModule
@@ -11,7 +11,8 @@ from megatron.core.utils import divide
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.transformer_config import TransformerConfig
 
-from megatron_patch.model.deepseek_v2.yarn_rotary_pos_embedding import apply_rotary_pos_emb
+from megatron_patch.model.deepseek_v2.yarn_rotary_pos_embedding import DeepseekV2YarnRotaryEmbedding, \
+    apply_rotary_pos_emb, yarn_get_mscale
 
 @dataclass
 class SelfAttentionSubmodules:
@@ -66,6 +67,8 @@ class Attention(MegatronModule, ABC):
 
         self.q_head_dim = self.config.qk_nope_head_dim + self.config.qk_rope_head_dim
         self.softmax_scale = self.q_head_dim ** (-0.5)
+        mscale = yarn_get_mscale(40, 0.707)
+        self.softmax_scale = self.softmax_scale * mscale * mscale
 
         self.core_attention = build_module(
             submodules.core_attention,
@@ -89,6 +92,22 @@ class Attention(MegatronModule, ABC):
             skip_bias_add=True,
             is_expert=False,
             tp_comm_buffer_name='proj',
+        )
+
+        kwargs = {
+            "original_max_position_embeddings": 4096,
+            "beta_fast": 32,
+            "beta_slow": 1,
+            "mscale": 0.707,
+            "mscale_all_dim": 0.707,
+        }
+
+        self.rotary_pos_emb = DeepseekV2YarnRotaryEmbedding(
+            self.config.qk_rope_head_dim,
+            max_position_embeddings=self.config.max_position_embeddings,
+            scaling_factor=self.config.rotary_scaling_factor,
+            base=self.config.rotary_base,
+            **kwargs,
         )
 
     def _checkpointed_attention_forward(
@@ -137,7 +156,7 @@ class Attention(MegatronModule, ABC):
         return hidden_states
 
     @abstractmethod
-    def get_query_key_value_tensors(self, hidden_states, key_value_states, rotary_pos_emb, position_ids):
+    def get_query_key_value_tensors(self, hidden_states, key_value_states, position_ids):
         """
         This method needs to be implemented based on whether the derived class
         is "self-attn" or "cross-attn".
@@ -163,7 +182,7 @@ class Attention(MegatronModule, ABC):
 
         q_len, bsz, _ = hidden_states.size()
 
-        query_states, key_states, value_states = self.get_query_key_value_tensors(hidden_states, key_value_states, rotary_pos_emb, position_ids)
+        query_states, key_states, value_states = self.get_query_key_value_tensors(hidden_states, key_value_states, position_ids)
 
         attn_weights = (
             torch.matmul(query_states, key_states.transpose(2, 3)) * self.softmax_scale
@@ -344,14 +363,13 @@ class SelfAttention(Attention):
             eps=self.config.layernorm_epsilon,
         )
 
-    def get_query_key_value_tensors(self, hidden_states, key_value_states=None, rotary_pos_emb=None, position_ids=None):
+    def get_query_key_value_tensors(self, hidden_states, key_value_states=None, position_ids=None):
         """
         Derives `query`, `key` and `value` tensors from `hidden_states`.
         """
         # Attention heads [sq, b, h] --> [sq, b, ng * (np/ng + 2) * hn)]
 
         q_len, bsz, _ = hidden_states.size()
-
         if self.config.q_lora_rank is not None:
             # [96, 1, 1536]
             q, _ = self.linear_q_a_proj(hidden_states)
@@ -394,7 +412,7 @@ class SelfAttention(Attention):
         value_states = value_states.transpose(0, 1).transpose(1, 2)
         kv_seq_len = value_states.shape[-2]
         #cos: [96, 64], sin:[96, 64]
-        cos, sin = rotary_pos_emb(value_states, seq_len=kv_seq_len)
+        cos, sin = self.rotary_pos_emb(value_states, seq_len=kv_seq_len)
 
         q_pe = q_pe.transpose(0, 1).transpose(1, 2)
         k_pe = k_pe.transpose(0, 1)

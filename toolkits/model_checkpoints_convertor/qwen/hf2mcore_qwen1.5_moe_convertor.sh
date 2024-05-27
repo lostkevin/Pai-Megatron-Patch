@@ -1,5 +1,6 @@
 #!/bin/bash
-# bash hf2mcore_qwen1.5_moe_convertor.sh 2.7B /mnt/qwen-ckpts/Qwen1.5-MoE-A2.7B /mnt/qwen-ckpts/Qwen1.5-MoE-A2.7B-Chat-to-mcore-tp1-pp1-ep4 1 1 4 false
+# bash hf2mcore_qwen1.5_moe_convertor.sh 2.7B /mnt/qwen-ckpts/Qwen1.5-MoE-A2.7B /mnt/qwen-ckpts/Qwen1.5-MoE-A2.7B-to-mcore-tp1-pp1-ep4 1 1 4 false
+# bash hf2mcore_qwen1.5_moe_convertor.sh 2.7B /mnt/qwen-ckpts/Qwen1.5-MoE-A2.7B-to-mcore-tp1-pp1-ep4 /mnt/qwen-ckpts/Qwen1.5-MoE-A2.7B-to-hf 1 1 4 true /mnt/qwen-ckpts/Qwen1.5-MoE-A2.7B
 
 set -e
 export CUDA_VISIBLE_DEVICES=7
@@ -66,7 +67,7 @@ torchrun ${DISTRIBUTED_ARGS} hf2mcore_qwen1.5_moe.py \
     --pipeline-model-parallel-size ${PP} \
     --micro-batch-size 1 \
     --save-interval 1 \
-    --fp16 \
+    --bf16 \
     --swiglu \
     --norm-epsilon 1e-6 \
     --num-layers ${NUM_LAYERS} \
@@ -91,6 +92,9 @@ torchrun ${DISTRIBUTED_ARGS} hf2mcore_qwen1.5_moe.py \
     --attention-dropout 0.0 \
     --hidden-dropout 0.0 \
     --enable-shared-expert \
+    --rotary-percent 1.0 \
+    --rotary-base 1000000 \
+    --rotary-seq-len-interpolation-factor 1
     ${expert_options} \
     ${convert_options} \
     ${gqa_options} \
