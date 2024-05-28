@@ -8,12 +8,12 @@ export CUDA_DEVICE_MAX_CONNECTIONS=1
 
 ENV=$1
 if [ $ENV = dsw ]; then
-export CUDA_VISIBLE_DEVICES=4,5,6,7
+export CUDA_VISIBLE_DEVICES=6
 MASTER_ADDR=localhost
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 NNODES=1
 NODE_RANK=0
-GPUS_PER_NODE=4
+GPUS_PER_NODE=1
 
 elif [ $ENV = dlc ]; then
 
@@ -54,7 +54,6 @@ NUM_ATTN_HEADS=128
 NUM_LAYERS=1
 INTERMEDIATE_SIZE=12288
 MOE_INTERMEDIATE_SIZE=1536
-SHARED_EXPERT_INTERMEDIATE_SIZE=1536
 MAX_POSITION_EMBEDDINGS=163840
 EXTRA_VOCAB_SIZE=2400
 Q_LORA_RANK=1536
@@ -65,13 +64,12 @@ V_HEAD_DIM=128
 ROPE_THETA=10000
 SCALE_FACTOR=40
 NUM_EXPERTS=160
-ROUTER_TOPK=1
+ROUTER_TOPK=6
 NUM_SHARED_EXPERTS=2
 MOE_LAYER_FREQ=1
 
 moe_options=" \
     --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
-    --shared-moe-ffn-hidden-size ${SHARED_EXPERT_INTERMEDIATE_SIZE} \
     --enable-shared-expert \
     --moe-layer-freq ${MOE_LAYER_FREQ} \
     --num-shared-experts ${NUM_SHARED_EXPERTS} \
@@ -94,7 +92,6 @@ NUM_ATTN_HEADS=16
 NUM_LAYERS=27
 INTERMEDIATE_SIZE=10944
 MOE_INTERMEDIATE_SIZE=1408
-SHARED_EXPERT_INTERMEDIATE_SIZE=1408
 MAX_POSITION_EMBEDDINGS=163840
 EXTRA_VOCAB_SIZE=2400
 KV_LORA_RANK=512
@@ -104,13 +101,12 @@ V_HEAD_DIM=128
 ROPE_THETA=10000
 SCALE_FACTOR=40
 NUM_EXPERTS=64
-ROUTER_TOPK=1
+ROUTER_TOPK=6
 NUM_SHARED_EXPERTS=2
 MOE_LAYER_FREQ=1
 
 moe_options=" \
     --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
-    --shared-moe-ffn-hidden-size ${SHARED_EXPERT_INTERMEDIATE_SIZE} \
     --enable-shared-expert \
     --moe-layer-freq ${MOE_LAYER_FREQ} \
     --num-shared-experts ${NUM_SHARED_EXPERTS} \
@@ -247,13 +243,14 @@ megatron_options="  \
         --normalization RMSNorm \
         --norm-epsilon 1e-06 \
         --use-rotary-position-embeddings \
+        --no-bias-swiglu-fusion \
         --no-rope-fusion \
         --position-embedding-type rope \
         --untie-embeddings-and-output-weights \
         --disable-bias-linear \
         --use-mcore-models \
         --rotary-base ${ROPE_THETA} \
-        --rotary-seq-len-interpolation-factor ${SCALE_FACTOR} \
+        --rotary-scaling-factor ${SCALE_FACTOR} \
         --transformer-impl transformer_engine \
         --eod-mask-loss
         "

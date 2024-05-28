@@ -201,6 +201,7 @@ class SequentialMLP(MegatronModule):
         # Insert zero at the begining for offset index's convenience
         zero_tensor = torch.zeros(1, dtype=torch.long, device=cumsum_num_tokens.device)
         cumsum_num_tokens = torch.cat((zero_tensor, cumsum_num_tokens))
+
         for expert_num, expert in enumerate(self.local_experts):
             start = cumsum_num_tokens[expert_num]
             end = cumsum_num_tokens[expert_num + 1]

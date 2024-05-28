@@ -7,8 +7,6 @@ class DeepSeekV2TransformerConfig(TransformerConfig):
 
     moe_ffn_hidden_size: int = None
 
-    shared_moe_ffn_hidden_size: int = None
-
     enable_shared_expert: bool = False
 
     q_lora_rank: int = None
@@ -24,3 +22,7 @@ class DeepSeekV2TransformerConfig(TransformerConfig):
     num_shared_experts: int = None
 
     moe_layer_freq: int = None
+
+    rotary_base: int = None
+
+    rotary_scaling_factor: int = None

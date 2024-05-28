@@ -405,5 +405,10 @@ def get_patch_args(parser):
         default=1
     )
 
+    group.add_argument(
+        "--rotary-scaling-factor",
+        type=int,
+        default=1
+    )
 
     return parser
