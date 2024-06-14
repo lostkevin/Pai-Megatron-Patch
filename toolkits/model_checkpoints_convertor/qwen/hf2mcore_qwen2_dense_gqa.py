@@ -126,6 +126,8 @@ def convert_checkpoint_from_megatron_to_transformers(mgmodel, hfmodel, args):
     head_dim = hidden_size // args.num_attention_heads
     use_te = args.transformer_impl == "transformer_engine"
     value_num_per_group = args.num_attention_heads // num_query_groups
+    q_dim_per_group = hidden_size // num_query_groups
+    kv_dim_per_group = head_dim
     with torch.no_grad():
         hfmodel.model.embed_tokens.weight.copy_(mgmodel.embedding.word_embeddings.weight)
         for mglayer, hflayer in zip(mgmodel.decoder.layers, hfmodel.model.layers):
@@ -140,13 +142,15 @@ def convert_checkpoint_from_megatron_to_transformers(mgmodel, hfmodel, args):
             hflayer.self_attn.k_proj.weight.copy_(k_weight.reshape(-1, hidden_size))
             hflayer.self_attn.v_proj.weight.copy_(v_weight.reshape(-1, hidden_size))
 
-            q_bias, k_bias, v_bias = torch.split(mglayer.self_attention.linear_qkv.bias,
-                                                 split_size_or_sections=[hflayer.self_attn.q_proj.weight.shape[0],
-                                                                         hflayer.self_attn.k_proj.weight.shape[0],
-                                                                         hflayer.self_attn.v_proj.weight.shape[0]], dim=0)
-            hflayer.self_attn.q_proj.bias.copy_(q_bias.reshape(-1))
-            hflayer.self_attn.k_proj.bias.copy_(k_bias.reshape(-1))
-            hflayer.self_attn.v_proj.bias.copy_(v_bias.reshape(-1))
+            qkv_bias = mglayer.self_attention.linear_qkv.bias.view(num_query_groups, -1)
+            q_bias, k_bias, v_bias = torch.split(qkv_bias, split_size_or_sections=[q_dim_per_group, kv_dim_per_group, kv_dim_per_group], dim=1)
+            q_bias = q_bias.contiguous().view(-1)
+            k_bias = k_bias.contiguous().view(-1)
+            v_bias = v_bias.contiguous().view(-1)
+
+            hflayer.self_attn.q_proj.bias.copy_(q_bias)
+            hflayer.self_attn.k_proj.bias.copy_(k_bias)
+            hflayer.self_attn.v_proj.bias.copy_(v_bias)
 
             hflayer.self_attn.o_proj.weight.copy_(mglayer.self_attention.linear_proj.weight)
 
@@ -170,9 +174,10 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
     elif args.bf16:
         mgmodel = mgmodel.bfloat16()
 
+    num_attention_heads = args.num_attention_heads
     num_query_groups = args.num_query_groups
     hidden_size = args.hidden_size
-    head_dim = hidden_size // args.num_attention_heads
+    head_dim = hidden_size // num_attention_heads
     use_te = args.transformer_impl == "transformer_engine"
 
     with torch.no_grad():
@@ -183,16 +188,16 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
             else:
                 mglayer.input_layernorm.weight.copy_(hflayer.input_layernorm.weight)
 
-            q = hflayer.self_attn.q_proj.weight.view([num_query_groups, -1, head_dim, hidden_size])
-            k = hflayer.self_attn.k_proj.weight.view([num_query_groups, -1, head_dim, hidden_size])
-            v = hflayer.self_attn.v_proj.weight.view([num_query_groups, -1, head_dim, hidden_size])
+            q_proj_weight = hflayer.self_attn.q_proj.weight.view(num_query_groups, -1, head_dim, hidden_size)
+            k_proj_weight = hflayer.self_attn.k_proj.weight.view(num_query_groups, -1, head_dim, hidden_size)
+            v_proj_weight = hflayer.self_attn.v_proj.weight.view(num_query_groups, -1, head_dim, hidden_size)
+            qkv_proj = torch.cat([q_proj_weight, k_proj_weight, v_proj_weight], dim=1).view(-1, hidden_size).contiguous()
+            mglayer.self_attention.linear_qkv.weight.copy_(qkv_proj)
 
-            qkv = torch.cat([q, k, v], dim=1).view(-1, hidden_size).contiguous()
-            q_bias = hflayer.self_attn.q_proj.bias.view([num_query_groups, -1])
-            k_bias = hflayer.self_attn.k_proj.bias.view([num_query_groups, -1])
-            v_bias = hflayer.self_attn.v_proj.bias.view([num_query_groups, -1])
-            qkv_bias = torch.cat([q_bias, k_bias, v_bias], dim=1).view(-1).contiguous()
-            mglayer.self_attention.linear_qkv.weight.copy_(qkv)
+            q_proj_bias = hflayer.self_attn.q_proj.bias.view(num_query_groups, -1)
+            k_proj_bias = hflayer.self_attn.k_proj.bias.view(num_query_groups, -1)
+            v_proj_bias = hflayer.self_attn.v_proj.bias.view(num_query_groups, -1)
+            qkv_bias = torch.cat([q_proj_bias, k_proj_bias, v_proj_bias], dim=1).view(-1).contiguous()
             mglayer.self_attention.linear_qkv.bias.copy_(qkv_bias)
 
             mglayer.self_attention.linear_proj.weight.copy_(hflayer.self_attn.o_proj.weight)
