@@ -433,5 +433,13 @@ def get_patch_args(parser):
     group.add_argument('--cpu-offload-fraction', type=float, default=0.5,
                        help='CPU Offload Fraction used by static offload policy, '
                        'valid if base optimizer is HybridAdam')
+    
+    group.add_argument('--auto-offload-threshold', type=int, default=2048 * 1024 * 1024,
+                    help='CPU Offload Threshold currently used by auto offload policy, '
+                    'tune larger if OOM occurs')
+    
+    group.add_argument('--cpu-offload-chunk-size', type=int, default=32 * 1024 * 1024,
+                    help='Chunk size of Chunk Manager in Offload Optimizer,'
+                    'keep zero to search for a optimal size')    
 
     return parser
