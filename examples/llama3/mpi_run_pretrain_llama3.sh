@@ -20,7 +20,7 @@ MPI_DISTRIBUTED_ARGS=(
   "-mca" "orte_base_help_aggregate" "0"
   "-x" "LD_LIBRARY_PATH"
   "-x" "PATH"
-  "-x" "PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATH}/Megatron-LM-240705-Performance-Booster"
+  "-x" "PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATH}/PAI-Megatron-LM-240718"
   "-x" "NCCL_IB_TC"
   "-x" "NCCL_IB_SL"
   "-x" "NCCL_IB_GID_INDEX"
@@ -301,6 +301,7 @@ megatron_options="  \
         --rotary-seq-len-interpolation-factor 1 \
         --optimizer ${OPTIMIZER} \
         --no-rope-fusion \
+        --cross-entropy-loss-fusion \
         --tp-comm-overlap \
         --overlap-grad-reduce \
         --overlap-param-gather \

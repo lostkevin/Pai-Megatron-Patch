@@ -3,7 +3,7 @@ set -e
 
 CURRENT_DIR="$( cd "$( dirname "$0" )" && pwd )"
 MEGATRON_PATH=$( dirname $( dirname ${CURRENT_DIR}))
-export PYTHONPATH=$PYTHONPATH:${MEGATRON_PATH}:${MEGATRON_PATH}/Megatron-LM-240705-Performance-Booster
+export PYTHONPATH=$PYTHONPATH:${MEGATRON_PATH}:${MEGATRON_PATH}/PAI-Megatron-LM-240718
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 
 ENV=$1
@@ -304,11 +304,9 @@ megatron_options="  \
         --rotary-percent 1.0 \
         --rotary-base ${ROPE_THETA} \
         --rotary-seq-len-interpolation-factor 1 \
-        --optimizer adam
-
+        --optimizer cpu-adam
         "
-#--profile
-#nsys profile -s none -t nvtx,cuda
+
 run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_llama_mcore070.py
  ${megatron_options} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} ${do_options} ${flash_options} ${sp_options} ${moe_options}"
 
