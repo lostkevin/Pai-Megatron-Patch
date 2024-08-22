@@ -44,7 +44,7 @@ mmap数据是一种预先执行tokenize处理的数据格式，可以极大减�
 input_data_path=$1                # 设置输入文件路径
 tokenizer=$2                      # 设置分词器
 seq_len=$3                        # 设置训练用的序列长度
-output_data_dir=$4                # 输出到bin和idx文件目录  
+output_data_path=$4               # 设置输出文件路径  
 load_dir=$5                       # 设置HF模型的路径
 
 ```
@@ -54,7 +54,7 @@ sh run_build_idxmap_data_for_sft.sh \
 /mnt/workspace/qwen-datasets/qwen_sft.json \
 Qwen2Tokenizer \
 256 \
-/mnt/workspace/qwen-datasets/ \
+/mnt/workspace/qwen-datasets/mmap_qwen2_sft_datasets_text_document \
 /mnt/workspace/qwen-ckpts/Qwen2-0.5B
 ```
 脚本执行完成后，qwen-datasets文件夹里有2个名字相同后缀不同的mmap文件：
