@@ -37,7 +37,6 @@ else
 fi
 
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
-EXTRA_VOCAB_SIZE=256
 
 ### BASE CONFIG ###
 MODEL_SIZE=$2
@@ -47,33 +46,34 @@ LR=$5
 MIN_LR=$6
 SEQ_LEN=$7
 PAD_LEN=$8
-PR=${9}
+PR=$9
 ### BASE CONFIG ###
 
 ### PARALLEL / BOOL OPTION ###
 TP=${10}
 PP=${11}
 CP=${12}
-SP=${13}
-DO=${14}
-FL=${15}
-SFT=${16}
+EP=${13}
+SP=${14}
+DO=${15}
+FL=${16}
+SFT=${17}
 ### PARALLEL / BOOL OPTION ###
 
 ### OTHERS ###
-AC=${17}
-OPTIMIZER_OFFLOAD=${18}
-SAVE_INTERVAL=${19}
-DATASET_PATH=${20}
-VALID_DATASET_PATH=${21}
-PRETRAIN_CHECKPOINT_PATH=${22}
+AC=${18}
+OPTIMIZER_OFFLOAD=${19}
+SAVE_INTERVAL=${20}
+DATASET_PATH=${21}
+VALID_DATASET_PATH=${22}
+PRETRAIN_CHECKPOINT_PATH=${23}
 
 # the following two values will not be used when SFT is true
-TRAIN_TOKENS=${23}
-WARMUP_TOKENS=${24}
+TRAIN_TOKENS=${24}
+WARMUP_TOKENS=${25}
 ###############################
 
-OUTPUT_BASEPATH=${25}
+OUTPUT_BASEPATH=${26}
 ### OTHERS ###
 
 if [ $FL = true ]; then
@@ -82,39 +82,124 @@ elif [ $FL = false ]; then
     export NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=1
 fi
 
-if [ $MODEL_SIZE = 8B ]; then
+if [ $MODEL_SIZE = 0.5B ]; then
 
-NUM_LAYERS=32
-HIDDEN_SIZE=4096
-NUM_ATTN_HEADS=32
-INTERMEDIATE_SIZE=14336
-NUM_KEY_VALUE_HEADS=8
+NUM_LAYERS=24
+HIDDEN_SIZE=896
+NUM_ATTN_HEADS=14
+INTERMEDIATE_SIZE=4864
+NUM_KEY_VALUE_HEADS=2
 MAX_POSITION_EMBEDDINGS=131072
-
+EXTRA_VOCAB_SIZE=293
+RMS_NORM_EPS=1e-6
 gqa_options=" \
 		    --group-query-attention \
 		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
 
 
-elif [ $MODEL_SIZE = 70B ]; then
+tie_option=""
+moe_options=" \
+            "
+
+
+elif [ $MODEL_SIZE = 1.5B ]; then
+
+NUM_LAYERS=28
+HIDDEN_SIZE=1536
+NUM_ATTN_HEADS=12
+INTERMEDIATE_SIZE=8960
+NUM_KEY_VALUE_HEADS=2
+MAX_POSITION_EMBEDDINGS=131072
+EXTRA_VOCAB_SIZE=293
+RMS_NORM_EPS=1e-6
+gqa_options=" \
+		    --group-query-attention \
+		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+
+tie_option=""
+moe_options=" \
+            "
+
+elif [ $MODEL_SIZE = 7B ]; then
+
+NUM_LAYERS=28
+HIDDEN_SIZE=3584
+NUM_ATTN_HEADS=28
+INTERMEDIATE_SIZE=18944
+NUM_KEY_VALUE_HEADS=4
+MAX_POSITION_EMBEDDINGS=131072
+EXTRA_VOCAB_SIZE=421
+RMS_NORM_EPS=1e-6
+gqa_options=" \
+		    --group-query-attention \
+		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+
+moe_options=" \
+            "
+tie_option=" \
+        --untie-embeddings-and-output-weights \
+        "
+
+
+elif [ $MODEL_SIZE = 72B ]; then
 
 NUM_LAYERS=80
 HIDDEN_SIZE=8192
 NUM_ATTN_HEADS=64
-INTERMEDIATE_SIZE=28672
+INTERMEDIATE_SIZE=29568
 NUM_KEY_VALUE_HEADS=8
 MAX_POSITION_EMBEDDINGS=131072
+EXTRA_VOCAB_SIZE=421
+RMS_NORM_EPS=1e-5
 gqa_options=" \
 		    --group-query-attention \
 		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
 
+moe_options=" \
+            "
+tie_option=" \
+        --untie-embeddings-and-output-weights \
+        "
+
+
+elif [ $MODEL_SIZE = A14B ]; then
+
+NUM_LAYERS=28
+HIDDEN_SIZE=3584
+NUM_ATTN_HEADS=28
+INTERMEDIATE_SIZE=18944
+NUM_KEY_VALUE_HEADS=4
+MAX_POSITION_EMBEDDINGS=131072
+EXTRA_VOCAB_SIZE=293
+RMS_NORM_EPS=1e-6
+gqa_options=" \
+		    --group-query-attention \
+		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+
+NUM_EXPERTS=64
+NUM_EXPERTS_PER_TOPK=8
+MOE_INTERMEDIATE_SIZE=2560
+SHARED_EXPERT_INTERMEDIATE_SIZE=20480
+
+moe_options=" \
+            --moe-router-topk ${NUM_EXPERTS_PER_TOPK} \
+            --num-experts ${NUM_EXPERTS} \
+            --expert-model-parallel-size ${EP} \
+            --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
+            --shared-moe-ffn-hidden-size ${SHARED_EXPERT_INTERMEDIATE_SIZE} \
+            --enable-shared-expert"
+
+tie_option=" \
+        --untie-embeddings-and-output-weights \
+        "
+
 fi
 
 TP_COMM_OVERLAP=$(( ($TP > 1) ? 1 : 0 ))
-
 comm_overlap_option="\
     --overlap-grad-reduce \
     --overlap-param-gather"
+ 
 
 if [ $TP_COMM_OVERLAP -eq 1 ]; then
     comm_overlap_option="\
@@ -214,8 +299,8 @@ else
 fi
 
 if [ $SFT = true ]; then
-    TRAIN_ITERS=${23}
-    LR_WARMUP_ITERS=${24}
+    TRAIN_ITERS=${24}
+    LR_WARMUP_ITERS=${25}
     LR_DECAY_ITERS=$(( ${TRAIN_ITERS} - ${LR_WARMUP_ITERS}))
     PREFIX="finetune-mcore-llama3-1-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
     sft_option=" \
@@ -298,21 +383,24 @@ megatron_options="  \
         --no-load-rng \
         --num-workers 8 \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --patch-tokenizer-type LLama3Tokenizer \
+        --patch-tokenizer-type Qwen2Tokenizer \
         --swiglu \
         --normalization RMSNorm \
-        --norm-epsilon 1e-05 \
+        --norm-epsilon ${RMS_NORM_EPS} \
         --use-rotary-position-embeddings \
         --position-embedding-type rope \
         --untie-embeddings-and-output-weights \
         --disable-bias-linear \
-        --rotary-base 500000 \
+        --add-qkv-bias \
+        --rotary-percent 1.0 \
+        --rotary-base 1000000 \
+        --rotary-seq-len-interpolation-factor 1 \
         --no-save-optim \
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_llama.py
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_qwen.py
  ${megatron_options} ${dataset_option} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} \
- ${do_options} ${sp_options} ${gqa_options} ${offload_option} ${comm_overlap_option} ${sft_option} ${vp_options}"
+ ${do_options} ${sp_options} ${gqa_options} ${offload_option} ${comm_overlap_option} ${sft_option} ${moe_options} ${tie_option} ${vp_options}"
 
 echo ${run_cmd}
 eval ${run_cmd}
