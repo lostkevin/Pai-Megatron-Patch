@@ -25,6 +25,7 @@ with open("/mnt/qwen-datasets/packed_qwen_sft.json", 'w', encoding='utf8') as f:
         else:
             last_example = example_group[-1]
             last_example_len = len_group[-1]
+            assert last_example_len <= seqlen
             json_string = json.dumps(example_group[:-1], ensure_ascii=False)
             f.write(json_string+"\n")
             example_group = [last_example]+[example]
