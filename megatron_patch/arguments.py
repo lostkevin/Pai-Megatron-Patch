@@ -492,7 +492,7 @@ def get_patch_args(parser):
     group.add_argument("--prompt-path", type=str, default=None)
     group.add_argument('--freeze-LM', action='store_true', default=False)
     group.add_argument('--freeze-ViT', action='store_true', default=False)
-    group.add_argument('--language-model-type', type=str, required=True)
+    group.add_argument('--language-model-type', type=str, required=False)
     group.add_argument('--vision-model-type', type=str, default="clip")
     group.add_argument("--disable-vision-class-token", action="store_true", default=False)
     group.add_argument(
@@ -528,7 +528,7 @@ def get_patch_args(parser):
         "--tokenizer-prompt-format",
         type=str,
         choices=["mistral", "llama3", "chatml"],
-        required=True,
+        required=False,
         help="Prompt format to use with the tokenizer.",
     )
 
