@@ -17,12 +17,12 @@ if [ -z ${MP_AC_LAYERS} ];then
 fi
 
 if [ $ENV = dsw ]; then
-    export CUDA_VISIBLE_DEVICES=4,5,6,7
+    export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
     MASTER_ADDR=localhost
     MASTER_PORT=$(shuf -n 1 -i 10000-65535)
     NNODES=1
     NODE_RANK=0
-    GPUS_PER_NODE=4
+    GPUS_PER_NODE=8
 elif [ $ENV = dlc ]; then
     NNODES=${WORLD_SIZE}
     NODE_RANK=${RANK}
@@ -113,11 +113,11 @@ tie_option=" \
 
 elif [ $MODEL_SIZE = 8x7B ]; then
 
-NUM_LAYERS=2
-HIDDEN_SIZE=768
-NUM_ATTN_HEADS=4
-INTERMEDIATE_SIZE=2048
-NUM_KEY_VALUE_HEADS=4
+NUM_LAYERS=32
+HIDDEN_SIZE=4096
+NUM_ATTN_HEADS=32
+INTERMEDIATE_SIZE=14336
+NUM_KEY_VALUE_HEADS=8
 MAX_POSITION_EMBEDDINGS=32768
 EXTRA_VOCAB_SIZE=0
 RMS_NORM_EPS=1e-5
@@ -134,8 +134,9 @@ NUM_EXPERTS_PER_TOPK=2
 moe_options=" \
 		    --moe-router-topk ${NUM_EXPERTS_PER_TOPK} \
 		    --num-experts ${NUM_EXPERTS} \
-		    --moe-aux-loss-coeff 0.02 \
+		    --moe-aux-loss-coeff 1e-2 \
 		    --expert-model-parallel-size ${EP} \
+            --moe-token-dispatcher-type alltoall \
 		    --moe-router-load-balancing-type aux_loss"
 
 tie_option=" \
