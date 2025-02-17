@@ -7,7 +7,7 @@ from transformers.modeling_utils import (
     WEIGHTS_NAME, 
     SAFE_WEIGHTS_INDEX_NAME,
     SAFE_WEIGHTS_NAME,
-    shard_checkpoint, 
+    load_sharded_checkpoint,
 )
 import safetensors
 from collections.abc import Mapping, Sequence
@@ -22,7 +22,7 @@ def save_hfmodel(args, model, max_shard_size='10GB'):
     if os.path.exists(os.path.join(args.save, WEIGHTS_INDEX_NAME)):
         os.remove(os.path.join(args.save, WEIGHTS_INDEX_NAME))
 
-    shards, index = shard_checkpoint(output_state_dict, max_shard_size=max_shard_size, weights_name=weight_file)
+    shards, index = load_sharded_checkpoint(output_state_dict, max_shard_size=max_shard_size, weights_name=weight_file)
     os.makedirs(args.save, exist_ok=True)
     for shard_file, shard in shards.items():
         target_file = os.path.join(args.save, shard_file)

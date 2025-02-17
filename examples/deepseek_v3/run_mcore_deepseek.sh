@@ -72,51 +72,13 @@ elif [ $FL = false ]; then
     "
 fi
 
-if [ $MODEL_SIZE = A2.4B ]; then
+if [ $MODEL_SIZE = A37B ]; then
 
-HIDDEN_SIZE=2048
-NUM_ATTN_HEADS=16
-NUM_LAYERS=27
-INTERMEDIATE_SIZE=10944
-MOE_INTERMEDIATE_SIZE=1408
-MAX_POSITION_EMBEDDINGS=${SEQ_LEN}
-EXTRA_VOCAB_SIZE=2400
-KV_LORA_RANK=512
-QK_NOPE_HEAD_DIM=128
-QK_ROPE_HEAD_DIM=64
-V_HEAD_DIM=128
-ROPE_THETA=10000
-SCALE_FACTOR=40
-NUM_EXPERTS=64
-ROUTER_TOPK=6
-NUM_SHARED_EXPERTS=2
-MOE_LAYER_FREQ=1
-RMS_NORM_EPS=1e-6
-
-moe_options=" \
-    --moe-grouped-gemm \
-    --moe-token-dispatcher-type alltoall \
-    --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
-    --moe-router-topk ${ROUTER_TOPK} \
-    --num-experts ${NUM_EXPERTS} \
-    --moe-layer-freq ${MOE_LAYER_FREQ} \
-    --moe-aux-loss-coeff 1e-2 \
-    --moe-shared-expert-intermediate-size $((${MOE_INTERMEDIATE_SIZE} * ${NUM_SHARED_EXPERTS} )) \
-    --expert-model-parallel-size ${EP} \
-    --kv-lora-rank ${KV_LORA_RANK} \
-    --qk-head-dim ${QK_NOPE_HEAD_DIM} \
-    --qk-pos-emb-head-dim ${QK_ROPE_HEAD_DIM} \
-    --v-head-dim ${V_HEAD_DIM} \
-    --moe-router-load-balancing-type aux_loss"
-
-elif [ $MODEL_SIZE = A21B ]; then
-
-HIDDEN_SIZE=5120
-NUM_ATTN_HEADS=128
-NUM_LAYERS=60
-INTERMEDIATE_SIZE=12288
-MOE_INTERMEDIATE_SIZE=1536
-MAX_POSITION_EMBEDDINGS=${SEQ_LEN}
+HIDDEN_SIZE=7168
+NUM_ATTENTION_HEADS=128
+NUM_LAYERS=61
+INTERMEDIATE_SIZE=18432
+MOE_INTERMEDIATE_SIZE=2048
 EXTRA_VOCAB_SIZE=2400
 Q_LORA_RANK=1536
 KV_LORA_RANK=512
@@ -125,27 +87,28 @@ QK_ROPE_HEAD_DIM=64
 V_HEAD_DIM=128
 ROPE_THETA=10000
 SCALE_FACTOR=40
-NUM_EXPERTS=160
-ROUTER_TOPK=6
-NUM_SHARED_EXPERTS=2
-MOE_LAYER_FREQ=1
+NUM_EXPERTS=256
+ROUTER_TOPK=8
+NUM_SHARED_EXPERTS=1
 RMS_NORM_EPS=1e-6
 
 moe_options=" \
     --moe-grouped-gemm \
-    --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
+    --moe-token-dispatcher-type alltoall \
     --moe-router-topk ${ROUTER_TOPK} \
     --num-experts ${NUM_EXPERTS} \
-    --moe-layer-freq ${MOE_LAYER_FREQ} \
-    --moe-aux-loss-coeff 1e-2 \
+    --target-expert-model-parallel-size ${EP} \
+    --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
+    --moe-router-load-balancing-type aux_loss \
+    --moe-aux-loss-coeff 0.001 \
+    --moe-layer-freq ([0]*3+[1]*58) \
     --moe-shared-expert-intermediate-size $((${MOE_INTERMEDIATE_SIZE} * ${NUM_SHARED_EXPERTS} )) \
-    --expert-model-parallel-size ${EP} \
     --q-lora-rank ${Q_LORA_RANK} \
     --kv-lora-rank ${KV_LORA_RANK} \
-    --qk-head-dim ${QK_NOPE_HEAD_DIM} \
-    --qk-pos-emb-head-dim ${QK_ROPE_HEAD_DIM} \
+    --qk-nope-head-dim ${QK_NOPE_HEAD_DIM} \
+    --qk-rope-head-dim ${QK_ROPE_HEAD_DIM} \
     --v-head-dim ${V_HEAD_DIM} \
-    --moe-router-load-balancing-type aux_loss"
+    "
 
 fi
 
@@ -398,7 +361,8 @@ megatron_options="  \
         --multi-latent-attention \
         --ckpt-format torch \
         --calculate-per-token-loss \
-        --transformer-impl transformer_engine
+        --transformer-impl transformer_engine \
+        --use-rope-scaling \
         "
 
 run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_deepseek.py
