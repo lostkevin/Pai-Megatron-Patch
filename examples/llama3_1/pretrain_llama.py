@@ -31,7 +31,7 @@ from megatron_patch.model.llama3_1.model import GPTModel
 from megatron_patch.model.llama3_1.transformer_config import LLama3TransformerConfig
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.data import train_valid_test_datasets_provider
-from examples.template.helper import forward_step
+
 
 torch._dynamo.config.suppress_errors = True
 
@@ -79,6 +79,7 @@ def model_provider(
 
 
 if __name__ == "__main__":
+    from megatron_patch.template.helper import forward_step
     train_valid_test_datasets_provider.is_distributed = True
 
     pretrain(

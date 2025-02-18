@@ -100,8 +100,8 @@ def build_dataset(args, train_val_test_num_samples):
         build_tokenizer(args)
     if args.dataset == 'JSON-SFT':
         train_dataset = JSONSFTDataset(args.train_data_path, args.max_padding_length)
-        val_dataset = JSONSFTDataset(args.val_data_path, args.max_padding_length)
-        test_dataset = JSONSFTDataset(args.val_data_path, args.max_padding_length)
+        val_dataset = JSONSFTDataset(args.valid_data_path, args.max_padding_length)
+        test_dataset = JSONSFTDataset(args.valid_data_path, args.max_padding_length)
     elif args.dataset == 'MMAP':
         config = core_gpt_dataset_config_from_args(args)
         dataset_type = MockGPTDataset if config.mock else GPTDataset

@@ -11,7 +11,6 @@ from transformers import (
     AutoTokenizer,
 )
 
-from transformers.modeling_utils import WEIGHTS_INDEX_NAME, WEIGHTS_NAME, shard_checkpoint, load_sharded_checkpoint
 from megatron.training.initialize import initialize_megatron
 from megatron.training import get_args
 from megatron.training.checkpointing import get_checkpoint_name, get_checkpoint_tracker_filename, read_metadata
@@ -24,35 +23,17 @@ sys.path.append(os.path.join(path_dir, "examples"))
 from qwen2.pretrain_qwen import model_provider
 from megatron_patch.arguments import get_patch_args
 
+from toolkits.model_checkpoints_convertor.utils import (
+    save_state_dict,
+    save_hfmodel
+)
+
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 torch.backends.cuda.enable_mem_efficient_sdp(False)
 torch.backends.cuda.enable_flash_sdp(False)
-
-import numpy as np
-from collections.abc import Mapping, Sequence
-@torch.inference_mode()
-def clone_state_dict(elem):
-    """clone all tensors in the elem to cpu device.
-    """
-    elem_type = type(elem)
-    if isinstance(elem, torch.Tensor):
-        elem = elem.clone()
-    elif isinstance(elem, (np.ndarray, str)):
-        pass
-    elif isinstance(elem, Mapping):
-        elem = dict(elem)
-        for k, v in elem.items():
-            elem[k] = clone_state_dict(v)
-        elem = elem_type(elem)
-    elif isinstance(elem, Sequence):
-        elem = list(elem)
-        for i in range(len(elem)):
-            elem[i] = clone_state_dict(elem[i])
-        elem = elem_type(elem)
-    return elem
 
 def add_model_args(parser):
 
@@ -497,16 +478,6 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
             mgmodel.output_layer.weight.copy_(hfmodel.lm_head.weight)
 
 
-def save_state_dict(args, model, checkpoint_name):
-    state_dict = {}
-    state_dict['args'] = args
-    state_dict['checkpoint_version'] = 3.0
-    state_dict['iteration'] = 0    
-    state_dict['model'] = model
-    os.makedirs(os.path.dirname(checkpoint_name), exist_ok=True)
-    print(f'save model part {checkpoint_name}')
-    torch.save(clone_state_dict(state_dict), checkpoint_name)
-
 def check_layer(layers_to_copy, k):
     pattern = re.compile(r"decoder.layers.\d+")
     res = pattern.findall(k)
@@ -548,7 +519,7 @@ def save_mgmodel(mgmodel, args):
         and args.expert_model_parallel_size == 1
     ):
         checkpoint_name = get_checkpoint_name(args.save, 0, True)
-        save_state_dict(args, full_model, checkpoint_name)
+        save_state_dict(args, [full_model], checkpoint_name)
     elif (
         args.tensor_model_parallel_size == 1
         and args.pipeline_model_parallel_size == 1
@@ -568,7 +539,7 @@ def save_mgmodel(mgmodel, args):
                     expert_local_rank = expert_rank % num_local_experts
                     k = k.replace(f'local_experts.{expert_rank}', f'local_experts.{expert_local_rank}')
                 model_split[k] = v
-            save_state_dict(args, model_split, checkpoint_name)
+            save_state_dict(args, [model_split], checkpoint_name)
     elif (
         args.tensor_model_parallel_size > 1
         and args.pipeline_model_parallel_size == 1
@@ -602,7 +573,7 @@ def save_mgmodel(mgmodel, args):
                 else:
                     target_v = v
                 model_split[k] = target_v
-            save_state_dict(args, model_split, checkpoint_name)
+            save_state_dict(args, [model_split], checkpoint_name)
     elif (
         args.tensor_model_parallel_size > 1
         and args.pipeline_model_parallel_size == 1
@@ -656,7 +627,7 @@ def save_mgmodel(mgmodel, args):
                     else:
                         target_v = v
                     model_split[k] = target_v
-                save_state_dict(args, model_split, checkpoint_name)
+                save_state_dict(args, [model_split], checkpoint_name)
 
     elif (
         args.pipeline_model_parallel_size > 1
@@ -710,7 +681,7 @@ def save_mgmodel(mgmodel, args):
                             model_split[k] = target_v
                     else:
                         model_split[k] = target_v
-                save_state_dict(args, model_split, checkpoint_name)
+                save_state_dict(args, [model_split], checkpoint_name)
 
     elif (
         args.pipeline_model_parallel_size > 1
@@ -787,47 +758,12 @@ def save_mgmodel(mgmodel, args):
                                 model_split[k] = target_v
                         else:
                             model_split[k] = target_v
-                    save_state_dict(args, model_split, checkpoint_name)
+                    save_state_dict(args, [model_split], checkpoint_name)
 
     else:
         raise ValueError('Something is wrong, please check your tp/pp/ep size')
 
     print(f'megatron model is save to {args.save}')
-
-
-def save_hfmodel(args, model):
-    output_state_dict = model.state_dict()
-    max_shard_size = "10GB"
-    shards, index = shard_checkpoint(output_state_dict, max_shard_size=max_shard_size)
-    os.makedirs(args.save, exist_ok=True)
-    for shard_file, shard in shards.items():
-        if args.save_safetensors:
-            shard_file = shard_file.replace("pytorch_", "")
-            shard_file = shard_file.replace(".bin", ".safetensors")
-            target_file = os.path.join(args.save, shard_file)
-            print(f'huggingface model is save to {target_file}')
-            new_shard = {}
-            for k, v in shard.items():
-                new_shard[k] = copy.deepcopy(v)
-            safetensors.torch.save_file(clone_state_dict(new_shard), target_file, metadata={"format": "pt"})
-        else:
-            target_file = os.path.join(args.save, shard_file)
-            print(f'huggingface model is save to {target_file}')
-            torch.save(clone_state_dict(shard), target_file)
-
-    if index is None:
-        print(f"Model weights saved in {os.path.join(args.save, WEIGHTS_NAME)}")
-    else:
-        save_index_file = os.path.join(args.save, WEIGHTS_INDEX_NAME)
-        # Save the index as well
-        with open(save_index_file, "w", encoding="utf-8") as f:
-            content = json.dumps(index, indent=2, sort_keys=True) + "\n"
-            f.write(content)
-        print(
-            f"The model is bigger than the maximum size per checkpoint ({max_shard_size}) and is going to be "
-            f"split in {len(shards)} checkpoint shards. You can find where each parameters has been saved in the "
-            f"index located at {save_index_file}."
-        )
 
 def check_hf_mg_forward(hfmodel, mgmodel, mgargs):
     hf_hiddens = [{} for _ in range(mgargs.num_layers)]
