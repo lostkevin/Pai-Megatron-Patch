@@ -267,17 +267,11 @@ if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
             --load $PRETRAIN_CHECKPOINT_PATH"
 fi
 
-if [ $OPTIMIZER_OFFLOAD = 'static' ]; then
+if [ $OPTIMIZER_OFFLOAD != false ]; then
     offload_option=" \
-        --optimizer hybridadam \
-        --optimizer-offload-policy static \
-        --optimizer-offload-fraction 1.0"
-elif [ $OPTIMIZER_OFFLOAD = 'auto' ]; then
-    offload_option=" \
-        --optimizer hybridadam \
-        --optimizer-offload-policy auto"
-else
-    offload_option=""
+        --optimizer-cpu-offload \
+        --use-precision-aware-optimizer \
+        --optimizer-offload-fraction ${OPTIMIZER_OFFLOAD}"
 fi
 
 if [ $SFT = true ]; then
@@ -302,12 +296,12 @@ if [ ${MP_DATASET_TYPE} = "raw" ]; then
         --train-data-path ${DATASET_PATH} \
         --valid-data-path ${VALID_DATASET_PATH} \
         --dataloader-type cyclic \
-        --dataset LLama-SFT-Raw"
+        --dataset JSON-SFT"
 else 
     dataset_option=" \
         --data-path ${DATASET_PATH} \
         --split 99,1,0 \
-        --dataset LLama-Pretrain-Idxmap"
+        --dataset MMAP"
 fi
 
 if [ ${MP_SFT_PACKING} = true ]; then

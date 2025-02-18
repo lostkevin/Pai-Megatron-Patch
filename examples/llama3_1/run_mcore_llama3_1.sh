@@ -239,12 +239,12 @@ if [ ${MP_DATASET_TYPE} = "raw" ]; then
         --train-data-path ${DATASET_PATH} \
         --valid-data-path ${VALID_DATASET_PATH} \
         --dataloader-type cyclic \
-        --dataset LLama-SFT-Raw"
+        --dataset JSON-SFT"
 else 
     dataset_option=" \
         --data-path ${DATASET_PATH} \
         --split 99,1,0 \
-        --dataset LLama-Pretrain-Idxmap"
+        --dataset MMAP"
 fi
 
 if [ ${MP_SFT_PACKING} = true ]; then

@@ -3,17 +3,8 @@ set -e
 ENV=$1
 CURRENT_DIR="$( cd "$( dirname "$0" )" && pwd )"
 MEGATRON_PATH=$( dirname $( dirname ${CURRENT_DIR}))
-export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATH}/PAI-Megatron-LM-240718:$PYTHONPATH
+export PYTHONPATH=${MEGATRON_PATH}:${MEGATRON_PATH}/Megatron-LM-250217:$PYTHONPATH
 export CUDA_DEVICE_MAX_CONNECTIONS=1
-
-# Here are some configs controled by env
-if [ -z ${MP_DATASET_TYPE} ];then
-    MP_DATASET_TYPE="idxmap"
-fi
-
-if [ -z ${MP_AC_LAYERS} ];then
-    MP_AC_LAYERS=1
-fi
 
 if [ $ENV = dsw ]; then
     export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
@@ -26,17 +17,6 @@ elif [ $ENV = dlc ]; then
     NNODES=${WORLD_SIZE}
     NODE_RANK=${RANK}
     GPUS_PER_NODE=${KUBERNETES_CONTAINER_RESOURCE_GPU}
-fi
-
-if [ -z ${MP_VP} ]; then
-    vp_options=""
-else
-    vp_options=" \
-        --num-layers-per-virtual-pipeline-stage ${MP_VP}"
-fi
-
-if [ -z ${MP_SFT_PACKING} ]; then
-    MP_SFT_PACKING=false
 fi
 
 
@@ -82,121 +62,74 @@ OUTPUT_BASEPATH=${26}
 
 if [ $FL = true ]; then
     export NVTE_FLASH_ATTN=1 NVTE_FUSED_ATTN=0
+    attn_backend_option=" \
+        --attention-backend flash
+    "
 elif [ $FL = false ]; then
     export NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=1
+    attn_backend_option=" \
+        --attention-backend fused
+    "
 fi
 
-if [ $MODEL_SIZE = 0.5B ]; then
+if [ $MODEL_SIZE = A37B ]; then
 
-NUM_LAYERS=24
-HIDDEN_SIZE=896
-NUM_ATTN_HEADS=14
-INTERMEDIATE_SIZE=4864
-NUM_KEY_VALUE_HEADS=2
-MAX_POSITION_EMBEDDINGS=131072
-EXTRA_VOCAB_SIZE=293
+HIDDEN_SIZE=7168
+NUM_ATTENTION_HEADS=128
+NUM_LAYERS=61
+INTERMEDIATE_SIZE=18432
+MOE_INTERMEDIATE_SIZE=2048
+EXTRA_VOCAB_SIZE=2400
+Q_LORA_RANK=1536
+KV_LORA_RANK=512
+QK_NOPE_HEAD_DIM=128
+QK_ROPE_HEAD_DIM=64
+V_HEAD_DIM=128
+ROPE_THETA=10000
+SCALE_FACTOR=40
+NUM_EXPERTS=256
+ROUTER_TOPK=8
+NUM_SHARED_EXPERTS=1
 RMS_NORM_EPS=1e-6
-gqa_options=" \
-		    --group-query-attention \
-		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
-
-
-tie_option=""
-moe_options=" \
-            "
-
-
-elif [ $MODEL_SIZE = 1.5B ]; then
-
-NUM_LAYERS=28
-HIDDEN_SIZE=1536
-NUM_ATTN_HEADS=12
-INTERMEDIATE_SIZE=8960
-NUM_KEY_VALUE_HEADS=2
-MAX_POSITION_EMBEDDINGS=131072
-EXTRA_VOCAB_SIZE=293
-RMS_NORM_EPS=1e-6
-gqa_options=" \
-		    --group-query-attention \
-		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
-
-tie_option=""
-moe_options=" \
-            "
-
-elif [ $MODEL_SIZE = 7B ]; then
-
-NUM_LAYERS=28
-HIDDEN_SIZE=3584
-NUM_ATTN_HEADS=28
-INTERMEDIATE_SIZE=18944
-NUM_KEY_VALUE_HEADS=4
-MAX_POSITION_EMBEDDINGS=131072
-EXTRA_VOCAB_SIZE=421
-RMS_NORM_EPS=1e-6
-gqa_options=" \
-		    --group-query-attention \
-		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
 
 moe_options=" \
-            "
-tie_option=" \
-        --untie-embeddings-and-output-weights \
-        "
+    --moe-grouped-gemm \
+    --moe-token-dispatcher-type alltoall \
+    --moe-router-topk ${ROUTER_TOPK} \
+    --num-experts ${NUM_EXPERTS} \
+    --target-expert-model-parallel-size ${EP} \
+    --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
+    --moe-router-load-balancing-type aux_loss \
+    --moe-aux-loss-coeff 0.001 \
+    --moe-layer-freq ([0]*3+[1]*58) \
+    --moe-shared-expert-intermediate-size $((${MOE_INTERMEDIATE_SIZE} * ${NUM_SHARED_EXPERTS} )) \
+    --q-lora-rank ${Q_LORA_RANK} \
+    --kv-lora-rank ${KV_LORA_RANK} \
+    --qk-nope-head-dim ${QK_NOPE_HEAD_DIM} \
+    --qk-rope-head-dim ${QK_ROPE_HEAD_DIM} \
+    --v-head-dim ${V_HEAD_DIM} \
+    "
 
+fi
 
-elif [ $MODEL_SIZE = 72B ]; then
+# Here are some configs controled by env
+if [ -z ${MP_DATASET_TYPE} ];then
+    MP_DATASET_TYPE="idxmap"
+fi
 
-NUM_LAYERS=80
-HIDDEN_SIZE=8192
-NUM_ATTN_HEADS=64
-INTERMEDIATE_SIZE=29568
-NUM_KEY_VALUE_HEADS=8
-MAX_POSITION_EMBEDDINGS=131072
-EXTRA_VOCAB_SIZE=421
-RMS_NORM_EPS=1e-5
-gqa_options=" \
-		    --group-query-attention \
-		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
+if [ -z ${MP_AC_LAYERS} ];then
+    MP_AC_LAYERS=1
+fi
 
-moe_options=" \
-            "
-tie_option=" \
-        --untie-embeddings-and-output-weights \
-        "
+if [ -z ${MP_VP} ]; then
+    vp_option=""
+else
+    vp_option=" \
+        --num-layers-per-virtual-pipeline-stage ${MP_VP}"
+fi
 
-
-elif [ $MODEL_SIZE = A14B ]; then
-
-NUM_LAYERS=28
-HIDDEN_SIZE=3584
-NUM_ATTN_HEADS=28
-INTERMEDIATE_SIZE=18944
-NUM_KEY_VALUE_HEADS=4
-MAX_POSITION_EMBEDDINGS=131072
-EXTRA_VOCAB_SIZE=293
-RMS_NORM_EPS=1e-6
-gqa_options=" \
-		    --group-query-attention \
-		    --num-query-groups ${NUM_KEY_VALUE_HEADS}"
-
-NUM_EXPERTS=64
-NUM_EXPERTS_PER_TOPK=8
-MOE_INTERMEDIATE_SIZE=2560
-SHARED_EXPERT_INTERMEDIATE_SIZE=20480
-
-moe_options=" \
-            --moe-router-topk ${NUM_EXPERTS_PER_TOPK} \
-            --num-experts ${NUM_EXPERTS} \
-            --expert-model-parallel-size ${EP} \
-            --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
-            --shared-moe-ffn-hidden-size ${SHARED_EXPERT_INTERMEDIATE_SIZE} \
-            --enable-shared-expert"
-
-tie_option=" \
-        --untie-embeddings-and-output-weights \
-        "
-
+if [ -z ${MP_SFT_PACKING} ]; then
+    MP_SFT_PACKING=false
 fi
 
 TP_COMM_OVERLAP=$(( ($TP > 1) ? 1 : 0 ))
@@ -264,72 +197,87 @@ if [ $OPTIMIZER_OFFLOAD != false ] && [ $DO = false ]; then
 fi
 
 if [ $DO = true ]; then
-    do_options=" \
+    do_option=" \
 		    --use-distributed-optimizer"
 
 elif [ $DO = false ]; then
-    do_options=" \
+    do_option=" \
                     "
 fi
 
-te_options=" \
-        --transformer-impl transformer_engine"
 
 if [ $SP = true ] && [ $TP -gt 1 ]; then
-    sp_options=" \
+    sp_option=" \
 		    --sequence-parallel"
 
 elif [ $SP = false ]; then
-    sp_options=" \
+    sp_option=" \
                     "
 fi
 
+if [ -z ${MP_PP0_LAYERS} ];then
+    uneven_split_option=""
+elif [ ${PP} -gt 1 ]; then
+    _check=$(( ( $NUM_LAYERS - ${MP_PP0_LAYERS} ) % ( ${PP} - 1 ) ))
+    if [ $_check != 0 ]; then
+        echo "With uneven pipelineing the left over layers must be divisible by left over stages."
+        exit -1
+    fi
+
+    uneven_split_option=" \
+        --decoder-first-pipeline-num-layers ${MP_PP0_LAYERS}
+    "
+else
+    echo "uneven pipeline split must be used when PP > 1"
+    exit -1
+fi
+
 if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
-    load_options=" \
+    load_option=" \
             --load $PRETRAIN_CHECKPOINT_PATH"
 fi
 
 if [ $OPTIMIZER_OFFLOAD = 'static' ]; then
-    offload_option=" \
+    offload_options=" \
         --optimizer hybridadam \
         --optimizer-offload-policy static \
         --optimizer-offload-fraction 1.0"
 elif [ $OPTIMIZER_OFFLOAD = 'auto' ]; then
-    offload_option=" \
+    offload_options=" \
         --optimizer hybridadam \
         --optimizer-offload-policy auto"
 else
-    offload_option=""
+    offload_options=""
 fi
 
 if [ $SFT = true ]; then
     TRAIN_ITERS=${24}
     LR_WARMUP_ITERS=${25}
     LR_DECAY_ITERS=$(( ${TRAIN_ITERS} - ${LR_WARMUP_ITERS}))
-    PREFIX="finetune-mcore-qwen2-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
-    sft_option=" \
+    PREFIX="finetune-mcore-deepseek-v2-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
+    sft_options=" \
          --eod-mask-loss \
          --train-mode finetune"
 else
     TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
     LR_WARMUP_ITERS=$(( ${WARMUP_TOKENS}  / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
     LR_DECAY_ITERS=$(( ${TRAIN_TOKENS} /  ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
-    PREFIX="pretrain-mcore-qwen2-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
-    sft_option=" \
+    PREFIX="pretrain-mcore-deepseek-v2-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
+    sft_options=" \
         --train-mode pretrain"
 fi
 
 if [ ${MP_DATASET_TYPE} = "raw" ]; then
-    dataset_option=" \
+    dataset_options=" \
         --train-data-path ${DATASET_PATH} \
         --valid-data-path ${VALID_DATASET_PATH} \
         --dataloader-type cyclic \
-        --dataset JSON-SFT"
+        --dataset LLama-SFT-Raw"
 else 
-    dataset_option=" \
+    dataset_options=" \
         --data-path ${DATASET_PATH} \
         --split 99,1,0 \
-        --dataset MMAP"
+        --dataset LLama-Pretrain-Idxmap"
 fi
 
 if [ ${MP_SFT_PACKING} = true ]; then
@@ -353,8 +301,7 @@ SAVED_PRETRAIN_CHECKPOINT_PATH="${OUTPUT_BASEPATH}/checkpoint/${NAME}"
 
 mkdir -p ${SAVED_PRETRAIN_CHECKPOINT_PATH}
 find -L ${PRETRAIN_CHECKPOINT_PATH} -maxdepth 1 -type f -name "*.json" -print0 | xargs -0 cp -t ${SAVED_PRETRAIN_CHECKPOINT_PATH}
-find -L ${PRETRAIN_CHECKPOINT_PATH} -maxdepth 1 -type f -name "merges.txt" -print0 | xargs -0 cp -t ${SAVED_PRETRAIN_CHECKPOINT_PATH}
-
+#find -L ${PRETRAIN_CHECKPOINT_PATH} -maxdepth 1 -type f -name "merges.txt" -print0 | xargs -0 cp -t ${SAVED_PRETRAIN_CHECKPOINT_PATH}
 
 megatron_options="  \
         --save ${SAVED_PRETRAIN_CHECKPOINT_PATH} \
@@ -388,7 +335,6 @@ megatron_options="  \
         --tensorboard-queue-size 1 \
         --tensorboard-dir ${TENSORBOARD_DIR} \
         --log-timers-to-tensorboard \
-        --log-batch-size-to-tensorboard \
         --log-validation-ppl-to-tensorboard \
         --tensor-model-parallel-size ${TP} \
         --pipeline-model-parallel-size ${PP} \
@@ -397,24 +343,31 @@ megatron_options="  \
         --no-load-rng \
         --num-workers 8 \
         --extra-vocab-size ${EXTRA_VOCAB_SIZE} \
-        --patch-tokenizer-type Qwen2Tokenizer \
+        --patch-tokenizer-type DeepSeekV2Tokenizer \
         --swiglu \
         --normalization RMSNorm \
         --norm-epsilon ${RMS_NORM_EPS} \
         --use-rotary-position-embeddings \
+        --no-bias-swiglu-fusion \
+        --no-rope-fusion \
         --position-embedding-type rope \
+        --untie-embeddings-and-output-weights \
         --disable-bias-linear \
-        --add-qkv-bias \
-        --rotary-percent 1.0 \
-        --rotary-base 1000000 \
-        --rotary-seq-len-interpolation-factor 1 \
+        --rotary-base ${ROPE_THETA} \
+        --rotary-scaling-factor ${SCALE_FACTOR} \
         --no-save-optim \
+        --kv-channels ${V_HEAD_DIM} \
+        --qk-layernorm \
+        --multi-latent-attention \
+        --ckpt-format torch \
         --calculate-per-token-loss \
+        --transformer-impl transformer_engine \
+        --use-rope-scaling \
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_qwen.py
- ${megatron_options} ${dataset_option} ${pr_options} ${load_options} ${te_options} ${activation_checkpoint_options} \
- ${do_options} ${sp_options} ${gqa_options} ${offload_option} ${comm_overlap_option} ${sft_option} ${moe_options} ${tie_option} ${vp_options} ${packing_options}"
+run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_deepseek.py
+ ${megatron_options} ${dataset_options} ${pr_options} ${load_option} ${activation_checkpoint_options} \
+ ${do_option} ${sp_option} ${moe_options} ${offload_options} ${sft_options} ${vp_option} ${packing_options} ${uneven_split_option} ${attn_backend_option}"
 
 echo ${run_cmd}
 eval ${run_cmd}
