@@ -267,13 +267,6 @@ if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
             --load $PRETRAIN_CHECKPOINT_PATH"
 fi
 
-if [ $OPTIMIZER_OFFLOAD != false ]; then
-    offload_option=" \
-        --optimizer-cpu-offload \
-        --use-precision-aware-optimizer \
-        --optimizer-offload-fraction ${OPTIMIZER_OFFLOAD}"
-fi
-
 if [ $SFT = true ]; then
     TRAIN_ITERS=${24}
     LR_WARMUP_ITERS=${25}
