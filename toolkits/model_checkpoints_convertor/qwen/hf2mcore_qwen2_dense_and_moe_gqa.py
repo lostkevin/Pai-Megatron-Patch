@@ -114,7 +114,7 @@ def load_megatron_model(args):
         and args.pipeline_model_parallel_size == 1
     ):
         checkpoint_name = get_checkpoint_name(model_path, iteration, release, None, None, None, None, None)
-        state_dict = torch.load(checkpoint_name)['model']
+        state_dict = torch.load(checkpoint_name, weights_only=False)['model']
 
     elif (
         args.tensor_model_parallel_size > 1
@@ -124,12 +124,14 @@ def load_megatron_model(args):
         for tp_rank in range(args.tensor_model_parallel_size):
             checkpoint_name = get_checkpoint_name(model_path, iteration, release, None, tp_rank, None, None, None)
             print(f'load {checkpoint_name}')
-            split_state = torch.load(checkpoint_name, map_location="cpu")['model']
+            split_state = torch.load(checkpoint_name, map_location="cpu", weights_only=False)['model']
             for k, v in split_state.items():
                 mid_state[k].append(v)
         for k, v in mid_state.items():
             if not isinstance(v[0], torch.Tensor) or 'norm' in k:
                 target_v = v[0]
+            elif 'extra_state' in k:
+                target_v = None
             elif 'embedding' in k or 'output_layer' in k:
                 target_v = torch.cat(v, dim=0)
             elif 'linear_proj' in k or 'linear_fc2' in k:
@@ -161,7 +163,7 @@ def load_megatron_model(args):
                     layers_to_copy[f"decoder.layers.{layer}"] = pp_layer_id
                 checkpoint_name = get_checkpoint_name(model_path, iteration, release, True, tp_rank, pp_rank, None, None)
                 print(f'load {checkpoint_name}')
-                split_state = torch.load(checkpoint_name, map_location="cpu")['model']
+                split_state = torch.load(checkpoint_name, map_location="cpu", weights_only=False)['model']
                 for k, v in split_state.items():
                     try:
                         pattern = re.compile(r'\d+')
@@ -173,6 +175,8 @@ def load_megatron_model(args):
         for k, v in mid_state.items():
             if not isinstance(v[0], torch.Tensor) or 'norm' in k:
                 target_v = v[0]
+            elif 'extra_state' in k:
+                target_v = None
             elif 'embedding' in k or 'output_layer' in k:
                 target_v = torch.cat(v, dim=0)
             elif 'linear_proj' in k or 'linear_fc2' in k:
@@ -199,7 +203,7 @@ def load_megatron_model(args):
         for ep_rank in range(args.expert_model_parallel_size):
             checkpoint_name = get_checkpoint_name(model_path, iteration, release, None, None, None, True, ep_rank)
             print(f'load {checkpoint_name}')
-            split_state = torch.load(checkpoint_name, map_location="cpu")['model']
+            split_state = torch.load(checkpoint_name, map_location="cpu", weights_only=False)['model']
             for k, v in split_state.items():
                 if 'local_experts' in k:
                     expert_local_rank = name_to_expert_rank(k)
@@ -219,7 +223,7 @@ def load_megatron_model(args):
                 elif args.expert_model_parallel_size ==1:
                     checkpoint_name = get_checkpoint_name(model_path, iteration, release, None, tp_rank, None, False)
                 print(f'load {checkpoint_name}')
-                split_state = torch.load(checkpoint_name, map_location="cpu")['model']
+                split_state = torch.load(checkpoint_name, map_location="cpu", weights_only=False)['model']
                 for k, v in split_state.items():
                     if 'local_experts' in k and 'norm' not in k:
                         local_expert_rank = name_to_expert_rank(k)
@@ -232,6 +236,8 @@ def load_megatron_model(args):
         for k, v in mid_state.items():
             if not isinstance(v[0], torch.Tensor) or 'router' in k or 'gate' in k:
                 target_v = v[0]
+            elif 'extra_state' in k:
+                target_v = None
             elif 'embedding' in k or 'output_layer' in k:
                 target_v = torch.cat(v, dim=0)
             elif 'linear_proj' in k or 'linear_fc2' in k:
@@ -279,7 +285,7 @@ def load_megatron_model(args):
                         checkpoint_name = get_checkpoint_name(model_path, iteration, release, True, tp_rank, pp_rank,
                                                               False)
                     print(f'load {checkpoint_name}')
-                    split_state = torch.load(checkpoint_name, map_location="cpu")['model']
+                    split_state = torch.load(checkpoint_name, map_location="cpu", weights_only=False)['model']
                     for k, v in split_state.items():
                         try:
                             if 'local_experts' in k:
@@ -506,7 +512,12 @@ def save_mgmodel(mgmodel, args):
     full_model = mgmodel.state_dict_for_save_checkpoint()
     num_layers = args.num_layers // args.pipeline_model_parallel_size
     for k in list(full_model.keys()):
-        if full_model[k] is None:
+        if 'extra_state' in k:
+            # NOTE: since TE 1.14, fp8 metadata will be saved as tensor. 
+            # Always drop these values in the MG ckpt to avoid potential issue.
+            # This should work fine because fp8 metadata is not supported by HF ckpt.
+            full_model[k] = None
+        elif full_model[k] is None:
             full_model.pop(k)
 
     if args.num_experts is not None:
