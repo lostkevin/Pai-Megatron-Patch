@@ -23,7 +23,7 @@ if [ $MODEL_SIZE = A37B ]; then
 
 HIDDEN_SIZE=7168
 NUM_ATTENTION_HEADS=128
-NUM_LAYERS=4
+NUM_LAYERS=61
 INTERMEDIATE_SIZE=18432
 MOE_INTERMEDIATE_SIZE=2048
 EXTRA_VOCAB_SIZE=467
@@ -49,7 +49,7 @@ moe_options=" \
     --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
     --moe-router-load-balancing-type aux_loss \
     --moe-aux-loss-coeff 0.001 \
-    --moe-layer-freq ([0]*3+[1]*1) \
+    --moe-layer-freq ([0]*3+[1]*58) \
     --moe-shared-expert-intermediate-size $((${MOE_INTERMEDIATE_SIZE} * ${NUM_SHARED_EXPERTS} )) \
     --q-lora-rank ${Q_LORA_RANK} \
     --kv-lora-rank ${KV_LORA_RANK} \
