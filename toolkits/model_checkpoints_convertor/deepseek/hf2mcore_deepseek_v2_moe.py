@@ -205,6 +205,8 @@ def load_megatron_model(args):
         for k, v in mid_state.items():
             if not isinstance(v[0], torch.Tensor) or 'router' in k or 'gate' in k:
                 target_v = v[0]
+            elif 'extra_state' in k:
+                target_v = None
             elif 'word_embeddings' in k or 'output_layer' in k or 'final_layernorm' in k:
                 target_v = torch.cat(v, dim=0)
             elif 'linear_proj' in k:

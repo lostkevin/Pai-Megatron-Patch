@@ -47,8 +47,9 @@ def save_hfmodel(args, model, max_shard_size='10GB'):
         weight_file = SAFETENSORS_WEIGHTS_FILE_PATTERN
         index_file = SAFETENSORS_INDEX_FILE
         state_dict_split = split_torch_state_dict_into_shards(output_state_dict, max_shard_size=max_shard_size, filename_pattern=weight_file)
+        shards = {}
         for filename, tensors in state_dict_split.filename_to_tensors.items():
-            shards = {filename: {tensor: output_state_dict[tensor] for tensor in tensors}}
+            shards[filename] = {tensor: output_state_dict[tensor] for tensor in tensors}
         if state_dict_split.is_sharded:
             index = {
                 "metadata": state_dict_split.metadata,
