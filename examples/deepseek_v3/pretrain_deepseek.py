@@ -18,7 +18,6 @@ from contextlib import nullcontext
 import torch
 import torch._dynamo
 
-import megatron.legacy.model
 from megatron.core.enums import ModelType
 from megatron.training import get_args, pretrain, print_rank_0
 from megatron.training.arguments import core_transformer_config_from_args
@@ -37,7 +36,7 @@ from megatron_patch.data import train_valid_test_datasets_provider
 torch._dynamo.config.suppress_errors = True
 
 
-def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megatron.legacy.model.GPTModel]:
+def model_provider(pre_process=True, post_process=True) -> Union[GPTModel]:
     """Builds the model.
 
     If you set the use_legacy_models to True, it will return the legacy GPT model and if not the mcore GPT model.

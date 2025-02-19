@@ -76,10 +76,11 @@ if [ $MODEL_SIZE = A37B ]; then
 
 HIDDEN_SIZE=7168
 NUM_ATTENTION_HEADS=128
-NUM_LAYERS=61
+NUM_LAYERS=4
 INTERMEDIATE_SIZE=18432
 MOE_INTERMEDIATE_SIZE=2048
-EXTRA_VOCAB_SIZE=2400
+MAX_POSITION_EMBEDDINGS=${SEQ_LEN}
+EXTRA_VOCAB_SIZE=467
 Q_LORA_RANK=1536
 KV_LORA_RANK=512
 QK_NOPE_HEAD_DIM=128
@@ -87,7 +88,7 @@ QK_ROPE_HEAD_DIM=64
 V_HEAD_DIM=128
 ROPE_THETA=10000
 SCALE_FACTOR=40
-NUM_EXPERTS=256
+NUM_EXPERTS=64
 ROUTER_TOPK=8
 NUM_SHARED_EXPERTS=1
 RMS_NORM_EPS=1e-6
@@ -97,11 +98,11 @@ moe_options=" \
     --moe-token-dispatcher-type alltoall \
     --moe-router-topk ${ROUTER_TOPK} \
     --num-experts ${NUM_EXPERTS} \
-    --target-expert-model-parallel-size ${EP} \
+    --expert-model-parallel-size ${EP} \
     --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
     --moe-router-load-balancing-type aux_loss \
     --moe-aux-loss-coeff 0.001 \
-    --moe-layer-freq ([0]*3+[1]*58) \
+    --moe-layer-freq '([0]*1+[1]*3)' \
     --moe-shared-expert-intermediate-size $((${MOE_INTERMEDIATE_SIZE} * ${NUM_SHARED_EXPERTS} )) \
     --q-lora-rank ${Q_LORA_RANK} \
     --kv-lora-rank ${KV_LORA_RANK} \
@@ -262,7 +263,7 @@ else
     TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
     LR_WARMUP_ITERS=$(( ${WARMUP_TOKENS}  / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
     LR_DECAY_ITERS=$(( ${TRAIN_TOKENS} /  ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
-    PREFIX="pretrain-mcore-deepseek-v2-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
+    PREFIX="pretrain-mcore-deepseek-v3-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
     sft_options=" \
         --train-mode pretrain"
 fi
@@ -322,7 +323,7 @@ megatron_options="  \
         --global-batch-size ${GLOBAL_BATCH_SIZE} \
         --num-layers ${NUM_LAYERS} \
         --hidden-size ${HIDDEN_SIZE} \
-        --num-attention-heads ${NUM_ATTN_HEADS} \
+        --num-attention-heads ${NUM_ATTENTION_HEADS} \
         --ffn-hidden-size ${INTERMEDIATE_SIZE} \
         --seq-length ${SEQ_LEN} \
         --max-position-embeddings ${MAX_POSITION_EMBEDDINGS} \

@@ -136,7 +136,7 @@ def load_megatron_model(args):
         for ep_rank in range(args.expert_model_parallel_size):
             checkpoint_name = get_checkpoint_name(model_path, iteration, release, None, None, None, True, ep_rank)
             print(f'load {checkpoint_name}')
-            split_state = torch.load(checkpoint_name, map_location="cpu")['model']
+            split_state = torch.load(checkpoint_name, map_location="cpu", weights_only=False)['model']
             for k, v in split_state.items():
                 if 'local_experts' in k:
                     expert_local_rank = name_to_expert_rank(k)
@@ -175,7 +175,7 @@ def load_megatron_model(args):
                         checkpoint_name = get_checkpoint_name(model_path, iteration, release, True, tp_rank, pp_rank,
                                                               False)
                     print(f'load {checkpoint_name}')
-                    split_state = torch.load(checkpoint_name, map_location="cpu")['model']
+                    split_state = torch.load(checkpoint_name, map_location="cpu", weights_only=False)['model']
                     for k, v in split_state.items():
                         try:
                             if 'local_experts' in k:
@@ -186,7 +186,7 @@ def load_megatron_model(args):
                             res = pattern.findall(k)
                             tgt = re.sub(r"decoder.layers.\d+", "decoder.layers." + str(layers_to_copy[(pp_rank, int(res[0]))]), k)
                             if 'linear_proj' in k or 'linear_q_proj' in k or 'linear_q_down_proj' in k or 'linear_q_up_proj'in k or \
-                                    'linear_kv_up_proj' in k or 'decoder.layers.0.mlp.linear_fc2' in k or \
+                                    'linear_kv_up_proj' in k or 'linear_kv_down_proj' in k or 'decoder.layers.0.mlp.linear_fc2' in k or \
                                     'decoder.layers.0.mlp.linear_fc1' in k or 'shared_experts.linear_fc1' in k or 'shared_experts.linear_fc2' in k:
                                 if ep_rank ==0:
                                     mid_state[tgt].append(v)
@@ -249,10 +249,8 @@ def convert_checkpoint_from_megatron_to_transformers(mgmodel, hfmodel, args):
 
     if args.fp16:
         mgmodel = mgmodel.half()
-        hfmodel = hfmodel.half()
     elif args.bf16:
         mgmodel = mgmodel.bfloat16()
-        hfmodel = hfmodel.bfloat16()
 
     with torch.no_grad():
         hfmodel.model.embed_tokens.weight.copy_(mgmodel.embedding.word_embeddings.weight)
@@ -303,10 +301,8 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
 
     if args.fp16:
         mgmodel = mgmodel.half()
-        hfmodel = hfmodel.half()
     elif args.bf16:
         mgmodel = mgmodel.bfloat16()
-        hfmodel = hfmodel.bfloat16()
 
     with torch.no_grad():
         mgmodel.embedding.word_embeddings.weight.copy_(hfmodel.model.embed_tokens.weight)
@@ -372,6 +368,9 @@ def save_mgmodel(mgmodel, args):
     for k in list(full_model.keys()):
         if full_model[k] is None and '_extra_state' not in k:
             full_model.pop(k)
+            continue
+        if '_extra_state' in k and isinstance(full_model[k], torch.Tensor):
+            full_model[k] = None
 
     if args.num_experts is not None:
         pattern = r'local_experts\.(\d+)\.'
@@ -439,6 +438,8 @@ def save_mgmodel(mgmodel, args):
                             layer_pattern = re.compile(r'\d+')
                             res = layer_pattern.findall(k)
                             k = re.sub(r"decoder.layers.\d+", "decoder.layers." + str(layers_to_copy["decoder.layers." + res[0]]), k)
+                        elif not ("word_embeddings" in k or "output_layer" in k or "final_layernorm" in k):
+                            continue
 
                         if not isinstance(v, torch.Tensor):
                             if 'local_experts' in k:
@@ -452,59 +453,48 @@ def save_mgmodel(mgmodel, args):
                             seg = v.shape[0] // args.tensor_model_parallel_size
                             target_v = v[seg * tp_rank: seg * (tp_rank + 1)]
                         elif 'linear_q_up_proj' in k:
-                            seg_0 = v.shape[0] // args.tensor_model_parallel_size
-                            seg_1 = v.shape[1] // args.tensor_model_parallel_size
-                            target_v = v[seg_0 * tp_rank: seg_0 * (tp_rank + 1), seg_1 * tp_rank: seg_1 * (tp_rank + 1)]
+                            seg = v.shape[0] // args.tensor_model_parallel_size
+                            target_v = v[seg * tp_rank:seg * (tp_rank + 1)]
                         elif 'q_layernorm' in k:
                             seg = v.shape[0] // args.tensor_model_parallel_size
                             target_v = v[seg * tp_rank: seg * (tp_rank + 1)]
                         elif 'linear_kv_up_proj' in k:
                             seg = v.shape[0] // args.tensor_model_parallel_size
                             target_v = v[seg * tp_rank:seg * (tp_rank + 1)]
-                        elif 'linear_proj' in k and 'extra_state' not in k:
+                        elif 'linear_proj' in k:
                             seg = v.shape[1] // args.tensor_model_parallel_size
                             target_v = v[:, seg * tp_rank: seg * (tp_rank + 1)]
                         elif 'decoder.layers.0.mlp.linear_fc2' in k:
-                            if 'extra_state' not in k:
+                            seg = v.shape[1] // args.tensor_model_parallel_size
+                            target_v = v[:, seg * tp_rank: seg * (tp_rank + 1)]
+                        elif 'decoder.layers.0.mlp.linear_fc1' in k:
+                            viewed = v.view(-1, args.ffn_hidden_size, args.hidden_size)
+                            seg = args.ffn_hidden_size // args.tensor_model_parallel_size
+                            target_v = viewed[:, seg * tp_rank: seg * (tp_rank + 1), :].reshape(-1, args.hidden_size)
+                        elif 'local_experts' in k:
+                            expert_rank = int(re.findall(pattern, k)[0])
+                            if expert_rank // num_local_experts != ep_rank:
+                                continue
+                            expert_local_rank = expert_rank % num_local_experts
+                            if 'linear_fc1' in k:
+                                viewed = v.view(-1, args.moe_ffn_hidden_size, args.hidden_size)
+                                seg = args.moe_ffn_hidden_size // args.tensor_model_parallel_size
+                                target_v = viewed[:, seg * tp_rank: seg * (tp_rank + 1), :].reshape(-1, args.hidden_size)
+                            elif 'linear_fc2' in k:
                                 seg = v.shape[1] // args.tensor_model_parallel_size
                                 target_v = v[:, seg * tp_rank: seg * (tp_rank + 1)]
-                            else:
-                                target_v = v
-                        elif 'decoder.layers.0.mlp.linear_fc1' in k:
-                            if 'extra_state' not in k:
-                                viewed = v.view(-1, args.ffn_hidden_size, args.hidden_size)
-                                seg = args.ffn_hidden_size // args.tensor_model_parallel_size
-                                target_v = viewed[:, seg * tp_rank: seg * (tp_rank + 1), :].reshape(-1, args.hidden_size)
-                            else:
-                                target_v = v
-                        elif 'local_experts' in k:
-                            if 'extra_state' not in k:
-                                expert_rank = int(re.findall(pattern, k)[0])
-                                if expert_rank // num_local_experts != ep_rank:
-                                    continue
-                                expert_local_rank = expert_rank % num_local_experts
-                                if 'linear_fc1' in k:
-                                    viewed = v.view(-1, args.moe_ffn_hidden_size, args.hidden_size)
-                                    seg = args.moe_ffn_hidden_size // args.tensor_model_parallel_size
-                                    target_v = viewed[:, seg * tp_rank: seg * (tp_rank + 1), :].reshape(-1, args.hidden_size)
-                                elif 'linear_fc2' in k:
-                                    seg = v.shape[1] // args.tensor_model_parallel_size
-                                    target_v = v[:, seg * tp_rank: seg * (tp_rank + 1)]
-                                k = k.replace(f'local_experts.{expert_rank}', f'local_experts.{expert_local_rank}')
-                            else:
-                                target_v = v
+                            k = k.replace(f'local_experts.{expert_rank}', f'local_experts.{expert_local_rank}')
+
                         elif 'shared_expert' in k and 'gate' not in k:
-                            if 'extra_state' not in k:
-                                if 'linear_fc1' in k:
-                                    viewed = v.view(-1, args.moe_shared_expert_intermediate_size,
-                                                    args.hidden_size)
-                                    seg = args.moe_shared_expert_intermediate_size // args.tensor_model_parallel_size
-                                    target_v = viewed[:, seg * tp_rank: seg * (tp_rank + 1), :].reshape(-1, args.hidden_size)
-                                elif 'linear_fc2' in k:
-                                    seg = v.shape[1] // args.tensor_model_parallel_size
-                                    target_v = v[:, seg * tp_rank: seg * (tp_rank + 1)]
-                            else:
-                                target_v = v
+                            if 'linear_fc1' in k:
+                                viewed = v.view(-1, args.moe_shared_expert_intermediate_size,
+                                                args.hidden_size)
+                                seg = args.moe_shared_expert_intermediate_size // args.tensor_model_parallel_size
+                                target_v = viewed[:, seg * tp_rank: seg * (tp_rank + 1), :].reshape(-1, args.hidden_size)
+                            elif 'linear_fc2' in k:
+                                seg = v.shape[1] // args.tensor_model_parallel_size
+                                target_v = v[:, seg * tp_rank: seg * (tp_rank + 1)]
+
                         elif "word_embeddings" in k or "output_layer" in k or "final_layernorm" in k:
                             seg = v.shape[0] // args.tensor_model_parallel_size
                             target_v = v[seg * tp_rank: seg * (tp_rank + 1)]
