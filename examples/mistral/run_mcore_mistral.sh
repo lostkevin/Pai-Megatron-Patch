@@ -351,6 +351,7 @@ megatron_options="  \
         --position-embedding-type rope \
         --rotary-base ${ROPE_THETA}
         --disable-bias-linear \
+        --ckpt-format torch \
         "
 
 run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_mcore_mistral.py
