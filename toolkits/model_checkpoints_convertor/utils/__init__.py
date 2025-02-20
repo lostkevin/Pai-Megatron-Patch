@@ -26,7 +26,9 @@ from safetensors.torch import save_file
 from collections.abc import Mapping, Sequence
 
 def save_hfmodel(args, model, max_shard_size='10GB'):
-    output_state_dict = model.state_dict()
+    output_state_dict = model
+    if not isinstance(model, dict):
+        output_state_dict = model.state_dict()
     save_safetensors = (not USE_TRANSFORMERS_SAVE) or args.save_safetensors
     os.makedirs(args.save, exist_ok=True)
 
@@ -147,12 +149,13 @@ def safe_copy(src_tensor: torch.Tensor, dst_tensor: torch.Tensor):
     dst_tensor.data.copy_(src_tensor.data)
     return src_tensor.numel()
 
-def save_state_dict(args, model_chunks, checkpoint_name, has_vpp: bool=False):
+def save_state_dict(args, model_chunks, checkpoint_name, has_vpp: bool=False, save_args: bool=True):
     """
     Save some model chunks to a megatron checkpoint file
     """
     state_dict = {}
-    state_dict['args'] = args
+    if save_args:
+        state_dict['args'] = args
     state_dict['checkpoint_version'] = 3.0
     state_dict['iteration'] = 0    
     if not has_vpp:

@@ -571,4 +571,11 @@ def get_patch_args(parser):
         help="Surround image tokens with tags.",
     )
 
+    group.add_argument("--use-multi-token-prediction", action="store_true")
+
+    group.add_argument(
+        "--num-mtp-predictor",
+        type=int,
+    )
+
     return parser

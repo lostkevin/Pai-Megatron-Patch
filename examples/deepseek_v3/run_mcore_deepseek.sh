@@ -356,6 +356,8 @@ megatron_options="  \
         --calculate-per-token-loss \
         --transformer-impl transformer_engine \
         --use-rope-scaling \
+        --use-multi-token-prediction \
+        --num-mtp-predictor 1
         "
 
 run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_deepseek.py

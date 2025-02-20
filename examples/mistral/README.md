@@ -12,7 +12,7 @@
       * [运行评估工具](#运行评估工具)
 
 ## 安装
-请在阿里云人工智能平台PAI产品中填写专属镜像地址： `dsw-registry.cn-wulanchabu.cr.aliyuncs.com/pai/pai-megatron-patch:24.07` 
+请在阿里云人工智能平台PAI产品中填写专属镜像地址： `dsw-registry.cn-wulanchabu.cr.aliyuncs.com/pai/pai-megatron-patch:25.01` 
 
 > 如果您需要访问Megatron-LM-Dense模型，请将Pai-Megatron-Patch降级至[v0.10.2](https://github.com/alibaba/Pai-Megatron-Patch/releases/tag/v0.10.2)或更早
 
@@ -80,24 +80,6 @@ sh hf2mcore_convertor.sh \
 0  \
 0  \
 0 \
-false
-```
-
-基于Sparse-Upcycled的Dense转MoE模型格式转换
-```bash
-cd /workspace/Pai-Megatron-Patch/toolkits/model_checkpoints_convertor/mistral \
-sh hf2mcore_convertor.sh \
-7B \
-/mnt/mistral-ckpts/Mistral-7B-v0.1 \
-../../../     \
-/mnt/mistral-ckpts/Mistral-7B-v0.1 \
-/mnt/mistral-ckpts/Mistral-7B-v0.1-to-mcore-tp4-pp1-ep1-exp2 \
-4  \
-1  \
-0  \
-2  \
-2  \
-1 \
 false
 ```
 
@@ -195,7 +177,7 @@ false \
 
 ```bash
 cd /workspace/Pai-Megatron-Patch/examples/mistral
-sh run_mcore_qwen.sh  \
+sh run_mcore_mistral.sh  \
 dsw  \
 7B   \
 1    \
@@ -227,7 +209,7 @@ false \
 ```bash
 export MP_DATASET_TYPE="raw"
 cd /workspace/Pai-Megatron-Patch/examples/mistral
-sh run_mcore_qwen.sh  \
+sh run_mcore_mistral.sh  \
 dsw  \
 7B   \
 1    \
