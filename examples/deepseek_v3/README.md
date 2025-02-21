@@ -35,8 +35,7 @@ wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILa
 # cd /mnt
 # mkdir deepseek-ckpts
 # cd deepseek-ckpts
-# wget https://atp-modelzoo-wlcb-pai.oss-cn-wulanchabu.aliyuncs.com/release/models/pai-megatron-patch/deepseek-ckpts/DeepSeek-V2-Lite.tgz
-# tar -zxf DeepSeek-V2-Lite.tgz
+# git clone https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V3
 
 mkdir deepseek-datasets
 wget https://atp-modelzoo-wlcb-pai.oss-cn-wulanchabu.aliyuncs.com/release/models/pai-megatron-patch/deepseek-datasets/SlimPajama.json
@@ -52,7 +51,7 @@ sh run_make_pretraining_dataset_megatron.sh \
 DeepSeekV2Tokenizer \
 text \
 /mnt/deepseek-datasets/ \
-# /mnt/deepseek-ckpts/DeepSeek-V2-Lite
+/mnt/deepseek-ckpts/DeepSeek-V3
 ```
 为方便期间，我们也提供了已经处理好的idxmap数据集供后续测试使用
 ```bash
@@ -76,29 +75,29 @@ mg2hf=$8                       # 是否执行mcore2hf转换
 HG_CKPT_PATH=$9                # HF的CKPT的路径
 ```
 例如，使用下述脚本将checkpoint转换到MCore-MoE并检查输出。
-注意对于A21B模型由于它有60层，所以需要执行非均匀切分策略设置`MP_PP0_LAYERS=4`。另外切分成pp=8,ep=16可以跑起来。
+注意对于A37B模型由于它有61层，所以需要执行非均匀切分策略设置`MP_PP0_LAYERS=5`。另外切分成tp=8,pp=8,ep=16可以跑起来。
 ```bash
-export MP_PP0_LAYERS=6
+export MP_PP0_LAYERS=5
 cd /workspace/Pai-Megatron-Patch/toolkits/model_checkpoints_convertor/deepseek
 bash hf2mcore_deepseek_v3_moe_convertor.sh \
 A37B \
-# /mnt/deepseek-ckpts/DeepSeek-V2-Lite \
-# /mnt/deepseek-ckpts/DeepSeek-V2-Lite-to-mcore-tp1-pp4-ep2  \
-1  \
-4  \
-2 \
-fp32 \
+/mnt/deepseek-ckpts/DeepSeek-V3 \
+/mnt/deepseek-ckpts/DeepSeek-V3-to-mcore-tp8-pp8-ep16  \
+8 \
+8  \
+16 \
+bf16 \
 false 
 ```
 
 ### Megatron-Core预训练及指令微调
-在DeepSeek-V2中，我们已将预训练和微调整合到`run_mcore_deepseek.sh`脚本，对于不同的使用场景，二者各参数的意义有所不同。
+在DeepSeek-V3中，我们已将预训练和微调整合到`run_mcore_deepseek.sh`脚本，对于不同的使用场景，二者各参数的意义有所不同。
 
 #### 预训练&微调命令统一描述
 需要传入的参数列表如下：
 ```bash
 ENV=$1                          # 运行环境配置开关: dsw单机训练训练，dlc表示多机训练环境
-MODEL_SIZE=$2                   # 模型结构参数量级: A2.4B，A21B
+MODEL_SIZE=$2                   # 模型结构参数量级: A37B
 BATCH_SIZE=$3                   # 一次迭代一个数据并行内的样本数
 GLOBAL_BATCH_SIZE=$4            # 一次迭代多个数据并行的总样本数
 LR=$5                           # 学习率
@@ -131,6 +130,7 @@ OUTPUT_BASEPATH=${26}           # 训练输出日志文件路径
 
 ```bash
 cd /workspace/Pai-Megatron-Patch/examples/deepseek_v3
+export MP_PP0_LAYERS=5
 sh run_mcore_deepseek.sh  \
 dsw  \
 A37B   \
@@ -141,10 +141,10 @@ A37B   \
 1024  \
 1024  \
 bf16  \
-1   \
-4  \
+8   \
+8  \
 1 \
-2 \
+16 \
 true \
 true   \
 false \
@@ -154,7 +154,7 @@ false \
 100000  \
 /mnt/deepseek-datasets/mmap_deepseekv2_datasets_text_document   \
 /mnt/deepseek-datasets/mmap_deepseekv2_datasets_text_document   \
-/mnt/deepseek-ckpts/DeepSeek-V2-Lite-to-mcore-tp1-pp4-ep2  \
+/mnt/deepseek-ckpts/DeepSeek-V3-to-mcore-tp8-pp8-ep16  \
 1000000000  \
 10000   \
 /workspace/output_mcore_deepseek_pretrain
@@ -165,10 +165,11 @@ false \
 当准备好微调数据集后，将SFT开关设置为`true`即可进行指令微调。
 
 ```bash
-cd /workspace/Pai-Megatron-Patch/examples/deepseek_v2
+export MP_PP0_LAYERS=5
+cd /workspace/Pai-Megatron-Patch/examples/deepseek_v3
 sh run_mcore_deepseek.sh  \
 dsw  \
-A2.4B   \
+A37B   \
 1    \
 8 \
 1e-5   \
@@ -176,10 +177,10 @@ A2.4B   \
 1024  \
 1024  \
 bf16  \
-1   \
-4  \
+8   \
+8  \
 1 \
-2 \
+16 \
 true \
 true   \
 false \
@@ -189,18 +190,19 @@ false \
 100000  \
 /mnt/deepseek-datasets/mmap_deepseekv2_datasets_text_document   \
 /mnt/deepseek-datasets/mmap_deepseekv2_datasets_text_document   \
-/mnt/deepseek-ckpts/DeepSeek-V2-Lite-to-mcore-tp1-pp4-ep2  \
+/mnt/deepseek-ckpts/DeepSeek-V3-to-mcore-tp8-pp8-ep16  \
 10000  \
 100   \
 /workspace/output_mcore_deepseek_finetune
 ```
 通过设置MP_DATASET_TYPE环境变量，本脚本还可使用json格式的数据集进行指令微调
 ```bash
+export MP_PP0_LAYERS=5
 export MP_DATASET_TYPE="raw"
-cd /workspace/Pai-Megatron-Patch/examples/deepseek_v2
+cd /workspace/Pai-Megatron-Patch/examples/deepseek_v3
 sh run_mcore_deepseek.sh  \
 dsw  \
-A2.4B   \
+A37B   \
 1    \
 8 \
 1e-5   \
@@ -221,7 +223,7 @@ false \
 100000  \
 /mnt/deepseek-datasets/alpaca_zh-train.json    \
 /mnt/deepseek-datasets/alpaca_zh-train.json   \
-/mnt/deepseek-ckpts/DeepSeek-V2-Lite-to-mcore-tp1-pp4-ep2  \
+/mnt/deepseek-ckpts/DeepSeek-V3-to-mcore-tp8-pp8-ep16  \
 10000  \
 100   \
 /workspace/output_mcore_deepseek_finetune
@@ -234,16 +236,16 @@ false \
 
 ```bash
 cd /workspace/Pai-Megatron-Patch/toolkits/model_checkpoints_convertor/deepseek
-bash hf2mcore_deepseek_v2_moe_convertor.sh \
-A2.4B \
-/mnt/deepseek-ckpts/DeepSeek-V2-Lite-to-mcore-tp1-pp4-ep2  \
-/mnt/deepseek-ckpts/DeepSeek-V2-Lite-mcore-te-to-hf    \
+bash hf2mcore_deepseek_v3_moe_convertor.sh \
+A37B \
+/mnt/deepseek-ckpts/DeepSeek-V3-to-mcore-tp8-pp8-ep16  \
+/mnt/deepseek-ckpts/DeepSeek-V3-mcore-to-hf    \
 1  \
 4  \
 2 \
 fp32 \
 true \
-/mnt/deepseek-ckpts/DeepSeek-V2-Lite
+/mnt/deepseek-ckpts/DeepSeek-V3
 ```
 
 ### 运行评估工具
@@ -265,7 +267,7 @@ tar -xvzf evaluate.tgz
 cd /workspace/Pai-Megatron-Patch/LM-Evaluation-Harness-240310
 accelerate launch --main_process_port 29051 -m lm_eval \
 --model hf \
---model_args pretrained=/mnt/deepseek-ckpts/DeepSeek-V2-Lite-mcore-te-to-hf,trust_remote_code=True \
+--model_args pretrained=/mnt/deepseek-ckpts/DeepSeek-V3-mcore-to-hf,trust_remote_code=True \
 --tasks cmmlu,ceval-valid  \
 --batch_size 16
 ```

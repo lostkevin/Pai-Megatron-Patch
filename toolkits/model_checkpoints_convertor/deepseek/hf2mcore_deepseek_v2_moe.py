@@ -86,11 +86,6 @@ def add_model_args(parser):
     return parser
 
 
-def name_to_expert_rank(key):
-    pattern = r'local_experts\.(\d+)\.'
-    expert_rank = int(re.findall(pattern, key)[0])
-    return expert_rank
-
 def load_megatron_model(args):
     os.makedirs(args.save, exist_ok=True)
     os.system("cp -rf " + args.hf_ckpt_path + "/*config.json " + args.save)
@@ -118,6 +113,7 @@ def load_megatron_model(args):
     q_head_dim = args.qk_head_dim + args.qk_pos_emb_head_dim
     group_per_split = args.num_attention_heads // args.tensor_model_parallel_size
     if args.num_experts is not None:
+        pattern = r'local_experts\.(\d+)\.'
         num_local_experts = args.num_experts // args.expert_model_parallel_size
     state_dict = {}
     mid_state = defaultdict(list)
@@ -139,7 +135,7 @@ def load_megatron_model(args):
             split_state = torch.load(checkpoint_name, map_location="cpu", weights_only=False)['model']
             for k, v in split_state.items():
                 if 'local_experts' in k:
-                    expert_local_rank = name_to_expert_rank(k)
+                    expert_local_rank = int(re.findall(pattern, k)[0])
                     expert_rank = expert_local_rank + num_local_experts * ep_rank
                     k = k.replace(f'local_experts.{expert_local_rank}', f'local_experts.{expert_rank}')
                 state_dict[k] = v
@@ -179,7 +175,7 @@ def load_megatron_model(args):
                     for k, v in split_state.items():
                         try:
                             if 'local_experts' in k:
-                                local_expert_rank = name_to_expert_rank(k)
+                                local_expert_rank = int(re.findall(pattern, k)[0])
                                 expert_rank = local_expert_rank + num_local_experts * ep_rank
                                 k = k.replace(f'local_experts.{local_expert_rank}', f'local_experts.{expert_rank}')
                             pattern = re.compile(r'\d+')
@@ -518,224 +514,6 @@ def save_mgmodel(mgmodel, args):
 
     print(f'megatron model is save to {args.save}')
 
-def check_hf_mg_forward(hfmodel, mgmodel, mgargs):
-    hf_hiddens = [{} for _ in range(mgargs.num_layers)]
-    mg_hiddens = [{} for _ in range(mgargs.num_layers)]
-
-    hidden_size = mgargs.hidden_size
-    q_head_dim = mgargs.qk_head_dim + mgargs.qk_pos_emb_head_dim
-    num_heads = mgargs.num_attention_heads
-    v_head_dim = mgargs.v_head_dim
-    vocab_size = mgargs.padded_vocab_size
-    kv_a_dim = mgargs.kv_lora_rank + mgargs.qk_pos_emb_head_dim
-    kv_b_dim = num_heads * (q_head_dim - mgargs.qk_pos_emb_head_dim + v_head_dim)
-    kv_lora_rank = mgargs.kv_lora_rank
-
-    def print_input_hook(module, args, kwargs, layer_idx, mode):
-        frame, name = mode.split('-')
-        if frame == 'hf':
-            hf_hiddens[layer_idx][name] = args[0].transpose(0, 1)
-        elif frame == 'mg' and 'layer' in mode:
-            mg_hiddens[layer_idx][name] = kwargs.get('hidden_states')
-        elif frame == 'mg':
-            mg_hiddens[layer_idx][name] = args[0]
-
-    def print_output_hook(module, args, kwargs, output, layer_idx, mode):
-        frame, name = mode.split('-')
-        if mode in ['hf-lmhead']:
-            hf_hiddens[layer_idx][name] = output.transpose(0, 1).reshape(-1, vocab_size)
-            hf_hiddens[layer_idx][name + "_weight"] = module.weight
-            hf_hiddens[layer_idx][name + '_token'] = output.transpose(0, 1).max(dim=-1)[1]
-        elif mode in ['mg-lmhead']:
-            mg_hiddens[layer_idx][name] = output[0].reshape(-1, vocab_size)
-            mg_hiddens[layer_idx][name + "_weight"] = module.weight
-            mg_hiddens[layer_idx][name + '_token'] = output[0].max(dim=-1)[1]
-        elif mode in ['hf-q_proj_out', 'hf-o_proj_out', 'hf-kv_b_proj_out', 'hf-kv_a_proj_out', 'hf-kv_a_norm_out']:
-            hf_hiddens[layer_idx][name] = output
-            hf_hiddens[layer_idx][name + '_weight'] = module.weight
-        elif mode in ['mg-kv_a_norm_out']:
-            mg_hiddens[layer_idx][name] = output.reshape(-1, kv_lora_rank)
-            mg_hiddens[layer_idx][name + '_weight'] = module.weight
-        elif mode in ['mg-q_proj_out']:
-            mg_hiddens[layer_idx][name] = output[0].reshape(-1, num_heads * q_head_dim)
-            mg_hiddens[layer_idx][name + '_weight'] = module.weight
-        elif mode in ['mg-kv_a_proj_out']:
-            mg_hiddens[layer_idx][name] = output[0].reshape(-1, kv_a_dim)
-            mg_hiddens[layer_idx][name + '_weight'] = module.weight
-        elif mode in ['mg-kv_b_proj_out']:
-            mg_hiddens[layer_idx][name] = output[0].reshape(-1, kv_b_dim)
-            mg_hiddens[layer_idx][name + '_weight'] = module.weight
-        elif mode in ['mg-o_proj_out']:
-            mg_hiddens[layer_idx][name] = output[0].reshape(-1, num_heads * v_head_dim)
-            mg_hiddens[layer_idx][name + '_weight'] = module.weight
-        elif mode in ['hf-attn_out']:
-            hf_hiddens[layer_idx][name] = output[0].reshape(-1, hidden_size)
-        elif mode in ['mg-attn_out']:
-            mg_hiddens[layer_idx][name] = output[0].reshape(-1, hidden_size)
-        elif mode in ['hf-down_proj_out']:
-            hf_hiddens[layer_idx][name] = output.reshape(-1, hidden_size)
-            hf_hiddens[layer_idx][name + '_weight'] = module.weight
-        elif mode in ['mg-down_proj_out']:
-            mg_hiddens[layer_idx][name] = output[0].reshape(-1, hidden_size)
-            mg_hiddens[layer_idx][name + '_weight'] = module.weight
-        elif mode in ['hf-shared_experts_down_proj_out']:
-            hf_hiddens[layer_idx][name] = output.reshape(-1, hidden_size)
-            hf_hiddens[layer_idx][name + '_weight'] = module.weight
-        elif mode in ['mg-shared_experts_down_proj_out']:
-            mg_hiddens[layer_idx][name] = output[0].reshape(-1, hidden_size)
-            mg_hiddens[layer_idx][name + '_weight'] = module.weight
-
-    if mgargs.untie_embeddings_and_output_weights:
-        hfmodel.lm_head.register_forward_hook(partial(print_output_hook, layer_idx=mgargs.num_layers - 1, mode='hf-lmhead'),
-                                            with_kwargs=True)
-
-        mgmodel.output_layer.register_forward_hook(
-            partial(print_output_hook, layer_idx=mgargs.num_layers - 1, mode='mg-lmhead'), with_kwargs=True)
-
-    for idx, layer in enumerate(hfmodel.model.layers):
-
-        layer.register_forward_pre_hook(partial(print_input_hook, layer_idx=idx, mode='hf-layer_in'), with_kwargs=True)
-
-        if mgargs.q_lora_rank is None:
-
-            layer.self_attn.q_proj.register_forward_pre_hook(partial(print_input_hook, layer_idx=idx, mode='hf-q_proj_in'),
-                                                             with_kwargs=True)
-
-            layer.self_attn.q_proj.register_forward_hook(partial(print_output_hook, layer_idx=idx, mode='hf-q_proj_out'),
-                                                         with_kwargs=True)
-
-        layer.self_attn.kv_a_proj_with_mqa.register_forward_pre_hook(
-            partial(print_input_hook, layer_idx=idx, mode='hf-kv_a_proj_in'), with_kwargs=True)
-
-        layer.self_attn.kv_a_proj_with_mqa.register_forward_hook(
-            partial(print_output_hook, layer_idx=idx, mode='hf-kv_a_proj_out'), with_kwargs=True)
-
-        layer.self_attn.kv_a_layernorm.register_forward_pre_hook(
-            partial(print_input_hook, layer_idx=idx, mode='hf-kv_a_norm_in'), with_kwargs=True)
-
-        layer.self_attn.kv_a_layernorm.register_forward_hook(
-            partial(print_output_hook, layer_idx=idx, mode='hf-kv_a_norm_out'), with_kwargs=True)
-
-        layer.self_attn.kv_b_proj.register_forward_pre_hook(
-            partial(print_input_hook, layer_idx=idx, mode='hf-kv_b_proj_in'), with_kwargs=True)
-
-        layer.self_attn.kv_b_proj.register_forward_hook(
-            partial(print_output_hook, layer_idx=idx, mode='hf-kv_b_proj_out'), with_kwargs=True)
-
-        layer.self_attn.o_proj.register_forward_pre_hook(partial(print_input_hook, layer_idx=idx, mode='hf-o_proj_in'),
-                                                         with_kwargs=True)
-
-        layer.self_attn.o_proj.register_forward_hook(partial(print_output_hook, layer_idx=idx, mode='hf-o_proj_out'),
-                                                     with_kwargs=True)
-
-        layer.self_attn.register_forward_hook(partial(print_output_hook, layer_idx=idx, mode='hf-attn_out'),
-                                              with_kwargs=True)
-
-        if idx == 0:
-            layer.mlp.down_proj.register_forward_pre_hook(
-                partial(print_input_hook, layer_idx=idx, mode='hf-down_proj_in'), with_kwargs=True)
-
-            layer.mlp.down_proj.register_forward_hook(
-                partial(print_output_hook, layer_idx=idx, mode='hf-down_proj_out'), with_kwargs=True)
-        else:
-            layer.mlp.shared_experts.down_proj.register_forward_pre_hook(
-                partial(print_input_hook, layer_idx=idx, mode='hf-shared_experts_down_proj_in'), with_kwargs=True)
-
-            layer.mlp.shared_experts.down_proj.register_forward_hook(
-                partial(print_output_hook, layer_idx=idx, mode='hf-shared_experts_down_proj_out'), with_kwargs=True)
-
-    for idx, layer in enumerate(mgmodel.decoder.layers):
-
-        layer.register_forward_pre_hook(partial(print_input_hook, layer_idx=idx, mode='mg-layer_in'), with_kwargs=True)
-
-        if mgargs.q_lora_rank is None:
-            layer.self_attention.linear_q_proj.register_forward_pre_hook(
-                partial(print_input_hook, layer_idx=idx, mode='mg-q_proj_in'), with_kwargs=True)
-
-            layer.self_attention.linear_q_proj.register_forward_hook(
-                partial(print_output_hook, layer_idx=idx, mode='mg-q_proj_out'), with_kwargs=True)
-
-        layer.self_attention.linear_kv_down_proj.register_forward_pre_hook(
-            partial(print_input_hook, layer_idx=idx, mode='mg-kv_a_proj_in'), with_kwargs=True)
-
-        layer.self_attention.linear_kv_down_proj.register_forward_hook(
-            partial(print_output_hook, layer_idx=idx, mode='mg-kv_a_proj_out'), with_kwargs=True)
-
-        layer.self_attention.kv_layernorm.register_forward_pre_hook(
-            partial(print_input_hook, layer_idx=idx, mode='mg-kv_a_norm_in'), with_kwargs=True)
-
-        layer.self_attention.kv_layernorm.register_forward_hook(
-            partial(print_output_hook, layer_idx=idx, mode='mg-kv_a_norm_out'), with_kwargs=True)
-
-        layer.self_attention.linear_kv_up_proj.register_forward_pre_hook(
-            partial(print_input_hook, layer_idx=idx, mode='mg-kv_b_proj_in'), with_kwargs=True)
-
-        layer.self_attention.linear_kv_up_proj.register_forward_hook(
-            partial(print_output_hook, layer_idx=idx, mode='mg-kv_b_proj_out'), with_kwargs=True)
-
-        layer.self_attention.linear_proj.register_forward_pre_hook(
-            partial(print_input_hook, layer_idx=idx, mode='mg-o_proj_in'), with_kwargs=True)
-
-        layer.self_attention.linear_proj.register_forward_hook(
-            partial(print_output_hook, layer_idx=idx, mode='mg-o_proj_out'), with_kwargs=True)
-
-        layer.self_attention.register_forward_hook(partial(print_output_hook, layer_idx=idx, mode='mg-attn_out'),
-                                                   with_kwargs=True)
-
-        if idx == 0:
-            layer.mlp.linear_fc2.register_forward_pre_hook(
-                partial(print_input_hook, layer_idx=idx, mode='mg-down_proj_in'), with_kwargs=True)
-
-            layer.mlp.linear_fc2.register_forward_hook(
-                partial(print_output_hook, layer_idx=idx, mode='mg-down_proj_out'), with_kwargs=True)
-        else:
-            layer.mlp.shared_experts.linear_fc2.register_forward_pre_hook(
-                partial(print_input_hook, layer_idx=idx, mode='mg-shared_experts_down_proj_in'), with_kwargs=True)
-
-            layer.mlp.shared_experts.linear_fc2.register_forward_hook(
-                partial(print_output_hook, layer_idx=idx, mode='mg-shared_experts_down_proj_out'), with_kwargs=True)
-
-    input_ids = torch.tensor([list(range(1, mgargs.max_position_embeddings+1))]).long().cuda()
-    attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
-    print(hfmodel)
-    print(mgmodel)
-    is_oom = False
-    with torch.inference_mode():
-        try:
-            hfmodel.cuda()
-            hflogits = hfmodel(input_ids=input_ids).logits
-        except torch.cuda.OutOfMemoryError:
-            print('oom for huggingface model forward')
-            is_oom = True
-        hfmodel.cpu()
-        del hfmodel
-
-    with torch.inference_mode():
-        try:
-            mgmodel.cuda()
-            mglogits = mgmodel(input_ids=input_ids, attention_mask=attention_mask, position_ids=position_ids)
-        except torch.cuda.OutOfMemoryError:
-            print('oom for megatron model forward')
-            is_oom = True
-        mgmodel.cpu()
-        del mgmodel
-
-    epsilon = 1e-5
-    for idx, (hfh, mgh) in enumerate(zip(hf_hiddens, mg_hiddens)):
-        assert len(hfh) == len(mgh)
-        for k, hfv in hfh.items():
-            mgv, hfv = mgh[k].cpu(), hfv.cpu()
-            same_num = (hfv != mgv).sum()
-            diff_num = ((hfv - mgv) > epsilon).sum()
-            diff_max = (hfv - mgv).abs().max()
-            print(f'layer:{idx}, {k}, diff: {same_num}, diff>{epsilon}:[{diff_num}/{hfv.numel()}] diff_max:{diff_max}')
-
-    if not is_oom:
-        same_num = (hflogits != mglogits).sum()
-        diff_num = ((hflogits - mglogits) > epsilon).sum()
-        diff_max = (hflogits - mglogits).abs().max()
-        print(f'logits: {same_num}, diff>{epsilon}:[{diff_num}/{hflogits.numel()}] diff_max:{diff_max}')
-
 def add_extra_args(parser):
     parser = get_patch_args(parser)
     parser = add_model_args(parser)
@@ -757,8 +535,6 @@ def main():
         mg_model = model_provider()
         convert_checkpoint_from_transformers_to_megatron(hf_model, mg_model, args)
         print("done convert")
-        if args.q_lora_rank is None:
-            check_hf_mg_forward(hf_model, mg_model, args)
         save_mgmodel(mg_model, args)
 
 if __name__ == "__main__":
