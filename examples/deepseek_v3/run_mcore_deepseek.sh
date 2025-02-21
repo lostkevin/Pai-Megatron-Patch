@@ -61,10 +61,8 @@ OUTPUT_BASEPATH=${26}
 ### OTHERS ###
 
 if [ $FL = true ]; then
-    export NVTE_FLASH_ATTN=1 NVTE_FUSED_ATTN=0
-    attn_backend_option=" \
-        --attention-backend flash
-    "
+    echo "MLA is not supported in flash-attn, set FL=false and rerun."
+    exit -1
 elif [ $FL = false ]; then
     export NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=1
     attn_backend_option=" \
@@ -238,17 +236,11 @@ if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
             --load $PRETRAIN_CHECKPOINT_PATH"
 fi
 
-if [ $OPTIMIZER_OFFLOAD = 'static' ]; then
-    offload_options=" \
-        --optimizer hybridadam \
-        --optimizer-offload-policy static \
-        --optimizer-offload-fraction 1.0"
-elif [ $OPTIMIZER_OFFLOAD = 'auto' ]; then
-    offload_options=" \
-        --optimizer hybridadam \
-        --optimizer-offload-policy auto"
-else
-    offload_options=""
+if [ $OPTIMIZER_OFFLOAD != false ]; then
+    offload_option=" \
+        --optimizer-cpu-offload \
+        --use-precision-aware-optimizer \
+        --optimizer-offload-fraction ${OPTIMIZER_OFFLOAD}"
 fi
 
 if [ $SFT = true ]; then
@@ -258,6 +250,7 @@ if [ $SFT = true ]; then
     PREFIX="finetune-mcore-deepseek-v2-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
     sft_options=" \
          --eod-mask-loss \
+         --calculate-per-token-loss \
          --train-mode finetune"
 else
     TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
@@ -273,19 +266,17 @@ if [ ${MP_DATASET_TYPE} = "raw" ]; then
         --train-data-path ${DATASET_PATH} \
         --valid-data-path ${VALID_DATASET_PATH} \
         --dataloader-type cyclic \
-        --dataset LLama-SFT-Raw"
+        --dataset JSON-SFT"
 else 
     dataset_options=" \
         --data-path ${DATASET_PATH} \
         --split 99,1,0 \
-        --dataset LLama-Pretrain-Idxmap"
+        --dataset MMAP"
 fi
 
 if [ ${MP_SFT_PACKING} = true ]; then
-    packing_options=" \
-        --reset-position-ids \
-        --no-create-attention-mask-in-dataloader
-    "
+    echo "Currently MLA do not support THD format attention, thus sequence packing can not be used..."
+    packing_options=""
 else
     packing_options=""
 fi
@@ -361,7 +352,6 @@ megatron_options="  \
         --qk-layernorm \
         --multi-latent-attention \
         --ckpt-format torch \
-        --calculate-per-token-loss \
         --transformer-impl transformer_engine \
         --use-rope-scaling \
         --use-multi-token-prediction \
@@ -370,7 +360,7 @@ megatron_options="  \
 
 run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_deepseek.py
  ${megatron_options} ${dataset_options} ${pr_options} ${load_option} ${activation_checkpoint_options} \
- ${do_option} ${sp_option} ${moe_options} ${offload_options} ${sft_options} ${vp_option} ${packing_options} ${uneven_split_option} ${attn_backend_option}"
+ ${do_option} ${sp_option} ${moe_options} ${offload_option} ${sft_options} ${vp_option} ${packing_options} ${uneven_split_option} ${attn_backend_option}"
 
 echo ${run_cmd}
 eval ${run_cmd}
