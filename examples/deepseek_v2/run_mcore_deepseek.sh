@@ -267,6 +267,14 @@ if [ $PRETRAIN_CHECKPOINT_PATH != none ]; then
             --load $PRETRAIN_CHECKPOINT_PATH"
 fi
 
+if [ $OPTIMIZER_OFFLOAD != false ]; then
+    offload_option=" \
+        --optimizer-cpu-offload \
+        --use-precision-aware-optimizer \
+        --optimizer-offload-fraction ${OPTIMIZER_OFFLOAD}"
+fi
+ 
+
 if [ $SFT = true ]; then
     TRAIN_ITERS=${24}
     LR_WARMUP_ITERS=${25}
@@ -274,6 +282,7 @@ if [ $SFT = true ]; then
     PREFIX="finetune-mcore-deepseek-v2-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
     sft_option=" \
          --eod-mask-loss \
+         --calculate-per-token-loss \
          --train-mode finetune"
 else
     TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
@@ -298,10 +307,8 @@ else
 fi
 
 if [ ${MP_SFT_PACKING} = true ]; then
-    packing_options=" \
-        --reset-position-ids \
-        --no-create-attention-mask-in-dataloader
-    "
+    echo "Currently MLA do not support THD format attention, thus sequence packing can not be used..."
+    packing_options=""
 else
     packing_options=""
 fi
@@ -377,7 +384,6 @@ megatron_options="  \
         --qk-layernorm \
         --multi-latent-attention \
         --ckpt-format torch \
-        --calculate-per-token-loss \
         "
 
 run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_deepseek.py

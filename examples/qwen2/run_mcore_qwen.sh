@@ -309,6 +309,7 @@ if [ $SFT = true ]; then
     PREFIX="finetune-mcore-qwen2-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
     sft_option=" \
          --eod-mask-loss \
+         --calculate-per-token-loss \
          --train-mode finetune"
 else
     TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
@@ -409,7 +410,6 @@ megatron_options="  \
         --rotary-base 1000000 \
         --rotary-seq-len-interpolation-factor 1 \
         --no-save-optim \
-        --calculate-per-token-loss \
         "
 
 run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_qwen.py

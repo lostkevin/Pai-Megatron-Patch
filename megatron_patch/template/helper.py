@@ -30,7 +30,8 @@ from megatron.training.utils import (
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron_patch.data.utils import (
     get_batch_on_this_tp_rank_original, 
-    get_batch_on_this_tp_rank_idxmap_sft
+    get_batch_on_this_tp_rank_idxmap_sft,
+    _get_batch_on_this_tp_rank
 )
 
 _TORCH_MAJOR, _TORCH_MINOR = torch.__version__.split('.')[:2]
@@ -91,7 +92,10 @@ def get_batch(data_iterator):
     elif args.dataset == 'MMAP':
         # get batches based on the TP rank you are on
         if args.train_mode == "pretrain":
-            batch = get_batch_on_this_tp_rank(data_iterator)
+            if args.use_multi_token_prediction:
+                batch = _get_batch_on_this_tp_rank(data_iterator)
+            else:
+                batch = get_batch_on_this_tp_rank(data_iterator)
         else:
             batch = get_batch_on_this_tp_rank_idxmap_sft(data_iterator, per_seq_average=True)
         

@@ -250,6 +250,7 @@ if [ $SFT = true ]; then
     PREFIX="finetune-mcore-deepseek-v2-${MODEL_SIZE}-lr-${LR}-minlr-${MIN_LR}-bs-${BATCH_SIZE}-gbs-${GLOBAL_BATCH_SIZE}-seqlen-${SEQ_LEN}"
     sft_options=" \
          --eod-mask-loss \
+         --calculate-per-token-loss \
          --train-mode finetune"
 else
     TRAIN_ITERS=$(( ${TRAIN_TOKENS} / ${GLOBAL_BATCH_SIZE} / ${SEQ_LEN} ))
@@ -274,10 +275,8 @@ else
 fi
 
 if [ ${MP_SFT_PACKING} = true ]; then
-    packing_options=" \
-        --reset-position-ids \
-        --no-create-attention-mask-in-dataloader
-    "
+    echo "Currently MLA do not support THD format attention, thus sequence packing can not be used..."
+    packing_options=""
 else
     packing_options=""
 fi
@@ -353,7 +352,6 @@ megatron_options="  \
         --qk-layernorm \
         --multi-latent-attention \
         --ckpt-format torch \
-        --calculate-per-token-loss \
         --transformer-impl transformer_engine \
         --use-rope-scaling \
         --use-multi-token-prediction \
