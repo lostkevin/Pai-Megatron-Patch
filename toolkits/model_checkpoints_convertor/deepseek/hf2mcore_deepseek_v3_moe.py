@@ -348,7 +348,6 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
             mglayer.self_attention.linear_kv_up_proj.weight.copy_(hflayer.self_attn.kv_b_proj.weight)
             mglayer.self_attention.linear_kv_up_proj.layer_norm_weight.copy_(hflayer.self_attn.kv_a_layernorm.weight)
             mglayer.self_attention.linear_proj.weight.copy_(hflayer.self_attn.o_proj.weight)
-
             if layer_idx < 3:
                 mglayer.mlp.linear_fc1.weight.copy_(
                     torch.cat([hflayer.mlp.gate_proj.weight, hflayer.mlp.up_proj.weight]))
@@ -394,7 +393,6 @@ def save_mgmodel(mgmodel, args):
         f.write("release")
 
     full_model = mgmodel.state_dict_for_save_checkpoint()
-
     for k in list(full_model.keys()):
         if full_model[k] is None and '_extra_state' not in k:
             full_model.pop(k)
@@ -435,12 +433,11 @@ def save_mgmodel(mgmodel, args):
                         checkpoint_name = get_checkpoint_name(args.save, 0, True, True, tp_rank, pp_rank, False)
                     print(f'tensor_parallel & pipeline_parallel & expert_parallel, save model to {checkpoint_name}')
                     for k, v in full_model.items():
-
                         if check_layer(layers_to_copy, k):
                             layer_pattern = re.compile(r'\d+')
                             res = layer_pattern.findall(k)
                             k = re.sub(r"decoder.layers.\d+", "decoder.layers." + str(layers_to_copy["decoder.layers." + res[0]]), k)
-                        elif not ("word_embeddings" in k or "output_layer" in k or "final_layernorm" in k):
+                        elif not ("word_embeddings" in k or "output_layer" in k or "final_layernorm" in k or "mtp_modules" in k):
                             continue
 
                         if not isinstance(v, torch.Tensor):
@@ -450,21 +447,26 @@ def save_mgmodel(mgmodel, args):
                                     if expert_rank // num_local_experts != ep_rank:
                                         continue
                                     expert_local_rank = expert_rank % num_local_experts
-                                    k = k.replace(f'experts.{expert_rank}', f'experts.{expert_local_rank}')
+                                    k = k.replace(f'weight{expert_rank}', f'weight{expert_local_rank}')
                             target_v = v
                         elif 'linear_q_down_proj' in k or 'linear_kv_down_proj' in k:
-                            seg = v.shape[0] // args.tensor_model_parallel_size
-                            target_v = v[seg * tp_rank: seg * (tp_rank + 1)]
+                            #seg = v.shape[0] // args.tensor_model_parallel_size
+                            #target_v = v[seg * tp_rank: seg * (tp_rank + 1)]
+                            target_v = v
                         elif 'linear_q_up_proj.layer_norm_weight' in k or 'linear_kv_up_proj.layer_norm_weight' in k:
-                            seg = v.shape[0] // args.tensor_model_parallel_size
-                            target_v = v[seg * tp_rank: seg * (tp_rank + 1)]
+                            #seg = v.shape[0] // args.tensor_model_parallel_size
+                            #target_v = v[seg * tp_rank: seg * (tp_rank + 1)]
+                            target_v = v
                         elif 'linear_q_up_proj' in k and 'layer_norm_weight' not in k:
                             seg = v.shape[0] // args.tensor_model_parallel_size
                             target_v = v[seg * tp_rank:seg * (tp_rank + 1)]
                         elif 'linear_kv_up_proj' in k and 'layer_norm_weight' not in k:
                             seg = v.shape[0] // args.tensor_model_parallel_size
                             target_v = v[seg * tp_rank:seg * (tp_rank + 1)]
-                        elif 'linear_proj' in k:
+                        elif 'linear_proj' in k and 'mtp_predictor' not in k:
+                            seg = v.shape[1] // args.tensor_model_parallel_size
+                            target_v = v[:, seg * tp_rank: seg * (tp_rank + 1)]
+                        elif 'mtp_predictor.mtp_modules.0.decoder.layers.0.self_attention.linear_proj' in k:
                             seg = v.shape[1] // args.tensor_model_parallel_size
                             target_v = v[:, seg * tp_rank: seg * (tp_rank + 1)]
                         elif 'decoder.layers.0.mlp.linear_fc2' in k or 'decoder.layers.1.mlp.linear_fc2' in k or 'decoder.layers.2.mlp.linear_fc2' in k:
@@ -479,8 +481,8 @@ def save_mgmodel(mgmodel, args):
                             if expert_rank // num_local_experts != ep_rank:
                                 continue
                             expert_local_rank = expert_rank % num_local_experts
-                            k = k.replace(f'experts.{expert_rank}', f'experts.{expert_local_rank}')
-
+                            k = k.replace(f'weight{expert_rank}', f'weight{expert_local_rank}')
+                            """
                             if 'linear_fc1' in k:
                                 viewed = v.view(-1, args.moe_ffn_hidden_size, args.hidden_size)
                                 seg = args.moe_ffn_hidden_size // args.tensor_model_parallel_size
@@ -488,6 +490,8 @@ def save_mgmodel(mgmodel, args):
                             elif 'linear_fc2' in k:
                                 seg = v.shape[1] // args.tensor_model_parallel_size
                                 target_v = v[:, seg * tp_rank: seg * (tp_rank + 1)]
+                            """
+                            target_v = v
                         elif 'shared_experts' in k and 'gate' not in k:
                             if 'linear_fc1' in k:
                                 viewed = v.view(-1, args.moe_shared_expert_intermediate_size,
@@ -497,21 +501,22 @@ def save_mgmodel(mgmodel, args):
                             elif 'linear_fc2' in k:
                                 seg = v.shape[1] // args.tensor_model_parallel_size
                                 target_v = v[:, seg * tp_rank: seg * (tp_rank + 1)]
-                        elif "word_embeddings" in k or "output_layer" in k or "final_layernorm" in k:
+                        elif "word_embeddings" in k or "output_layer" in k:
                             seg = v.shape[0] // args.tensor_model_parallel_size
                             target_v = v[seg * tp_rank: seg * (tp_rank + 1)]
                         else:
                             target_v = v
 
-                        if "word_embeddings" in k:
+                        if "embedding.word_embeddings" in k and "mtp_embedding" not in k:
                             if pp_rank == 0:
                                 model_split[k] = target_v
-                        elif "output_layer" in k or "final_layernorm" in k:
+                        elif "mtp_embedding.word_embeddings" in k:
+                            model_split[k] = target_v
+                        elif "output_layer" in k or "final_layernorm" in k or "mtp_modules" in k:
                             if pp_rank == args.pipeline_model_parallel_size - 1:
                                 model_split[k] = target_v
                         else:
                             model_split[k] = target_v
-
                     save_state_dict(args, [model_split], checkpoint_name)
 
     else:

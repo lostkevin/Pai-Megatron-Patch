@@ -86,7 +86,7 @@ QK_ROPE_HEAD_DIM=64
 V_HEAD_DIM=128
 ROPE_THETA=10000
 SCALE_FACTOR=40
-NUM_EXPERTS=64
+NUM_EXPERTS=256
 ROUTER_TOPK=8
 NUM_SHARED_EXPERTS=1
 RMS_NORM_EPS=1e-6
@@ -97,6 +97,7 @@ moe_options=" \
     --moe-router-topk ${ROUTER_TOPK} \
     --num-experts ${NUM_EXPERTS} \
     --expert-model-parallel-size ${EP} \
+    --expert-tensor-parallel-size 1 \
     --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
     --moe-router-load-balancing-type aux_loss \
     --moe-aux-loss-coeff 0.001 \

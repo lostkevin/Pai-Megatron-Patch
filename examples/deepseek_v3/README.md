@@ -32,11 +32,12 @@ wget -P $python_path/flashattn_hopper https://raw.githubusercontent.com/Dao-AILa
 ## 预训练数据集和模型下载
 
 ```bash
-# cd /mnt
-# mkdir deepseek-ckpts
-# cd deepseek-ckpts
-# git clone https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V3
+cd /mnt
+mkdir deepseek-ckpts
+cd deepseek-ckpts
+git clone https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V3
 
+cd /mnt
 mkdir deepseek-datasets
 wget https://atp-modelzoo-wlcb-pai.oss-cn-wulanchabu.aliyuncs.com/release/models/pai-megatron-patch/deepseek-datasets/SlimPajama.json
 wget https://atp-modelzoo-wlcb-pai.oss-cn-wulanchabu.aliyuncs.com/release/models/pai-megatron-patch/deepseek-datasets/alpaca_zh-train-general.json
@@ -67,7 +68,7 @@ wget https://atp-modelzoo-wlcb-pai.oss-cn-wulanchabu.aliyuncs.com/release/models
 MODEL_SIZE=$1                  # 模型参数：A37B
 SOURCE_CKPT_PATH=$2            # 源路径
 TARGET_CKPT_PATH=$3            # 目标路径
-TP=$4                          # 模型并行度, 当前只能设置为1
+TP=$4                          # 模型并行度
 PP=$5                          # 流水并行度
 EP=$6                          # 专家并行度
 PR=$7                          # 转换精度
@@ -105,7 +106,7 @@ MIN_LR=$6                       # 最小学习率
 SEQ_LEN=$7                      # 序列长度
 PAD_LEN=$8                      # Padding长度
 PR=${9}                         # 训练精度: fp16, bf16, fp8
-TP=${10}                        # 模型并行度，当前只能设置为1
+TP=${10}                        # 模型并行度
 PP=${11}                        # 流水并行度
 CP=${12}                        # 上下文并行度
 EP=${13}                        # 专家并行度
@@ -113,7 +114,7 @@ SP=${14}                        # 是否使用序列并行: true, false
 DO=${15}                        # 是否使用Megatron版Zero-1降显存优化器: true, false
 FL=${16}                        # 是否优先使用Flash Attention: false
 SFT=${17}                       # 是否执行微调训练: true, false
-AC=${18}                        # 激活检查点模式: sel, full, offload, false
+AC=${18}                        # 激活检查点模式: sel, full, offload, none
 OPTIMIZER_OFFLOAD=${19}         # 是否启用Offload optimizer: false, 或输入0～1的小数作为参数offload比例
 SAVE_INTERVAL=${20}             # 保存ckpt的间隔
 DATASET_PATH=${21}              # 训练数据集路径
@@ -150,7 +151,7 @@ true   \
 false \
 false \
 sel   \
-false \
+1.0 \
 100000  \
 /mnt/deepseek-datasets/mmap_deepseekv2_datasets_text_document   \
 /mnt/deepseek-datasets/mmap_deepseekv2_datasets_text_document   \
@@ -186,7 +187,7 @@ true   \
 false \
 true \
 sel   \
-false \
+1.0 \
 100000  \
 /mnt/deepseek-datasets/mmap_deepseekv2_datasets_text_document   \
 /mnt/deepseek-datasets/mmap_deepseekv2_datasets_text_document   \
@@ -210,16 +211,16 @@ A37B   \
 1024  \
 1024  \
 bf16  \
-1   \
-4  \
+8   \
+8  \
 1 \
-2 \
+16 \
 true \
 true   \
 false \
 true \
 sel   \
-false \
+1.0 \
 100000  \
 /mnt/deepseek-datasets/alpaca_zh-train.json    \
 /mnt/deepseek-datasets/alpaca_zh-train.json   \
