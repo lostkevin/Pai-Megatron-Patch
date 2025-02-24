@@ -17,19 +17,9 @@ from typing import Union
 from contextlib import nullcontext
 import torch
 import torch._dynamo
-from megatron.core.datasets.blended_megatron_dataset_builder import (
-    BlendedMegatronDatasetBuilder,
-)
-from megatron.core.datasets.gpt_dataset import (
-    GPTDataset,
-    GPTDatasetConfig,
-    MockGPTDataset,
-)
+
 from megatron.core import mpu, tensor_parallel
-from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.datasets.utils import get_blend_from_list
 from megatron.core.enums import ModelType
-from megatron.training import get_args, get_timers, pretrain, print_rank_0
 from megatron.training.utils import (
     average_losses_across_data_parallel_group,
     get_batch_on_this_cp_rank,
@@ -49,6 +39,7 @@ from megatron_patch.arguments import get_patch_args
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.data import train_valid_test_datasets_provider
 from megatron_patch.template.helper import get_batch
+from megatron_patch.training_250217 import get_args, get_timers, pretrain, print_rank_0
 
 torch._dynamo.config.suppress_errors = True
 

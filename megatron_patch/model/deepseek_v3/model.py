@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# Some MPT Implementation copy from: https://github.com/FlagOpen/FlagScale
 
 import copy
 from typing import Literal, Optional
@@ -129,6 +130,7 @@ class DeepSeekV3Model(GPTModel):
             mtp_config = copy.deepcopy(config)
             mtp_config.pipeline_model_parallel_size = 1
             mtp_config.num_layers = 1
+            mtp_config.num_layers_in_first_pipeline_stage = None
             self.mtp_predictor = DeepSeekMultiTokenPredictor(
                 config=mtp_config,
                 transformer_layer_spec=transformer_layer_spec,

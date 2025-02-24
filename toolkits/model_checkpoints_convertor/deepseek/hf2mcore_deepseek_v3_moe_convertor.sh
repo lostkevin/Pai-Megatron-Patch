@@ -46,6 +46,7 @@ moe_options=" \
     --moe-router-topk ${ROUTER_TOPK} \
     --num-experts ${NUM_EXPERTS} \
     --target-expert-model-parallel-size ${EP} \
+    --expert-tensor-parallel-size 1 \
     --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
     --moe-router-load-balancing-type aux_loss \
     --moe-aux-loss-coeff 0.001 \
@@ -140,6 +141,8 @@ torchrun ${DISTRIBUTED_ARGS} hf2mcore_deepseek_v3_moe.py \
     --transformer-impl transformer_engine \
     --attention-backend fused \
     --use-rope-scaling \
+    --use-multi-token-prediction \
+    --num-mtp-predictor 1 \
     ${moe_options} \
     ${convert_options} \
     ${pr_options} \

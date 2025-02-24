@@ -1,23 +1,28 @@
-from typing import Literal, Optional
+# Copyright (c) 2025 Alibaba PAI and Nvidia Megatron-LM Team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# Some MPT Implementation copy from: https://github.com/FlagOpen/FlagScale
 
-import copy
 import torch
 from torch import Tensor
 
-from megatron.training import get_args
-from megatron.core import InferenceParams, tensor_parallel
-from megatron.core.models.gpt import GPTModel
-from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.transformer.transformer_layer import TransformerLayer, make_viewless_tensor
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_block import (
     TransformerBlock,
     TransformerBlockSubmodules,
 )
-
-from typing import List
 
 try:
     from megatron.core.extensions.transformer_engine import (
