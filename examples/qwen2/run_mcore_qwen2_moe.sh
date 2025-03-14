@@ -104,11 +104,11 @@ moe_options=" \
     --moe-aux-loss-coeff 0.001 \
     --moe-layer-freq '([1]*28)' \
     --moe-shared-expert-intermediate-size ${SHARED_EXPERT_INTERMEDIATE_SIZE} \
-    --moe-permute-fusion \
     --moe-layer-recompute \
     --moe-shared-expert-overlap \
     "
 
+#    --moe-permute-fusion \
 #    --moe-router-score-function sigmoid \
 #    --moe-shared-expert-overlap \
 
