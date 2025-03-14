@@ -70,58 +70,55 @@ elif [ $FL = false ]; then
     "
 fi
 
-if [ $MODEL_SIZE = A37B ]; then
+if [ $MODEL_SIZE = A3B ]; then
+    # moonshotai/Moonlight-16B-A3B-Instruct
+    HIDDEN_SIZE=2048
+    NUM_ATTENTION_HEADS=16
+    NUM_LAYERS=27
+    INTERMEDIATE_SIZE=11264
+    MOE_INTERMEDIATE_SIZE=1408
+    MAX_POSITION_EMBEDDINGS=8192
+    EXTRA_VOCAB_SIZE=0
+    Q_LORA_RANK=0
+    KV_LORA_RANK=512
+    QK_NOPE_HEAD_DIM=128
+    QK_ROPE_HEAD_DIM=64
+    V_HEAD_DIM=128
+    ROPE_THETA=50000
+    SCALE_FACTOR=1
+    NUM_EXPERTS=64
+    ROUTER_TOPK=8
+    NUM_SHARED_EXPERTS=2
+    RMS_NORM_EPS=1e-5
 
-HIDDEN_SIZE=7168
-NUM_ATTENTION_HEADS=128
-NUM_LAYERS=61
-INTERMEDIATE_SIZE=18432
-MOE_INTERMEDIATE_SIZE=2048
-MAX_POSITION_EMBEDDINGS=163840
-EXTRA_VOCAB_SIZE=467
-Q_LORA_RANK=1536
-KV_LORA_RANK=512
-QK_NOPE_HEAD_DIM=128
-QK_ROPE_HEAD_DIM=64
-V_HEAD_DIM=128
-ROPE_THETA=10000
-SCALE_FACTOR=40
-NUM_EXPERTS=256
-ROUTER_TOPK=8
-NUM_SHARED_EXPERTS=1
-RMS_NORM_EPS=1e-6
+    moe_options=" \
+        --moe-grouped-gemm \
+        --moe-token-dispatcher-type alltoall \
+        --moe-router-topk ${ROUTER_TOPK} \
+        --moe-router-group-topk 1 \
+        --moe-router-num-groups 1 \
+        --num-experts ${NUM_EXPERTS} \
+        --expert-model-parallel-size ${EP} \
+        --expert-tensor-parallel-size ${ETP} \
+        --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
+        --moe-router-load-balancing-type seq_aux_loss \
+        --moe-router-topk-scaling-factor 2.446 \
+        --moe-shared-expert-overlap \
+        --moe-router-enable-expert-bias \
+        --mscale 1.0 \
+        --mscale-all-dim 1.0 \
+        --moe-router-score-function sigmoid \
+        --moe-router-bias-update-rate 0.001 \
+        --moe-aux-loss-coeff 0.001 \
+        --moe-layer-freq '([0]*1+[1]*26)' \
+        --moe-shared-expert-intermediate-size $((${MOE_INTERMEDIATE_SIZE} * ${NUM_SHARED_EXPERTS} )) \
+        --kv-lora-rank ${KV_LORA_RANK} \
+        --qk-nope-head-dim ${QK_NOPE_HEAD_DIM} \
+        --qk-rope-head-dim ${QK_ROPE_HEAD_DIM} \
+        --v-head-dim ${V_HEAD_DIM} \
+        "
 
-moe_options=" \
-    --moe-grouped-gemm \
-    --moe-token-dispatcher-type alltoall \
-    --moe-router-topk ${ROUTER_TOPK} \
-    --moe-router-group-topk 4 \
-    --moe-router-num-groups 8 \
-    --num-experts ${NUM_EXPERTS} \
-    --expert-model-parallel-size ${EP} \
-    --expert-tensor-parallel-size ${ETP} \
-    --moe-ffn-hidden-size ${MOE_INTERMEDIATE_SIZE} \
-    --moe-router-load-balancing-type seq_aux_loss \
-    --moe-router-topk-scaling-factor 2.5 \
-    --moe-shared-expert-overlap \
-    --moe-router-enable-expert-bias \
-    --mscale 1.0 \
-    --mscale-all-dim 1.0 \
-    --moe-router-score-function sigmoid \
-    --moe-router-bias-update-rate 0.001 \
-    --moe-aux-loss-coeff 0.001 \
-    --moe-layer-freq '([0]*3+[1]*58)' \
-    --moe-shared-expert-intermediate-size $((${MOE_INTERMEDIATE_SIZE} * ${NUM_SHARED_EXPERTS} )) \
-    --q-lora-rank ${Q_LORA_RANK} \
-    --kv-lora-rank ${KV_LORA_RANK} \
-    --qk-nope-head-dim ${QK_NOPE_HEAD_DIM} \
-    --qk-rope-head-dim ${QK_ROPE_HEAD_DIM} \
-    --v-head-dim ${V_HEAD_DIM} \
-    "
-
-mtp_options=" \
-    --use-multi-token-prediction \
-    --num-mtp-predictor 1"
+mtp_options=""
 fi
 
 # Here are some configs controled by env
@@ -369,7 +366,7 @@ megatron_options="  \
         --use-rope-scaling \
         "
 
-run_cmd="torchrun $DISTRIBUTED_ARGS pretrain_deepseek.py
+run_cmd="torchrun $DISTRIBUTED_ARGS ../deepseek_v3/pretrain_deepseek.py
  ${megatron_options} ${dataset_options} ${pr_options} ${load_option} ${activation_checkpoint_options} \
  ${do_option} ${sp_option} ${moe_options} ${offload_option} ${sft_options} ${vp_option} ${packing_options} ${uneven_split_option} ${attn_backend_option} ${mtp_options}"
 
