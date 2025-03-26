@@ -31,6 +31,7 @@ from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_decoder_block_spec,
     get_gpt_layer_local_spec,
     get_gpt_layer_with_transformer_engine_spec,
+    get_gpt_mtp_block_spec,
 )
 from megatron_patch.model.deepseek_v3.transformer_config import core_transformer_config_from_args
 from megatron_patch.model.deepseek_v3.model import DeepSeekV3Model
@@ -82,6 +83,10 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel]:
     build_model_context = nullcontext
     build_model_context_args = {}
 
+    mtp_block_spec = None
+    if args.mtp_num_layers is not None:
+        mtp_block_spec = get_gpt_mtp_block_spec(config, transformer_layer_spec, use_transformer_engine=use_te)
+
     with build_model_context(**build_model_context_args):
         if args.use_multi_token_prediction:
             model = DeepSeekV3Model(
@@ -113,7 +118,8 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel]:
                 position_embedding_type=args.position_embedding_type,
                 rotary_percent=args.rotary_percent,
                 rotary_base=args.rotary_base,
-                rope_scaling=args.use_rope_scaling
+                rope_scaling=args.use_rope_scaling,
+                mtp_block_spec=mtp_block_spec,
             )
 
     return model

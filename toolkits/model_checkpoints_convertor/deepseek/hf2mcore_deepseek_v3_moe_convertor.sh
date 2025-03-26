@@ -15,11 +15,11 @@ ETP=$6
 EP=$7
 PR=$8
 MG2HF=$9
-HF_CKPT_PATH=$10
+HF_CKPT_PATH=${10}
 
 CURRENT_DIR="$( cd "$( dirname "$0" )" && pwd )"
 MEGATRON_PATH=$( dirname $(dirname $( dirname ${CURRENT_DIR})))
-export PYTHONPATH=$PYTHONPATH:${MEGATRON_PATH}:${MEGATRON_PATH}/Megatron-LM-250314
+export PYTHONPATH=$PYTHONPATH:${MEGATRON_PATH}:${MEGATRON_PATH}/Megatron-LM-250325
 
 if [ $MODEL_SIZE = A37B ]; then
 
@@ -67,14 +67,13 @@ moe_options=" \
     --qk-nope-head-dim ${QK_NOPE_HEAD_DIM} \
     --qk-rope-head-dim ${QK_ROPE_HEAD_DIM} \
     --v-head-dim ${V_HEAD_DIM} \
+    --mtp-num-layers 1
     "
 
 cpu_options=" \
             --use-cpu-initialization"
 
-mtp_options=" \
-    --use-multi-token-prediction \
-    --num-mtp-predictor 1"
+mtp_options=""
 
 elif [ $MODEL_SIZE = A3B ]; then
 # moonshotai/Moonlight-16B-A3B-Instruct
