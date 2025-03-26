@@ -270,21 +270,11 @@ def load_megatron_model(args):
                 target_v = v[0]
             elif contains(k, ['router', 'gate', 'input_layernorm', 'pre_mlp_layernorm', 'enorm', 'hnorm', 'layer_norm_weight', 'final_layernorm']):
                 target_v = v[0]
-            elif 'word_embeddings' in k or 'output_layer' in k:
-                target_v = torch.cat(v, dim=0)
-            elif 'linear_q_down_proj' in k:
-                target_v = torch.cat(v, dim=0)
-            elif 'linear_q_up_proj' in k:
-                target_v = torch.cat(v, dim=0)
-            elif 'linear_q_up_proj.layer_norm_weight' in k:
-                target_v = torch.cat(v, dim=0)
-            elif 'linear_kv_down_proj' in k:
+            elif contains(k, ['word_embeddings', 'output_layer', 'linear_q_down_proj', 'linear_q_up_proj', 'linear_kv_down_proj', 'linear_kv_up_proj.layer_norm_weight', 'eh_proj', 'linear_q_proj']):
                 target_v = torch.cat(v, dim=0)
             elif 'linear_kv_up_proj' in k:
                 viewed = [x.view(group_per_split, -1, q_head_dim - args.qk_pos_emb_head_dim + args.v_head_dim, args.kv_lora_rank) for x in v]
                 target_v = torch.cat(viewed, dim=0).view(-1, args.kv_lora_rank)
-            elif 'linear_kv_up_proj.layer_norm_weight' in k:
-                target_v = torch.cat(v, dim=0)
             elif 'linear_proj' in k:
                 target_v = torch.cat(v, dim=1)
             elif 'linear_fc1' in k:
@@ -292,8 +282,6 @@ def load_megatron_model(args):
                 target_v = torch.cat(viewed, dim=1).view(-1, args.hidden_size)
             elif 'linear_fc2' in k:
                 target_v = torch.cat(v, dim=1)
-            elif 'eh_proj' in k:
-                target_v = torch.cat(v, dim=0)
             else:
                 raise ValueError(f"{k} is missing!")
         except Exception as e:
@@ -379,7 +367,7 @@ def convert_checkpoint_from_megatron_to_transformers(mgmodel, hfmodel, args):
             hflayer.mlp.down_proj.weight.copy_(mglayer.mlp.linear_fc2.weight)
         else:
             hflayer.mlp.gate.weight.copy_(mglayer.mlp.router.weight)
-            safe_copy(mglayer.mlp.router.expert_bias, hflayer.mlp.gate.e_score_correction_bias, skip_dtype_assert=True)
+            safe_copy(mglayer.mlp.router.expert_bias, hflayer.mlp.gate.e_score_correction_bias, skip_dtype_assert=False)
             for i, hfexpert in enumerate(hflayer.mlp.experts):
                 linear_fc1_weighti = getattr(mglayer.mlp.experts.linear_fc1, 'weight' + str(i))
                 gate_weight, up_weight = torch.split(linear_fc1_weighti,
@@ -409,6 +397,7 @@ def convert_checkpoint_from_transformers_to_megatron(hfmodel, mgmodel, args):
         mgmodel = mgmodel.half()
     elif args.bf16:
         mgmodel = mgmodel.bfloat16()
+
     if args.mtp_num_layers and args.mtp_num_layers > 0:
         mtp_layer_idx = args.num_layers
         # collect weights of model.layers.{mtp_layer_idx} from index.json

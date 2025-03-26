@@ -80,6 +80,10 @@ if [ $MG2HF = true ]; then
                 --convert-checkpoint-from-megatron-to-transformers \
                 --hf-ckpt-path ${HF_CKPT_PATH}"
 
+    mkdir -p ${TARGET_CKPT_PATH}
+    find -L ${HF_CKPT_PATH} -maxdepth 1 -type f -name "configuration.json" -print0 | xargs -0 cp -t ${TARGET_CKPT_PATH}
+    find -L ${HF_CKPT_PATH} -maxdepth 1 -type f -name "tiktoken.model" -print0 | xargs -0 cp -t ${TARGET_CKPT_PATH}
+    find -L ${HF_CKPT_PATH} -maxdepth 1 -type f -name "tiktoken.model" -print0 | xargs -0 cp -t ${SOURCE_CKPT_PATH}
 elif [ $MG2HF = false ]; then
     convert_options=""
 fi
