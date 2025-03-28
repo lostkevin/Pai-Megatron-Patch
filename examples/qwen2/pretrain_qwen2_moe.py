@@ -28,7 +28,7 @@ from megatron_patch.model.qwen2_moe.transformer_config import core_transformer_c
 from megatron_patch.arguments import get_patch_args
 from megatron_patch.tokenizer import build_tokenizer, get_tokenizer
 from megatron_patch.data import train_valid_test_datasets_provider
-from megatron_patch.training_250217 import get_args, pretrain, print_rank_0
+from megatron.training import get_args, pretrain, print_rank_0
 
 torch._dynamo.config.suppress_errors = True
 
