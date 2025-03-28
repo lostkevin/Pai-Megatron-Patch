@@ -80,10 +80,7 @@ def get_batch(data_iterator):
     elif args.dataset == 'MMAP':
         # get batches based on the TP rank you are on
         if args.train_mode == "pretrain":
-            if args.use_multi_token_prediction:
-                batch = _get_batch_on_this_tp_rank(data_iterator)
-            else:
-                batch = get_batch_on_this_tp_rank(data_iterator)
+            batch = get_batch_on_this_tp_rank(data_iterator)
         else:
             batch = get_batch_on_this_tp_rank_idxmap_sft(data_iterator, per_seq_average=True)
         
