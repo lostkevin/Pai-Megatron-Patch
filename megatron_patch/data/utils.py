@@ -153,8 +153,8 @@ def get_batch_on_this_tp_rank_original(data_iterator, per_seq_average=False):
         num_seqs = None
         if per_seq_average:
             # NOTE: raw dataset does not support sequence packing
-            num_seqs = loss_mask.sum(dim=-1).long() # [mbs]
-            loss_mask = loss_mask / num_seqs.view(-1, 1)
+            num_seqs = torch.ones(position_ids.shape[0], device=torch.cuda.current_device(), dtype=torch.int64)
+            loss_mask = loss_mask / loss_mask.sum(dim=-1, keepdims=True) # [mbs]       
 
         batch = {
             'tokens': tokens.cuda(non_blocking=True),
