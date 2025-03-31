@@ -31,7 +31,6 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron_patch.data.utils import (
     get_batch_on_this_tp_rank_original, 
     get_batch_on_this_tp_rank_idxmap_sft,
-    _get_batch_on_this_tp_rank,
     get_position_id_on_this_tp_rank_idxmap_sft_packing
 )
 
