@@ -666,7 +666,7 @@ def main():
         save_hfmodel(args, hf_model)
     else:
         config = AutoConfig.from_pretrained(args.load, trust_remote_code=True)
-        hf_model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path=args.load, trust_remote_code=True)
+        hf_model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path=args.load, trust_remote_code=True, torch_dtype=config.torch_dtype)
         mg_model = model_provider()
         for p in mg_model.parameters():
             p.fill_(torch.nan)
