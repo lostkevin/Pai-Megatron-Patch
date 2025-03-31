@@ -60,7 +60,6 @@ WARMUP_TOKENS=${25}
 OUTPUT_BASEPATH=${26}
 ### OTHERS ###
 
-OPTIMIZER=${27}
 
 if [ $FL = true ]; then
 #    echo "MLA is not supported in flash-attn, set FL=false and rerun."
@@ -356,7 +355,6 @@ megatron_options="  \
         --group-query-attention \
         --num-query-groups ${NUM_KEY_VALUE_HEADS} \
         --add-qkv-bias \
-        --optimizer ${OPTIMIZER} \
         --cross-entropy-loss-fusion \
         "
 
