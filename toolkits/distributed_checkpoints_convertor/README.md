@@ -34,6 +34,7 @@ HF_DIR=$7                   # HF权重路径(mcore2hf时必须提供)
 
 ```
 bash scripts/deepseek_v3/run_32xH20.sh \
+A37B \
 /mnt/deepseek-ckpts/DeepSeek-V3-bf16 \
 /mnt/deepseek-ckpts/DeepSeek-V3-to-mcore \
 false \
@@ -49,6 +50,7 @@ bf16
 ```
 export MODEL_PARALLEL_ARGS="--tensor-model-parallel-size 1 --pipeline-model-parallel-size 8 --expert-tensor-parallel-size 1 --expert-model-parallel-size 4 --decoder-first-pipeline-num-layers 7 --decoder-last-pipeline-num-layers 6"
 bash scripts/deepseek_v3/run_32xH20.sh \
+A37B \
 /mnt/deepseek-ckpts/DeepSeek-V3-bf16 \
 /mnt/deepseek-ckpts/DeepSeek-V3-to-mcore \
 false \

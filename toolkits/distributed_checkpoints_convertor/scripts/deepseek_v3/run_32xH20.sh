@@ -14,13 +14,13 @@ GPUS_PER_NODE=${KUBERNETES_CONTAINER_RESOURCE_GPU:-8}
 MASTER_ADDR=${MASTER_ADDR}
 MASTER_PORT=${MASTER_PORT}
 
-MODEL_SIZE=$2 # NOTE: not used
-LOAD_DIR=$3
-SAVE_DIR=$4
-MG2HF=$5
-USE_CUDA=$6
-PR=$7
-HF_DIR=$8
+MODEL_SIZE=$1 # NOTE: not used
+LOAD_DIR=$2
+SAVE_DIR=$3
+MG2HF=$4
+USE_CUDA=$5
+PR=$6
+HF_DIR=$7
 
 OTHER_ARGS=()
 if [ ${MG2HF} = true ]; then
@@ -56,7 +56,7 @@ if [ -z ${NUM_NODES} ]; then
     exit
 fi
 
-if [ -z ${RANK} ]; then
+if [ -z ${NODE_RANK} ]; then
     echo "Please Provide RANK"
     exit
 fi
@@ -161,7 +161,7 @@ CONVERT_ARGS=(
     --logging-level 20
 )
 
-torchrun ${DISTRIBUTED_ARGS[@]} ../../impl/convert.py \
+torchrun ${DISTRIBUTED_ARGS[@]} impl/convert.py \
     ${GPT_MODEL_ARGS[@]} \
     ${TRAINING_ARGS[@]} \
     ${MODEL_PARALLEL_ARGS[@]} \

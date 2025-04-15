@@ -1,4 +1,5 @@
 import os
+import shutil
 import torch
 import json
 import logging
@@ -7,7 +8,11 @@ from safetensors import safe_open
 from transformers.modeling_utils import SAFE_WEIGHTS_INDEX_NAME
 from huggingface_hub.constants import SAFETENSORS_INDEX_FILE
 
-from megatron.training.checkpointing import save_checkpoint
+from megatron.training.checkpointing import (
+    save_checkpoint, 
+    get_checkpoint_tracker_filename, 
+    get_checkpoint_name
+)
 
 from general.synchronizer import BaseSynchronizer, ParamType
 
@@ -282,3 +287,12 @@ class HF2MGSynchronizer(BaseSynchronizer):
                 expert_parallel=self.ep_size > 1,
                 tensor_rank=self.tp_rank
             )
+
+            # NOTE: The `save_checkpoint` API can only save a checkpoint in release=False,
+            # reset the metadata. (Otherwise user may find their training starts at step 2)
+            tracker_filename = get_checkpoint_tracker_filename(self.args.save)
+            with open(tracker_filename, 'w') as f:
+                f.write('release')
+            source_dir = get_checkpoint_name(self.args.save, 1, False, return_base_dir=True)
+            target_dir = get_checkpoint_name(self.args.save, -1, True, return_base_dir=True)
+            shutil.move(source_dir, target_dir)
